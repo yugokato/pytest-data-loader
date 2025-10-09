@@ -1,4 +1,5 @@
 import inspect
+import sys
 from collections.abc import Generator, Iterable
 from pathlib import Path
 
@@ -49,60 +50,74 @@ def pytest_generate_tests(metafunc: Metafunc) -> None:
     test_func = metafunc.function
     load_attrs: DataLoaderLoadAttrs | None
     if load_attrs := getattr(test_func, PYTEST_DATA_LOADER_ATTR, None):
-        cfg = metafunc.config
-        data_loader_dir_name = parse_ini_option(cfg, DataLoaderIniOption.DATA_LOADER_DIR_NAME)
-        strip_trailing_whitespace = parse_ini_option(cfg, DataLoaderIniOption.DATA_LOADER_STRIP_TRAILING_WHITESPACE)
-        assert isinstance(strip_trailing_whitespace, bool)
-        pytest_root_dir = metafunc.config.rootpath
-        search_from = Path(inspect.getabsfile(test_func))
-        test_data_path = resolve_relative_path(
-            data_loader_dir_name,
-            pytest_root_dir,
-            load_attrs.relative_path,
-            search_from,
-            is_file=load_attrs.loader.requires_file_path,
-        )
+        node_id = metafunc.definition.nodeid
+        try:
+            cfg = metafunc.config
+            data_loader_dir_name = parse_ini_option(cfg, DataLoaderIniOption.DATA_LOADER_DIR_NAME)
+            strip_trailing_whitespace = parse_ini_option(cfg, DataLoaderIniOption.DATA_LOADER_STRIP_TRAILING_WHITESPACE)
+            assert isinstance(strip_trailing_whitespace, bool)
+            pytest_root_dir = cfg.rootpath
+            search_from = Path(inspect.getabsfile(test_func))
+            test_data_path = resolve_relative_path(
+                data_loader_dir_name,
+                pytest_root_dir,
+                load_attrs.relative_path,
+                search_from,
+                is_file=load_attrs.loader.requires_file_path,
+            )
 
-        data_loader = data_loader_factory(
-            test_data_path, load_attrs, strip_trailing_whitespace=strip_trailing_whitespace
-        )
-        if isinstance(data_loader, FileDataLoader):
-            # Keep file loaders per module for clean up
-            data_loader_cache: set[FileDataLoader] | None
-            if data_loader_cache := getattr(metafunc.module, PYTEST_DATA_LOADER_ATTR, None):
-                data_loader_cache.add(data_loader)
+            data_loader = data_loader_factory(
+                test_data_path, load_attrs, strip_trailing_whitespace=strip_trailing_whitespace
+            )
+            if isinstance(data_loader, FileDataLoader):
+                # Keep file loaders per module for clean up
+                data_loader_cache: set[FileDataLoader] | None
+                if data_loader_cache := getattr(metafunc.module, PYTEST_DATA_LOADER_ATTR, None):
+                    data_loader_cache.add(data_loader)
+                else:
+                    setattr(metafunc.module, PYTEST_DATA_LOADER_ATTR, {data_loader})
+
+            loaded_data = data_loader.load()
+            if loaded_data:
+                if isinstance(loaded_data, LoadedData | LazyLoadedData):
+                    loaded_data = [loaded_data]
+
+                values: Iterable[
+                    LoadedDataType
+                    | LazyLoadedData
+                    | LazyLoadedPartData
+                    | tuple[Path, LoadedDataType | LazyLoadedData | LazyLoadedPartData]
+                ]
+                if load_attrs.requires_file_path:
+                    values = ((x.file_path, x.data) for x in loaded_data)
+                else:
+                    values = (x.data for x in loaded_data)
+
+                if load_attrs.id_func:
+                    ids = (bind_and_call_loader_func(load_attrs.id_func, x.file_path, x.data) for x in loaded_data)
+                else:
+                    ids = generate_default_ids(loaded_data, load_attrs)
             else:
-                setattr(metafunc.module, PYTEST_DATA_LOADER_ATTR, {data_loader})
+                ids = None
+                values = []
 
-        loaded_data = data_loader.load()
-        if loaded_data:
-            if isinstance(loaded_data, LoadedData | LazyLoadedData):
-                loaded_data = [loaded_data]
-
-            values: Iterable[
-                LoadedDataType
-                | LazyLoadedData
-                | LazyLoadedPartData
-                | tuple[Path, LoadedDataType | LazyLoadedData | LazyLoadedPartData]
-            ]
-            if load_attrs.requires_file_path:
-                values = ((x.file_path, x.data) for x in loaded_data)
+            if len(load_attrs.fixture_names) == 1:
+                args = load_attrs.fixture_names[0]
             else:
-                values = (x.data for x in loaded_data)
-
-            if load_attrs.id_func:
-                ids = (bind_and_call_loader_func(load_attrs.id_func, x.file_path, x.data) for x in loaded_data)
+                args = load_attrs.fixture_names
+            metafunc.parametrize(args, values, ids=ids)
+        except Exception as e:
+            # Add nodeid to the exception message so that a user can tell which test caused the error
+            note = f"(nodeid: {node_id})"
+            if sys.version_info >= (3, 11):
+                e.add_note(note)
+                raise e
             else:
-                ids = generate_default_ids(loaded_data, load_attrs)
-        else:
-            ids = None
-            values = []
-
-        if len(load_attrs.fixture_names) == 1:
-            args = load_attrs.fixture_names[0]
-        else:
-            args = load_attrs.fixture_names
-        metafunc.parametrize(args, values, ids=ids)
+                if len(e.args) == 1 and isinstance(e.args[0], str):
+                    e.args = (f"{e}\n{note}",)
+                    raise e
+                else:
+                    raise type(e)(f"{e}\n{note}").with_traceback(e.__traceback__) from e
 
 
 @pytest.hookimpl(tryfirst=True)
