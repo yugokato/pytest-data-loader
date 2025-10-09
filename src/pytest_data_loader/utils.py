@@ -113,10 +113,9 @@ def resolve_relative_path(
             loader_dirs.append(loader_dir)
             file_or_dir_path = loader_dir / relative_path_to_search
             if file_or_dir_path.exists():
-                if (file_or_dir_path.is_dir() and is_file) or (file_or_dir_path.is_file() and not is_file):
-                    # Ignore if a directory with the same name as the required file is found
-                    continue
-                return file_or_dir_path.resolve()
+                # Ignore if a directory with the same name as the required file (or vice versa) is found
+                if (file_or_dir_path.is_file() and is_file) or (file_or_dir_path.is_dir() and not is_file):
+                    return file_or_dir_path.resolve()
 
         if dir_to_search == root_dir:
             break
