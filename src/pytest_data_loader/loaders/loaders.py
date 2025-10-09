@@ -1,13 +1,9 @@
-import inspect
-import os
 from collections.abc import Callable, Iterable
 from pathlib import Path
 from typing import Any, cast
 
 from pytest_data_loader.constants import PYTEST_DATA_LOADER_ATTR
-from pytest_data_loader.errors import PytestDataLoaderError
 from pytest_data_loader.types import DataLoader, DataLoaderLoadAttrs, DataLoaderPathType, LoadedDataType, TestFunc
-from pytest_data_loader.utils import is_valid_fixture_name
 
 from .impl import loader
 
@@ -56,7 +52,7 @@ def load(
     return _setup_data_loader(
         cast(DataLoader, load),
         fixture_names,
-        Path(relative_path),
+        relative_path,
         lazy_loading=lazy_loading,
         force_binary=force_binary,
         onload_func=onload_func,
@@ -138,7 +134,7 @@ def parametrize(
     return _setup_data_loader(
         cast(DataLoader, parametrize),
         fixture_names,
-        Path(relative_path),
+        relative_path,
         lazy_loading=lazy_loading,
         filter_func=filter_func,
         onload_func=onload_func,
@@ -195,7 +191,7 @@ def parametrize_dir(
     return _setup_data_loader(
         cast(DataLoader, parametrize_dir),
         fixture_names,
-        Path(relative_path),
+        relative_path,
         force_binary=force_binary,
         filter_func=filter_func,
         process_func=process_func,
@@ -206,7 +202,7 @@ def parametrize_dir(
 def _setup_data_loader(
     loader: DataLoader,
     fixture_names: str | tuple[str, str],
-    relative_path: Path,
+    relative_path: Path | str,
     /,
     *,
     lazy_loading: bool = True,
@@ -219,52 +215,31 @@ def _setup_data_loader(
 ) -> Callable[[TestFunc], TestFunc]:
     """Set up a test function and inject loder attributes that are used by pytest_generate_tests hook"""
 
+    if not loader.requires_parametrization and any([parametrizer_func, filter_func, process_func]):
+        raise ValueError(
+            f"Invalid usage: parametrizer_func, filter_func, and process_func are not supported for "
+            f"{loader.__name__} loader"
+        )
+
     def wrapper(test_func: TestFunc) -> TestFunc:
         """Add attributes to the test function"""
-        try:
-            if not loader.requires_parametrization and any([parametrizer_func, filter_func, process_func]):
-                raise ValueError(
-                    "Invalid usage: parametrizer_func, filter_func, and process_func are available only "
-                    "when parametrize_data=True"
-                )
-
-            if relative_path in (Path("."), Path(os.sep)):
-                raise ValueError(f"relative_path cannot be '{relative_path}'")
-            if relative_path.is_absolute():
-                raise ValueError("relative_path cannot be an absolute path")
-
-            if isinstance(fixture_names, str):
-                args = tuple(x.strip() for x in fixture_names.split(","))
-            else:
-                args = tuple(fixture_names)
-
-            if not all(is_valid_fixture_name(x) for x in args):
-                raise ValueError(f"Invalid fixture_names: {fixture_names!r}")
-
-            setattr(
-                test_func,
-                PYTEST_DATA_LOADER_ATTR,
-                DataLoaderLoadAttrs(
-                    loader=loader,
-                    fixture_names=args,
-                    relative_path=relative_path,
-                    lazy_loading=lazy_loading,
-                    force_binary=force_binary,
-                    onload_func=onload_func,
-                    parametrizer_func=parametrizer_func,
-                    filter_func=filter_func,
-                    process_func=process_func,
-                    id_func=id_func,
-                ),
-            )
-        except Exception as e:
-            raise PytestDataLoaderError(
-                f"Encountered an error while setting up data loader:\n"
-                f"- error: {type(e).__name__}: {e}\n"
-                f"- loader: pytest_data_loader.{loader.__name__}()\n"
-                f"- file: {inspect.getabsfile(test_func)}\n"
-                f"- test: {test_func.__name__}"
-            ) from e
+        setattr(
+            test_func,
+            PYTEST_DATA_LOADER_ATTR,
+            DataLoaderLoadAttrs(
+                loader=loader,
+                # fixture_names and relative_path will be validated and normalized in __post_init__()
+                fixture_names=cast(tuple[str, ...], fixture_names),
+                relative_path=cast(Path, relative_path),
+                lazy_loading=lazy_loading,
+                force_binary=force_binary,
+                onload_func=onload_func,
+                parametrizer_func=parametrizer_func,
+                filter_func=filter_func,
+                process_func=process_func,
+                id_func=id_func,
+            ),
+        )
         return test_func
 
     return wrapper

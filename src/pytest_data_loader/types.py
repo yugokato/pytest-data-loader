@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from abc import ABC, abstractmethod
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
@@ -117,13 +118,67 @@ class DataLoaderLoadAttrs:
     id_func: Callable[..., Any] | None = None
 
     def __post_init__(self) -> None:
-        len_args = len(self.fixture_names)
-        if not 0 < len(self.fixture_names) < 3:
-            raise ValueError(f"The loader supports either 1 or 2 fixture names. Got {len_args}: {self.fixture_names}")
+        self._validate_fixture_names()
+        self._validate_relative_path()
+        self._validate_loader_func()
 
     @property
     def requires_file_path(self) -> bool:
         return len(self.fixture_names) == 2
+
+    def _validate_fixture_names(self) -> None:
+        from pytest_data_loader.utils import is_valid_fixture_name
+
+        orig_value = self.fixture_names
+        if not isinstance(orig_value, (str, tuple)):
+            raise TypeError(f"fixture_names: Expected a string or tuple, but got {type(orig_value).__name__!r}")
+        if isinstance(orig_value, tuple) and not all(isinstance(x, str) for x in orig_value):
+            raise TypeError(
+                f"fixture_names: Expected a tuple of strings, but got {type(orig_value).__name__} "
+                f"with element types {[type(v).__name__ for v in orig_value]}."
+            )
+
+        if isinstance(orig_value, str):  # type: ignore
+            normalized_names = tuple(x.strip() for x in orig_value.split(","))  # type: ignore
+        else:
+            normalized_names = tuple(orig_value)
+
+        err = "Invalid fixture_names value"
+        if not all(is_valid_fixture_name(x) for x in normalized_names):
+            raise ValueError(f"{err}: One or more values are illegal: {orig_value!r}")
+
+        len_names = len(normalized_names)
+        if not 0 < len(normalized_names) < 3:
+            raise ValueError(f"{err}: It must be either 1 or 2 fixture names. Got {len_names}: {orig_value!r}")
+
+        self._modify_value("fixture_names", normalized_names)
+
+    def _validate_relative_path(self) -> None:
+        orig_value = self.relative_path
+        if not isinstance(orig_value, Path | str):
+            raise TypeError(f"relative_path: Expected a string or pathlib.Path, but got {type(orig_value).__name__!r}")
+
+        self._modify_value("relative_path", Path(orig_value))
+        err = "Invalid relative_path value"
+        if self.relative_path.is_absolute():
+            raise ValueError(f"{err}: It can not be an absolute path")
+
+        if self.relative_path in (Path("."), Path(".."), Path(os.sep)):
+            raise ValueError(f"{err}: '{orig_value}'")
+
+    def _validate_loader_func(self) -> None:
+        for f, name in [
+            (self.onload_func, "onload_func"),
+            (self.parametrizer_func, "parametrizer_func"),
+            (self.filter_func, "filter_func"),
+            (self.process_func, "process_func"),
+            (self.id_func, "id_func"),
+        ]:
+            if f and not callable(f):
+                raise TypeError(f"{name}: Must be a callable, not {type(f).__name__!r}")
+
+    def _modify_value(self, field_name: str, new_value: Any) -> None:
+        object.__setattr__(self, field_name, new_value)
 
 
 class UnsupportedFuncArg: ...

@@ -77,14 +77,11 @@ def bind_and_call_loader_func(
     :param file_path: Path to the loaded file
     :param data: Loaded data
     """
-    if not callable(loader_func):
-        raise TypeError(f"Loader function must be a callable, not {type(loader_func).__name__}")
-
     len_func_args = get_num_func_args(loader_func)
     max_allowed_args = 1 if data is UnsupportedFuncArg else 2
     if not 0 < len_func_args < max_allowed_args + 1:
         raise TypeError(
-            f"Invalid loader function was provided. It supports up to {max_allowed_args} arguments. Got {len_func_args}"
+            f"Detected invalid loader function. It must take up to {max_allowed_args} arguments. Got {len_func_args}"
         )
 
     if len_func_args == 2:

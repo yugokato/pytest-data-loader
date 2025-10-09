@@ -30,9 +30,4 @@ def test_loader_with_invalid_args(
     result = run_pytest_with_context(test_context, fixture_names=fixture_names, collect_only=collect_only)
     assert result.ret == ExitCode.INTERRUPTED
     result.assert_outcomes(errors=1)
-    if isinstance(fixture_names, tuple) and len(fixture_names) > 2:
-        assert f"The loader supports either 1 or 2 fixture names. Got {len(fixture_names)}: {fixture_names}" in str(
-            result.stdout
-        )
-    else:
-        assert f"Invalid fixture_names: {fixture_names!r}" in str(result.stdout)
+    assert "Invalid fixture_names value:" in str(result.stdout)

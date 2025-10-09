@@ -40,7 +40,8 @@ def test_onload_func_validation(
     collect_only: bool,
 ) -> None:
     """Test validation around the onload_func parameter"""
-    should_error_in_collection = loader == parametrize or not lazy_loading
+    loader_func = eval(f"{loader_func_def}")
+    should_error_in_collection = any([not lazy_loading, not callable(loader_func), loader == parametrize])
     should_pass = is_valid or (collect_only and not should_error_in_collection)
     result = run_pytest_with_context(
         test_context, lazy_loading=lazy_loading, onload_func_def=loader_func_def, collect_only=collect_only
@@ -56,11 +57,10 @@ def test_onload_func_validation(
         else:
             assert result.ret == ExitCode.TESTS_FAILED
             result.assert_outcomes(errors=test_context.num_expected_tests)
-        loader_func = eval(f"{loader_func_def}")
         if callable(loader_func):
-            assert "Invalid loader function was provided. It supports up to 2 arguments" in str(result.stdout)
+            assert "Detected invalid loader function. It must take up to 2 arguments" in str(result.stdout)
         else:
-            assert f"Loader function must be a callable, not {type(loader_func).__name__}" in str(result.stdout)
+            assert f"onload_func: Must be a callable, not {type(loader_func).__name__!r}" in str(result.stdout)
 
 
 @pytest.mark.parametrize("collect_only", [True, False])
@@ -86,7 +86,8 @@ def test_parametrizer_func_validation(
     collect_only: bool,
 ) -> None:
     """Test validation around the parametrizer_func parameter for the following loaders"""
-    should_error_in_collection = loader == parametrize or not lazy_loading
+    loader_func = eval(f"{loader_func_def}")
+    should_error_in_collection = any([not lazy_loading, not callable(loader_func), loader == parametrize])
     should_pass = is_valid or (collect_only and not should_error_in_collection)
     result = run_pytest_with_context(
         test_context, lazy_loading=lazy_loading, parametrizer_func_def=loader_func_def, collect_only=collect_only
@@ -102,16 +103,17 @@ def test_parametrizer_func_validation(
         else:
             # Placeholder. No valid scenario exists at the moment
             raise NotImplementedError("Test logic needs to be added")
-        loader_func = eval(f"{loader_func_def}")
         if callable(loader_func):
             num_args = get_num_func_args(loader_func)
             if 0 < num_args < 3:
                 v = bind_and_call_loader_func(loader_func, Path("."), "foo")
-                assert f"Parametrized data must be an iterable container, not {type(v).__name__}" in str(result.stdout)
+                assert f"Parametrized data must be an iterable container, not {type(v).__name__!r}" in str(
+                    result.stdout
+                )
             else:
-                assert "Invalid loader function was provided. It supports up to 2 arguments" in str(result.stdout)
+                assert "Detected invalid loader function. It must take up to 2 arguments" in str(result.stdout)
         else:
-            assert f"Loader function must be a callable, not {type(loader_func).__name__}" in str(result.stdout)
+            assert f"parametrizer_func: Must be a callable, not {type(loader_func).__name__!r}" in str(result.stdout)
 
 
 @pytest.mark.parametrize("collect_only", [True, False])
@@ -146,8 +148,13 @@ def test_filter_func_validation(
             if (loader == parametrize and not is_valid) or (loader == parametrize_dir and is_valid):
                 pytest.skip("Not applicable")
 
-    should_error_in_collection = (
-        loader == parametrize or (loader == parametrize_dir and num_args != 1) or not lazy_loading
+    should_error_in_collection = any(
+        [
+            not lazy_loading,
+            not callable(loader_func),
+            loader == parametrize,
+            (loader == parametrize_dir and num_args != 1),
+        ]
     )
     should_pass = is_valid or (collect_only and not should_error_in_collection)
 
@@ -167,11 +174,9 @@ def test_filter_func_validation(
             raise NotImplementedError("Test logic needs to be added")
         if callable(loader_func):
             max_allowed = 1 if loader == parametrize_dir else 2
-            assert f"Invalid loader function was provided. It supports up to {max_allowed} arguments" in str(
-                result.stdout
-            )
+            assert f"Detected invalid loader function. It must take up to {max_allowed} arguments" in str(result.stdout)
         else:
-            assert f"Loader function must be a callable, not {type(loader_func).__name__}" in str(result.stdout)
+            assert f"filter_func: Must be a callable, not {type(loader_func).__name__!r}" in str(result.stdout)
 
 
 @pytest.mark.parametrize("collect_only", [True, False])
@@ -199,7 +204,8 @@ def test_process_func_validation(
     NOTE: If lazy loading is enabled, the test collection will never fail because the loader function will
           not be called until after the data is actually loaded
     """
-    should_error_in_collection = not lazy_loading
+    loader_func = eval(f"{loader_func_def}")
+    should_error_in_collection = any([not lazy_loading, not callable(loader_func)])
     should_pass = is_valid or (collect_only and not should_error_in_collection)
     result = run_pytest_with_context(
         test_context, lazy_loading=lazy_loading, process_func_def=loader_func_def, collect_only=collect_only
@@ -215,11 +221,10 @@ def test_process_func_validation(
         else:
             assert result.ret == ExitCode.TESTS_FAILED
             result.assert_outcomes(errors=test_context.num_expected_tests)
-        loader_func = eval(f"{loader_func_def}")
         if callable(loader_func):
-            assert "Invalid loader function was provided. It supports up to 2 arguments" in str(result.stdout)
+            assert "Detected invalid loader function. It must take up to 2 arguments" in str(result.stdout)
         else:
-            assert f"Loader function must be a callable, not {type(loader_func).__name__}" in str(result.stdout)
+            assert f"process_func: Must be a callable, not {type(loader_func).__name__!r}" in str(result.stdout)
 
 
 @pytest.mark.parametrize("collect_only", [True, False])
