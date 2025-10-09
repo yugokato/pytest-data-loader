@@ -31,7 +31,7 @@ def test_loader_with_valid_data_path(
 
 
 @pytest.mark.parametrize("collect_only", [True, False])
-@pytest.mark.parametrize("invalid_path", [".", os.sep])
+@pytest.mark.parametrize("invalid_path", [".", "..", os.sep])
 def test_loader_with_invalid_data_path(test_context: TestContext, invalid_path: str, collect_only: bool) -> None:
     """Test that invalid relative paths are handled properly"""
     result = run_pytest_with_context(test_context, relative_data_path=invalid_path, collect_only=collect_only)
@@ -76,9 +76,12 @@ def test_parametrize_dir_loader_with_no_file(test_context: TestContext, loader: 
 
 def _check_result_with_invalid_path(result: RunResult, loader: DataLoader, invalid_path: Path | str) -> None:
     assert result.ret == ExitCode.INTERRUPTED
+    stdout = str(result.stdout)
     result.assert_outcomes(errors=1)
-    if str(invalid_path) in (".", os.sep):
-        assert f"relative_path cannot be '{invalid_path}'" in str(result.stdout)
+    if Path(invalid_path).is_absolute():
+        assert "It can not be an absolute path" in stdout
+    elif str(invalid_path) in (".", "..", os.sep):
+        assert f"Invalid relative_path value: '{invalid_path}'" in stdout
     else:
         file_or_dir = "directory" if loader == parametrize_dir else "file"
-        assert f"Unable to locate the specified {file_or_dir} '{invalid_path}'" in str(result.stdout)
+        assert f"Unable to locate the specified {file_or_dir} '{invalid_path}'" in stdout

@@ -192,7 +192,7 @@ class FileDataLoader(LoaderABC):
             parametrizer_func = self.load_attrs.parametrizer_func or FileDataLoader._parametrizer_func
             data = bind_and_call_loader_func(parametrizer_func, self.path, data)
             if not isinstance(data, Iterable) or isinstance(data, str | bytes):
-                raise ValueError(f"Parametrized data must be an iterable container, not {type(data).__name__}")
+                raise ValueError(f"Parametrized data must be an iterable container, not {type(data).__name__!r}")
 
             if self.load_attrs.filter_func:
                 data = (x for x in data if bind_and_call_loader_func(self.load_attrs.filter_func, self.path, x))
