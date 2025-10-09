@@ -133,14 +133,13 @@ class FileDataLoader(LoaderABC):
                     logger.exception(e)
             self._cached_loader_functions.clear()
 
-    @staticmethod
-    def _parametrizer_func(data: LoadedDataType) -> Iterable[LoadedDataType]:
+    def _parametrizer_func(self, data: LoadedDataType) -> Iterable[LoadedDataType]:
         """Default parametrizer function to apply to loaded data when parametrization is needed
 
         :param data: Loaded data
         """
         if isinstance(data, bytes):
-            raise ValueError("binary data requires a custom parametrizer function")
+            raise ValueError(f"@{self.loader.__name__} loader requires a custom parametrizer function for binary data")
 
         if isinstance(data, str):
             stream = StringIO(data)
@@ -152,8 +151,9 @@ class FileDataLoader(LoaderABC):
         else:
             return iter([data])
 
-    @staticmethod
-    def _onload_func(file_path: Path, data: LoadedDataType, /, *, strip_trailing_whitespace: bool) -> LoadedDataType:
+    def _onload_func(
+        self, file_path: Path, data: LoadedDataType, /, *, strip_trailing_whitespace: bool
+    ) -> LoadedDataType:
         """Plugin-managed onload function that will allways be applied to the original data that has been loaded.
 
         :param file_path: Path to the loaded file
@@ -166,8 +166,8 @@ class FileDataLoader(LoaderABC):
         if file_path.suffix == ".json":
             try:
                 data = json.loads(data)  # type: ignore
-            except json.decoder.JSONDecodeError:
-                raise ValueError(f"Unable to parse JSON file: {file_path}")
+            except json.decoder.JSONDecodeError as e:
+                raise ValueError(f"Unable to parse JSON file: {file_path}") from e
 
         # TODO: Add more if needed
 
@@ -180,16 +180,14 @@ class FileDataLoader(LoaderABC):
               all part data
         """
         raw_data = self._read_file()
-        data = FileDataLoader._onload_func(
-            self.path, raw_data, strip_trailing_whitespace=self.strip_trailing_whitespace
-        )
+        data = self._onload_func(self.path, raw_data, strip_trailing_whitespace=self.strip_trailing_whitespace)
 
         # Adjust the shape of data based on loader functions
         if self.load_attrs.onload_func:
             data = bind_and_call_loader_func(self.load_attrs.onload_func, self.path, data)
 
         if self.should_split_data:
-            parametrizer_func = self.load_attrs.parametrizer_func or FileDataLoader._parametrizer_func
+            parametrizer_func = self.load_attrs.parametrizer_func or self._parametrizer_func
             data = bind_and_call_loader_func(parametrizer_func, self.path, data)
             if not isinstance(data, Iterable) or isinstance(data, str | bytes):
                 raise ValueError(f"Parametrized data must be an iterable container, not {type(data).__name__!r}")

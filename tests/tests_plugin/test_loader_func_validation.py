@@ -239,4 +239,4 @@ def test_parametrize_binary_file_with_no_custom_parametrizer_func(
     result = run_pytest_with_context(test_context, relative_data_path=relative_file_path, collect_only=collect_only)
     assert result.ret == ExitCode.INTERRUPTED
     result.assert_outcomes(errors=1)
-    assert "binary data requires a custom parametrizer function" in str(result.stdout)
+    assert f"@{loader.__name__} loader requires a custom parametrizer function for binary data" in str(result.stdout)
