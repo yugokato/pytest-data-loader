@@ -1,0 +1,12 @@
+{
+  "dev": {
+    "key0": "dev_value0",
+    "key1": "dev_value1",
+    "key2": "dev_value2"
+  },
+  "prod": {
+    "key0": "prod_value0",
+    "key1": "prod_value1",
+    "key2": "prod_value2"
+  }
+}
