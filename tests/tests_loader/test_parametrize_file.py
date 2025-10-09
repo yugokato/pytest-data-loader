@@ -66,7 +66,7 @@ def test_parametrize_text_file_with_process_func(request: FixtureRequest, data: 
 @parametrize(
     "data",
     PATH_TEXT_FILE,
-    id_func=lambda d: "#" + d,
+    id_func=lambda d: repr("#" + d),
     # id_func is not supported when lazy_loading=True
     lazy_loading=False,
 )
@@ -137,7 +137,7 @@ def test_parametrize_json_with_process_func(request: FixtureRequest, data: str) 
 @parametrize(
     "data",
     PATH_JSON_FILE_OBJECT,
-    id_func=lambda d: d[0],
+    id_func=lambda d: repr(d[0]),
     # id_func is not supported when lazy_loading=True
     lazy_loading=False,
 )
@@ -169,7 +169,7 @@ def test_parametrize_binary_file_with_parametrizer_func(request: FixtureRequest,
     "data",
     PATH_JPEG_FILE,
     parametrizer_func=lambda d: [d],  # single param
-    id_func=lambda d: d[:5],
+    id_func=lambda d: repr(d[:5]),
     # id_func is not supported when lazy_loading=True
     lazy_loading=False,
 )

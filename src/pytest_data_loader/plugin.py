@@ -17,7 +17,12 @@ from pytest_data_loader.types import (
     LoadedData,
     LoadedDataType,
 )
-from pytest_data_loader.utils import bind_and_call_loader_func, parse_ini_option, resolve_relative_path
+from pytest_data_loader.utils import (
+    bind_and_call_loader_func,
+    generate_default_ids,
+    parse_ini_option,
+    resolve_relative_path,
+)
 
 
 def pytest_addoption(parser: Parser) -> None:
@@ -89,11 +94,9 @@ def pytest_generate_tests(metafunc: Metafunc) -> None:
                     values = (x.data for x in loaded_data)
 
                 if load_attrs.id_func:
-                    ids = (
-                        repr(bind_and_call_loader_func(load_attrs.id_func, x.file_path, x.data)) for x in loaded_data
-                    )
+                    ids = (bind_and_call_loader_func(load_attrs.id_func, x.file_path, x.data) for x in loaded_data)
                 else:
-                    ids = (repr(x) for x in loaded_data)
+                    ids = generate_default_ids(loaded_data, load_attrs)
             else:
                 ids = None
                 values = []

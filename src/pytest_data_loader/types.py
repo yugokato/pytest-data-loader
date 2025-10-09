@@ -38,11 +38,6 @@ class DataLoaderPathType(StrEnum):
 class LoadedDataABC(ABC):
     file_path: Path
 
-    @abstractmethod
-    def __repr__(self) -> str:
-        """Used for generating default ID"""
-        raise NotImplementedError
-
     @property
     def file_name(self) -> str:
         return self.file_path.name
@@ -52,14 +47,16 @@ class LoadedDataABC(ABC):
 class LoadedData(LoadedDataABC):
     data: LoadedDataType
 
-    def __repr__(self) -> str:
-        return repr(self.data)
-
 
 @dataclass(frozen=True, kw_only=True, slots=True)
 class LazyLoadedDataABC(LoadedDataABC):
     file_loader: Callable[[], LoadedData | Iterable[LoadedData]]
     post_load_hook: Callable[[], None] | None = None
+
+    @abstractmethod
+    def __repr__(self) -> str:
+        """Used for generating default ID"""
+        raise NotImplementedError
 
     @property
     def data(self: T) -> T:

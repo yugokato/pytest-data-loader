@@ -42,6 +42,7 @@ def test_file_loader(loader: DataLoader, lazy_loading: bool, relative_path: str)
                 assert repr(lazy_loaded_part) == f"{filename}:part{lazy_loaded_part.idx}"
         else:
             assert isinstance(loaded_data, LazyLoadedData)
+            assert loaded_data.file_path == abs_file_path
             assert repr(loaded_data) == f"{filename}"
     else:
         if loader == parametrize:
@@ -49,10 +50,9 @@ def test_file_loader(loader: DataLoader, lazy_loading: bool, relative_path: str)
             for loaded_part in loaded_data:
                 assert isinstance(loaded_part, LoadedData)
                 assert loaded_part.file_path == abs_file_path
-                assert repr(loaded_part) == repr(loaded_part.data)
         else:
             assert isinstance(loaded_data, LoadedData)
-            assert repr(loaded_data) == repr(loaded_data.data)
+            assert loaded_data.file_path == abs_file_path
 
 
 @pytest.mark.parametrize("relative_path", [PATH_TEXT_FILE, PATH_JSON_FILE_OBJECT])

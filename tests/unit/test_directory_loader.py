@@ -34,4 +34,3 @@ def test_directory_loader(lazy_loading: bool, relative_path: str) -> None:
                 assert repr(loaded_data) == loaded_data.file_name
             else:
                 assert isinstance(loaded_data, LoadedData)
-                assert repr(loaded_data) == repr(loaded_data.data)

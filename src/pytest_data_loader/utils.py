@@ -1,7 +1,7 @@
 import inspect
 import keyword
 import os
-from collections.abc import Callable
+from collections.abc import Callable, Generator, Iterable
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
@@ -11,8 +11,10 @@ from pytest import Config
 
 from pytest_data_loader.types import (
     DataLoaderIniOption,
+    DataLoaderLoadAttrs,
     LazyLoadedData,
     LazyLoadedPartData,
+    LoadedData,
     LoadedDataType,
     UnsupportedFuncArg,
 )
@@ -40,6 +42,19 @@ def is_valid_fixture_name(name: str) -> bool:
     :param name: The name to check
     """
     return name.isidentifier() and not keyword.iskeyword(name)
+
+
+def generate_default_ids(
+    loaded_data: Iterable[LoadedData | LazyLoadedData | LazyLoadedPartData], load_attrs: DataLoaderLoadAttrs
+) -> Generator[str]:
+    """Generate default param IDs for the loaded data"""
+    if load_attrs.lazy_loading:
+        return (repr(x) for x in loaded_data)
+    else:
+        if load_attrs.loader.requires_file_path and load_attrs.loader.requires_parametrization:
+            return (repr(x.data) for x in loaded_data)
+        else:
+            return (x.file_name for x in loaded_data)
 
 
 def get_num_func_args(f: Callable[..., Any]) -> int:
