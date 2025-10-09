@@ -25,10 +25,13 @@ pip install pytest-data-loader
 ```python
 from pytest_data_loader import load
 
-# Loads and injects data from data/example.json as the "data" fixture
-# example.json: {"foo": 1, "bar": 2}
-@load("data", "example.json")
+
+@load("data", "example.json")   
 def test_example(data):
+    """
+    Loads and injects data from data/example.json as the "data" fixture.
+    example.json: {"foo": 1, "bar": 2}
+    """
     assert "foo" in data
 ```
 
@@ -81,17 +84,19 @@ from pytest_data_loader import load
 @load("data", "data1.json")
 def test_something1(data):
     """
-    This test loads the content of data/data1.json. The parsed JSON data is accessible through the specified 
-    fixture argument, `data` in this example.
+    Loads the content of data/data1.json. The parsed JSON data is accessible 
+    through the specified fixture name "data".
     """
     ...
+
 
 @load(("file_path", "data"), "data2.txt")
 def test_something2(file_path, data):
     """
-    This test loads the content of data/data2.txt. The file path and file content are accessible through the 
-    specified fixture arguments, `file_path` and `data` in this example.
+    Loads the content of data/data2.txt. The file path and file content are 
+    accessible through the specified fixture names "file_path" and "data".
     """
+    ...
 ```
 
 > [!NOTE]
@@ -113,30 +118,32 @@ from pytest_data_loader import parametrize
 @parametrize("data", "data1.json")
 def test_something1(data):
     """
-    This test will be dynamically parametrized with each key–value pair in a JSON object or each item in a JSON array, 
-    depending on the data stored in data1.json.
-    The parametrized data is accessible through the specified fixture argument, `data` in this example.
+    Dynamically parametrizes the test with each key–value pair in a JSON object 
+    or each item in a JSON array, depending on the data stored in data/data1.json.
+    Each item is accessible through the specified fixture name "data".
     """
     ...
+
 
 @parametrize(("file_path", "data"), "data2.txt")
 def test_something2(file_path, data):
     """
-    This test will be dynamically parametrized with each text line from data2.txt. 
-    The file path and each parametrized text line are accessible through the specified fixture arguments, 
-    `file_path` and `data` in this example.
+    Dynamically parametrizes the test with each text line from data/data2.txt. 
+    The file path and each text line are accessible through the specified 
+    fixture names "file_path" and "data".
     """
     ...
 ```
 > [!TIP]
+> - You can apply your own logic by specifying the `parametrizer_func` loader option
+> - You can apply your own logic by specifying the `parametrizer_func` loader option
 > - By default, the plugin will apply the following logic for splitting file content: 
->   - Text file: Each line in a file
+>   - Text file: Each line in the file
 >   - JSON file:
 >     - object: Each key–value pair in the object
 >     - array: Each item in the array
->     - other types (string, number, boolean, null): The whole content as a single chunk
+>     - other types (string, number, boolean, null): The whole content as a single data
 >   - Binary file: Unsupported. Requires specifying a custom split logic as the `parametrizer_func` loader option 
-> - You can apply your own logic by specifying the `parametrizer_func` loader option
 
 
 ### 3. Parametrize files in a directory (`@parametrize_dir`)
@@ -152,7 +159,8 @@ from pytest_data_loader import parametrize_dir
 @parametrize_dir("data", "images")
 def test_something(data):
     """
-    This test will be dynamically parametrized with each image file in the `images` directory.
+    Dynamically parametrizes the test with each file in the data/images directory.
+    Each file content is accessible through the specified fixture name "data".
     """
     ...
 ```
@@ -185,7 +193,7 @@ Each loader supports different optional parameters you can use to change how you
 - `lazy_loading`: Enable or disable lazy loading
 - `force_binary`: Force the file to be read in binary mode
 - `onload_func`: A function to transform or preprocess loaded data before passing it to the test function
-- `id`: An ID for the loaded data. The file name is used if not specified
+- `id`: The ID for the loaded data. The file name is used if not specified
 
 ### @parametrize
 - `lazy_loading`: Enable or disable lazy loading
