@@ -60,7 +60,7 @@ def load(
         lazy_loading=lazy_loading,
         force_binary=force_binary,
         onload_func=onload_func,
-        id_func=(lambda _: id) if id else None,
+        id_func=(lambda _: repr(id)) if id else None,
     )
 
 
