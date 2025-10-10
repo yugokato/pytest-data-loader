@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 from abc import ABC, abstractmethod
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
@@ -9,6 +8,7 @@ from pathlib import Path
 from typing import Any, Protocol, TypeAlias, TypeVar, runtime_checkable
 
 from pytest_data_loader.compat import StrEnum
+from pytest_data_loader.constants import ROOT_DIR
 
 T = TypeVar("T")
 TestFunc = TypeVar("TestFunc", bound=Callable[..., Any])
@@ -18,6 +18,7 @@ LoadedDataType: TypeAlias = JsonType | bytes | tuple[str, JsonType] | Iterable["
 
 class DataLoaderIniOption(StrEnum):
     DATA_LOADER_DIR_NAME = auto()
+    DATA_LOADER_ROOT_DIR = auto()
     DATA_LOADER_STRIP_TRAILING_WHITESPACE = auto()
 
 
@@ -160,11 +161,10 @@ class DataLoaderLoadAttrs:
 
         self._modify_value("relative_path", Path(orig_value))
         err = "Invalid relative_path value"
+        if self.relative_path in (Path("."), Path(".."), ROOT_DIR):
+            raise ValueError(f"{err}: {orig_value!r}")
         if self.relative_path.is_absolute():
-            raise ValueError(f"{err}: It can not be an absolute path")
-
-        if self.relative_path in (Path("."), Path(".."), Path(os.sep)):
-            raise ValueError(f"{err}: '{orig_value}'")
+            raise ValueError(f"{err}: It can not be an absolute path: {orig_value!r}")
 
     def _validate_loader_func(self) -> None:
         for f, name in [

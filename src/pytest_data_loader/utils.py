@@ -1,6 +1,7 @@
 import inspect
 import keyword
 import os
+import re
 from collections.abc import Callable, Generator, Iterable
 from functools import lru_cache
 from pathlib import Path
@@ -20,7 +21,8 @@ from pytest_data_loader.types import (
 )
 
 
-def parse_ini_option(config: Config, option: DataLoaderIniOption) -> str | bool:
+@lru_cache
+def parse_ini_option(config: Config, option: DataLoaderIniOption) -> str | bool | Path:
     """Parse pytest INI option and perform additional validation if needed
 
     :param config: Pytest config
@@ -29,8 +31,35 @@ def parse_ini_option(config: Config, option: DataLoaderIniOption) -> str | bool:
     try:
         v = config.getini(option)
         if option == DataLoaderIniOption.DATA_LOADER_DIR_NAME:
-            if v.strip() in ("", ".", "..") or os.sep in v:
+            if v in ("", ".", "..") or os.sep in v:
                 raise ValueError(rf"Invalid value: '{v}'")
+        elif option == DataLoaderIniOption.DATA_LOADER_ROOT_DIR:
+            orig_value = v
+            pytest_rootdir = config.rootpath
+            if v == "":
+                return pytest_rootdir
+            if has_env_vars(v):
+                v = os.path.expandvars(v)
+                if has_env_vars(v):
+                    raise ValueError(f"Unable to resolve environment variable(s) in the path: {v!r}")
+            v = Path(os.path.expanduser(v))
+            if not v.is_absolute():
+                v = v.resolve()
+
+            err = None
+            if not v.exists():
+                err = "The specified path does not exist"
+            elif v.is_file():
+                err = "The path must be a directory"
+            elif not pytest_rootdir.is_relative_to(v):
+                err = "The path must be one of the parent directories of pytest rootdir"
+            elif v.is_relative_to(pytest_rootdir):
+                err = "The path must be outside the pytest rootdir"
+            if err:
+                err += f": {orig_value!r}"
+                if orig_value != str(v):
+                    err += f" (resolved value: {str(v)!r})"
+                raise ValueError(err)
         return v
     except ValueError as e:
         raise pytest.UsageError(f"INI option {option}: {e}")
@@ -42,6 +71,15 @@ def is_valid_fixture_name(name: str) -> bool:
     :param name: The name to check
     """
     return name.isidentifier() and not keyword.iskeyword(name)
+
+
+def has_env_vars(path: str) -> bool:
+    """Check if the path contains environment variables ($VAR, ${VAR}, or %VAR%)
+
+    :param path: The path to check
+    """
+    pattern = r"(\$[A-Za-z_]\w*|\${[A-Za-z_]\w*}|%[A-Za-z_]\w*%)"
+    return bool(re.search(pattern, path))
 
 
 def generate_default_ids(
@@ -96,7 +134,7 @@ def bind_and_call_loader_func(
 @lru_cache
 def resolve_relative_path(
     data_loader_dir_name: str,
-    root_dir: Path,
+    data_loader_root_dir: Path,
     relative_path_to_search: Path,
     search_from: Path,
     /,
@@ -107,14 +145,17 @@ def resolve_relative_path(
     the current location
 
     :param data_loader_dir_name: The data loader directory name
-    :param root_dir: A root directory the path lookup should stop at
+    :param data_loader_root_dir: A root directory the path lookup should stop at
     :param relative_path_to_search: A file or directory path relative from a data loader directory
     :param search_from: A file or directory path to start searching from
     :param is_file: Whether the relative path is file or directory
     """
-    assert root_dir.exists()
+    assert data_loader_root_dir.is_absolute()
+    assert data_loader_root_dir.exists()
     assert search_from.exists()
-    assert search_from.is_absolute() and search_from.is_relative_to(root_dir)
+    assert search_from.is_absolute()
+    if not search_from.is_relative_to(data_loader_root_dir):
+        raise ValueError(f"The test file location {search_from} is not in the subpath of {data_loader_root_dir}")
 
     loader_dirs = []
     if search_from.is_file():
@@ -129,7 +170,7 @@ def resolve_relative_path(
                 if (file_or_dir_path.is_file() and is_file) or (file_or_dir_path.is_dir() and not is_file):
                     return file_or_dir_path.resolve()
 
-        if dir_to_search == root_dir:
+        if dir_to_search == data_loader_root_dir:
             break
 
     if loader_dirs:
