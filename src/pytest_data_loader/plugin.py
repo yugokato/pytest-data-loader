@@ -30,19 +30,29 @@ def pytest_addoption(parser: Parser) -> None:
         DataLoaderIniOption.DATA_LOADER_DIR_NAME,
         type="string",
         default=DEFAULT_LOADER_DIR_NAME,
-        help="[pytest-data-loader] Override the plugin default value for data loader directory name.",
+        help="[pytest-data-loader] Overrides the plugin default value for data loader directory name.",
+    )
+    parser.addini(
+        DataLoaderIniOption.DATA_LOADER_ROOT_DIR,
+        type="string",
+        help="[pytest-data-loader] Specifies the absolute or relative path to the project's actual root directory. "
+        "This directory defines the upper boundary when searching for data loader directories. By default, the search "
+        "is limited to within pytest's rootdir, which may differ from the project's top-level directory. Setting this "
+        "option allows data loader directories located outside pytest's rootdir to be found. "
+        "Environment variables are supported using the ${VAR} or $VAR (or %VAR% for windows) syntax.",
     )
     parser.addini(
         DataLoaderIniOption.DATA_LOADER_STRIP_TRAILING_WHITESPACE,
         type="bool",
         default=True,
-        help="[pytest-data-loader] Remove trailing whitespace characters when loading text data.",
+        help="[pytest-data-loader] Removes trailing whitespace characters when loading text data.",
     )
 
 
 def pytest_configure(config: Config) -> None:
     """Parse INI options for the plugin and fail early with a nice USAGE_ERROR error if validation fails"""
     parse_ini_option(config, DataLoaderIniOption.DATA_LOADER_DIR_NAME)
+    parse_ini_option(config, DataLoaderIniOption.DATA_LOADER_ROOT_DIR)
     parse_ini_option(config, DataLoaderIniOption.DATA_LOADER_STRIP_TRAILING_WHITESPACE)
 
 
@@ -54,13 +64,13 @@ def pytest_generate_tests(metafunc: Metafunc) -> None:
         try:
             cfg = metafunc.config
             data_loader_dir_name = parse_ini_option(cfg, DataLoaderIniOption.DATA_LOADER_DIR_NAME)
+            data_loader_root_dir = parse_ini_option(cfg, DataLoaderIniOption.DATA_LOADER_ROOT_DIR)
             strip_trailing_whitespace = parse_ini_option(cfg, DataLoaderIniOption.DATA_LOADER_STRIP_TRAILING_WHITESPACE)
             assert isinstance(strip_trailing_whitespace, bool)
-            pytest_root_dir = cfg.rootpath
             search_from = Path(inspect.getabsfile(test_func))
             test_data_path = resolve_relative_path(
                 data_loader_dir_name,
-                pytest_root_dir,
+                data_loader_root_dir,
                 load_attrs.relative_path,
                 search_from,
                 is_file=load_attrs.loader.requires_file_path,

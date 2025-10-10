@@ -1,15 +1,19 @@
 import json
+import os
+import re
 import sys
+from collections.abc import Generator
 from pathlib import Path
 
 import pytest
 from _pytest.fixtures import SubRequest
-from pytest import Pytester
+from pytest import MonkeyPatch, Pytester
 
 from pytest_data_loader import load, parametrize, parametrize_dir
 from pytest_data_loader.constants import DEFAULT_LOADER_DIR_NAME
 from pytest_data_loader.types import DataLoader
-from tests.tests_plugin.helper import TestContext, create_test_file_in_loader_dir
+from pytest_data_loader.utils import has_env_vars
+from tests.tests_plugin.helper import LoaderRootDir, TestContext, create_test_file_in_loader_dir
 
 pytest_plugins = "pytester"
 
@@ -34,6 +38,54 @@ def loader_dir_name(request: SubRequest) -> str:
     if getattr(request, "param", None):
         return request.param
     return DEFAULT_LOADER_DIR_NAME
+
+
+@pytest.fixture
+def loader_root_dir(request: SubRequest, pytester: Pytester, monkeypatch: MonkeyPatch) -> Generator[LoaderRootDir]:
+    """Loader root directory path. Supports indirect parametrization to override the default value"""
+    orig_path = pytester.path
+    loader_root = LoaderRootDir()
+    if requested := getattr(request, "param", None):
+        loader_root.requested_path = requested
+        root_dir = request.param
+        if has_env_vars(root_dir):
+            # We use the original pytester dir as the expected env var value.
+            # Then we manipulate the pytester dir so that the original dir gets placed outside the pytester dir
+            if sys.platform == "win32":
+                pattern_env_var = r"%(?P<var_name>[^}]+)%"
+            else:
+                pattern_env_var = r"\${?(?P<var_name>[^}]+)}?"
+            matched = re.match(rf"{pattern_env_var}.*", root_dir)
+            assert matched
+            env_var = matched.group("var_name")
+
+            # Set the root dir to the env var so that pytest can resolve it from the INI file
+            monkeypatch.setenv(env_var, str(orig_path))
+
+            # replace the env var with the original pytester dir
+            root_dir = Path(re.sub(pattern_env_var, lambda m: str(orig_path), root_dir))
+            assert root_dir.is_relative_to(orig_path)
+
+            # Create the directory and change the pytester dir to it
+            root_dir.mkdir(parents=True, exist_ok=True)
+            pytester._path = root_dir
+            pytester.chdir()
+
+        # Create a new pytester dir under the current dir and change dir to it
+        # At this point the new pytester dir will look like this:
+        # <resolved loader root dir>/NEW_PYTESTER_DIR
+        new_pytester_dir = "NEW_PYTESTER_DIR"
+        pytester.mkdir(new_pytester_dir)
+        pytester._path = pytester.path / new_pytester_dir
+        pytester.chdir()
+
+        # Resolve the loader root dir from the current pytester dir
+        loader_root.resolved_path = Path(os.path.expandvars(root_dir)).resolve()
+
+    yield loader_root
+    if pytester.path != orig_path:
+        pytester._path = orig_path
+        pytester.chdir()
 
 
 @pytest.fixture
@@ -84,12 +136,17 @@ def test_context(
     file_extension: str,
     file_content: str | bytes,
     strip_trailing_whitespace: bool,
+    loader_root_dir: LoaderRootDir,
 ) -> TestContext:
     """Test context fixture that sets up minimum data for various conditions passed via the dependent fixtures"""
     test_data_dir = pytester.mkdir(loader_dir_name)
     if loader.requires_file_path:
         relative_path = create_test_file_in_loader_dir(
-            pytester, loader_dir_name, f"file{file_extension}", data=file_content
+            pytester,
+            loader_dir_name,
+            f"file{file_extension}",
+            loader_root_dir=loader_root_dir.resolved_path,
+            data=file_content,
         )
         if loader.requires_parametrization:
             if file_extension == ".json":
@@ -110,7 +167,11 @@ def test_context(
         num_expected_tests = 2
         [
             create_test_file_in_loader_dir(
-                pytester, loader_dir_name, relative_path / f"file{i}{file_extension}", data=file_content
+                pytester,
+                loader_dir_name,
+                relative_path / f"file{i}{file_extension}",
+                loader_root_dir=loader_root_dir.resolved_path,
+                data=file_content,
             )
             for i in range(num_expected_tests)
         ]

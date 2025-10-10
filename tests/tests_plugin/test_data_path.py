@@ -5,6 +5,7 @@ import pytest
 from pytest import ExitCode, RunResult
 
 from pytest_data_loader import parametrize_dir
+from pytest_data_loader.constants import ROOT_DIR
 from pytest_data_loader.types import DataLoader
 from tests.tests_plugin.helper import TestContext, create_test_file_in_loader_dir, run_pytest_with_context
 
@@ -31,7 +32,7 @@ def test_loader_with_valid_data_path(
 
 
 @pytest.mark.parametrize("collect_only", [True, False])
-@pytest.mark.parametrize("invalid_path", [".", "..", os.sep])
+@pytest.mark.parametrize("invalid_path", [".", "..", ROOT_DIR])
 def test_loader_with_invalid_data_path(test_context: TestContext, invalid_path: str, collect_only: bool) -> None:
     """Test that invalid relative paths are handled properly"""
     result = run_pytest_with_context(test_context, relative_data_path=invalid_path, collect_only=collect_only)

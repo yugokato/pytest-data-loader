@@ -141,7 +141,7 @@ def test_something2(file_path, data):
 >   - JSON file:
 >     - object: Each key–value pair in the object
 >     - array: Each item in the array
->     - other types (string, number, boolean, null): The whole content as a single data
+>     - other types (string, number, boolean, null): The whole content as single data
 >   - Binary file: Unsupported. Requires specifying a custom split logic as the `parametrizer_func` loader option 
 
 
@@ -217,6 +217,13 @@ parameters
 A base directory name to load test data from. The file or directory path specified to a loader is considered a 
 relative path to one of these base directories in the directory tree.  
 Plugin default: `data`
+
+### `data_loader_root_dir`
+Specifies the absolute or relative path to the project's actual root directory. By default, the search is limited to 
+within pytest's rootdir, which may differ from the project's top-level directory. Setting this option allows data 
+loader directories located outside pytest's rootdir to be found. 
+Environment variables are supported using the `${VAR}` or `$VAR` (or `%VAR%` for windows) syntax.  
+Plugin default: Pytest rootdir (`config.rootpath`)
 
 ### `data_loader_strip_trailing_whitespace`
 Automatically remove trailing whitespace characters when loading text data.  

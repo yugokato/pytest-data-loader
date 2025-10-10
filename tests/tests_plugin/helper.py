@@ -23,6 +23,12 @@ class TestContext:
     num_expected_tests: int
 
 
+@dataclass
+class LoaderRootDir:
+    requested_path: str | None = None
+    resolved_path: Path | None = None
+
+
 def is_valid_fixture_names(args: str | tuple[str, ...]) -> bool:
     if isinstance(args, str):
         args = tuple(x.strip() for x in args.split(","))
@@ -35,6 +41,7 @@ def create_test_file_in_loader_dir(
     pytester: Pytester,
     loader_dir: Path | str,
     relative_file_or_dir_path: Path | str,
+    loader_root_dir: Path | None = None,
     is_dir: bool = False,
     file_name: str | None = None,
     data: str | bytes = "content",
@@ -46,7 +53,13 @@ def create_test_file_in_loader_dir(
         relative_file_path = Path(relative_file_or_dir_path) / file_name
     else:
         relative_file_path = relative_file_or_dir_path
-    file_path = Path(loader_dir, relative_file_path)
+
+    if loader_root_dir:
+        loader_dir = loader_root_dir / loader_dir
+    else:
+        loader_dir = Path(loader_dir)
+
+    file_path = loader_dir / relative_file_path
     name, ext = os.path.splitext(file_path)
     if ext == ".png":
         if not file_path.parent.exists():
@@ -60,6 +73,7 @@ def create_test_file_in_loader_dir(
 def run_pytest_with_context(
     test_context: TestContext,
     fixture_names: str | tuple[str, ...] = ("arg1", "arg2"),
+    data_loader_root_dir: Path | None = None,
     relative_data_path: Path | str | None = None,
     lazy_loading: bool | None = True,
     onload_func_def: str | None = None,
@@ -136,18 +150,33 @@ def run_pytest_with_context(
     @{loader.__name__}({fixture_names!r}, {rel_path_str}{loader_options_str})
     def test(request, {fixture_names_str}):
         '''Checks the most basic functionality of pytest-data-loader plugin'''
+        data_loader_root_dir = {repr(str(data_loader_root_dir)) if data_loader_root_dir else None}
+
+        print()
+        print(f"- data_loader_root_dir rootdir: {{data_loader_root_dir}}")
+        print(f"- pytest rootdir: {{request.config.rootpath}}")
+        print(f"- __file__: {{__file__}}")
+
         len_fixtures = len({fixtures})
         assert len_fixtures in (1, 2)
+
+        if data_loader_root_dir:
+            # Make sure the specified root dir is located outside of pytest rootdir
+            assert request.config.rootpath.is_relative_to(data_loader_root_dir)
+
         if len({fixtures!r}) == 1:
             data = {fixtures[0]}
+            print(f"- data: {{repr(data)}}")
             assert isinstance(data, {data_type})
-            print(data)
         else:
             file_path, data = {fixture_names_str}
-            print(file_path)
-            print(data)
+            print(f"- file_path: {{repr(file_path)}}")
+            print(f"- data: {{repr(data)}}")
             assert isinstance(file_path, Path)
             assert isinstance(data, {data_type})
+            if data_loader_root_dir:
+                assert file_path.is_relative_to(data_loader_root_dir)
+                assert not file_path.is_relative_to(request.config.rootpath)
     """
 
     if check_test_id:
@@ -172,5 +201,5 @@ def run_pytest_with_context(
     if collect_only:
         cmd_options = ["--collect-only", "-q"]
     else:
-        cmd_options = ["-v"]
+        cmd_options = ["-vs"]
     return pytester.runpytest(*cmd_options)
