@@ -111,7 +111,7 @@ def parametrize(
                         parameters.
     :param process_func: A function to adjust the shape of each split data before passing it to the test function.
     :param id_func: A function to generate a parameter ID for each test parameter, supported only when lazy_loading is
-                    False. Defaults to "<file_name>:part<idx>" when lazy loading, otherwise the part data itself is
+                    False. Defaults to "<file_name>:part<number>" when lazy loading, otherwise the part data itself is
                     used.
 
     NOTE:

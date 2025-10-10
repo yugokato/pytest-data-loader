@@ -39,7 +39,7 @@ def test_file_loader(loader: DataLoader, lazy_loading: bool, relative_path: str)
                 assert lazy_loaded_part.file_path == abs_file_path
                 assert lazy_loaded_part.idx >= 0
                 assert lazy_loaded_part.offset >= 0
-                assert repr(lazy_loaded_part) == f"{filename}:part{lazy_loaded_part.idx}"
+                assert repr(lazy_loaded_part) == f"{filename}:part{lazy_loaded_part.idx + 1}"
         else:
             assert isinstance(loaded_data, LazyLoadedData)
             assert loaded_data.file_path == abs_file_path
