@@ -136,7 +136,6 @@ def test_something2(file_path, data):
 ```
 > [!TIP]
 > - You can apply your own logic by specifying the `parametrizer_func` loader option
-> - You can apply your own logic by specifying the `parametrizer_func` loader option
 > - By default, the plugin will apply the following logic for splitting file content: 
 >   - Text file: Each line in the file
 >   - JSON file:
