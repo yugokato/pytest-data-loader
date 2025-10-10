@@ -35,6 +35,7 @@ def pytest_addoption(parser: Parser) -> None:
     parser.addini(
         DataLoaderIniOption.DATA_LOADER_ROOT_DIR,
         type="string",
+        default="",
         help="[pytest-data-loader] Specifies the absolute or relative path to the project's actual root directory. "
         "This directory defines the upper boundary when searching for data loader directories. By default, the search "
         "is limited to within pytest's rootdir, which may differ from the project's top-level directory. Setting this "

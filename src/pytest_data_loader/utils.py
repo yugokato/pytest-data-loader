@@ -31,9 +31,11 @@ def parse_ini_option(config: Config, option: DataLoaderIniOption) -> str | bool 
     try:
         v = config.getini(option)
         if option == DataLoaderIniOption.DATA_LOADER_DIR_NAME:
+            assert isinstance(v, str)
             if v in ("", ".", "..") or os.sep in v:
                 raise ValueError(rf"Invalid value: '{v}'")
         elif option == DataLoaderIniOption.DATA_LOADER_ROOT_DIR:
+            assert isinstance(v, str)
             orig_value = v
             pytest_rootdir = config.rootpath
             if v == "":
