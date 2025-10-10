@@ -26,16 +26,15 @@ pip install pytest-data-loader
 from pytest_data_loader import load
 
 
-@load("data", "example.json")   
+@load("data", "example.json")
 def test_example(data):
     """
     Loads and injects data from data/example.json as the "data" fixture.
+    
     example.json: {"foo": 1, "bar": 2}
     """
     assert "foo" in data
 ```
-
-
 
 ## Usage
 
@@ -78,25 +77,38 @@ The plugin searches for a `data` directory relative to the test file to locate d
 `@load` is a file loader that loads the file content and passes it to the test function.
 
 ```python
+# test_something.py
+
 from pytest_data_loader import load
 
 
 @load("data", "data1.json")
 def test_something1(data):
     """
-    Loads the content of data/data1.json. The parsed JSON data is accessible 
-    through the specified fixture name "data".
+    data1.json: {"foo": 1, "bar": 2}
     """
-    ...
+    assert data == {"foo": 1, "bar": 2}
 
 
 @load(("file_path", "data"), "data2.txt")
 def test_something2(file_path, data):
     """
-    Loads the content of data/data2.txt. The file path and file content are 
-    accessible through the specified fixture names "file_path" and "data".
+    data2.txt: line0\nline1\nline2
     """
-    ...
+    assert file_path.name == "data2.txt"
+    assert data == "line0\nline1\nline2"
+```
+
+```shell
+$ pytest test_something.py -v
+================================ test session starts =================================
+<snip>
+collected 2 items                                                                              
+
+tests/test_something.py::test_something1[data1.json] PASSED                     [ 50%]
+tests/test_something.py::test_something2[data2.txt] PASSED                      [100%]
+
+================================= 2 passed in 0.01s ==================================
 ```
 
 > [!NOTE]
@@ -112,28 +124,44 @@ def test_something2(file_path, data):
 content into logical parts. The test function will then receive the part data as loaded data for the current test.
 
 ```python
+# test_something.py
+
 from pytest_data_loader import parametrize
 
 
 @parametrize("data", "data1.json")
 def test_something1(data):
     """
-    Dynamically parametrizes the test with each key–value pair in a JSON object 
-    or each item in a JSON array, depending on the data stored in data/data1.json.
-    Each item is accessible through the specified fixture name "data".
+    data1.json: {"foo": 1, "bar": 2}
     """
-    ...
+    assert data in [("foo", 1), ("bar", 2)]
 
 
 @parametrize(("file_path", "data"), "data2.txt")
 def test_something2(file_path, data):
     """
-    Dynamically parametrizes the test with each text line from data/data2.txt. 
-    The file path and each text line are accessible through the specified 
-    fixture names "file_path" and "data".
+    data2.txt: line0\nline1\nline2
     """
-    ...
+    assert file_path.name == "data2.txt"
+    assert data in ["line0", "line1", "line2"]
 ```
+
+```shell
+$ pytest test_something.py -v
+================================ test session starts =================================
+<snip>
+collected 6 items                                                                              
+
+tests/test_something.py::test_something1[data1.json:part1] PASSED               [ 16%]
+tests/test_something.py::test_something1[data1.json:part2] PASSED               [ 33%]
+tests/test_something.py::test_something1[data1.json:part3] PASSED               [ 50%]
+tests/test_something.py::test_something2[data2.txt:part1] PASSED                [ 66%]
+tests/test_something.py::test_something2[data2.txt:part2] PASSED                [ 83%]
+tests/test_something.py::test_something2[data2.txt:part3] PASSED                [100%]
+
+================================= 6 passed in 0.01s ==================================
+```
+
 > [!TIP]
 > - You can apply your own logic by specifying the `parametrizer_func` loader option
 > - By default, the plugin will apply the following logic for splitting file content: 
@@ -152,17 +180,32 @@ files stored in the specified directory. The test function will then receive the
 for the current test.
 
 ```python
+# test_something.py
+
 from pytest_data_loader import parametrize_dir
 
 
 @parametrize_dir("data", "images")
 def test_something(data):
     """
-    Dynamically parametrizes the test with each file in the data/images directory.
-    Each file content is accessible through the specified fixture name "data".
+    images dir: contains 3 image files
     """
-    ...
+    assert isinstance(data, bytes)
 ```
+
+```shell
+$ pytest test_something.py -v
+================================ test session starts =================================
+<snip>
+collected 3 items                                                                              
+
+tests/test_something.py::test_something[image1.gif] PASSED                      [ 33%]
+tests/test_something.py::test_something[image2.jpg] PASSED                      [ 66%]
+tests/test_something.py::test_something[image3.png] PASSED                      [100%]
+
+================================= 3 passed in 0.01s ==================================
+```
+
 > [!NOTE]
 > File names starting with a dot (.) are considered hidden files regardless of your platform. 
 > These files are automatically excluded from the parametrization.  
