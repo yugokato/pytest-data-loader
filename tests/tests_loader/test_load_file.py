@@ -42,7 +42,7 @@ def test_load_text_file_with_onload_func(data: str) -> None:
 @load("data", PATH_TEXT_FILE, id="foo")
 def test_load_text_file_with_id(request: FixtureRequest, data: str) -> None:
     """Test @load loader with the id option using text file"""
-    assert request.node.name.endswith("['foo']")
+    assert request.node.name.endswith("[foo]")
 
 
 # JSON file
@@ -70,7 +70,7 @@ def test_load_json_file_with_onload_func(data: dict[str, Any]) -> None:
 @load("data", PATH_JSON_FILE_OBJECT, id="foo")
 def test_load_json_file_with_id(request: FixtureRequest, data: dict[str, Any]) -> None:
     """Test @load loder with the id option using JSON file"""
-    assert request.node.name.endswith("['foo']")
+    assert request.node.name.endswith("[foo]")
 
 
 # Binary file
@@ -98,4 +98,4 @@ def test_load_binary_file_with_onload_func(data: bytes) -> None:
 @load("data", PATH_JPEG_FILE, id="foo")
 def test_load_binary_file_with_id(request: FixtureRequest, data: bytes) -> None:
     """Test @load loder with the id option using binary file"""
-    assert request.node.name.endswith("['foo']")
+    assert request.node.name.endswith("[foo]")
