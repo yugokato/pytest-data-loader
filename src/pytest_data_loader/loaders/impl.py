@@ -259,8 +259,8 @@ class FileDataLoader(LoaderABC):
                         file_path=self.path,
                         file_loader=file_loader,
                         idx=i,
-                        # Add the file loader to the cache when the first part data is resolved
-                        post_load_hook=partial(self._cached_loader_functions.add, file_loader) if i == 0 else None,
+                        # Add the file loader to the cache when the part data is resolved
+                        post_load_hook=partial(self._cached_loader_functions.add, file_loader),
                     )
                     for i, _ in enumerate(cast(Iterable[LoadedData], loaded_data))
                 ]
