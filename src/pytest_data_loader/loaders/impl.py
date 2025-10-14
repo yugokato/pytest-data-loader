@@ -175,7 +175,7 @@ class FileDataLoader(LoaderABC):
 
         return data
 
-    def _load_now(self) -> LoadedData | Iterable[LoadedData]:
+    def _load_now(self) -> LoadedData | tuple[LoadedData, ...]:
         """Load the entire file data now, then finalize the loaded data after applying all loader functions requested
 
         NOTE: When resolving lazily loaded part data, this function result will be dynamically cached to share it among
@@ -198,7 +198,7 @@ class FileDataLoader(LoaderABC):
                 data = (x for x in data if bind_and_call_loader_func(self.load_attrs.filter_func, self.path, x))
             if self.load_attrs.process_func:
                 data = (bind_and_call_loader_func(self.load_attrs.process_func, self.path, x) for x in data)
-            return [LoadedData(file_path=self.path, data=x) for x in data]
+            return tuple(LoadedData(file_path=self.path, data=x) for x in data)
         else:
             if self.load_attrs.process_func:
                 data = bind_and_call_loader_func(self.load_attrs.process_func, self.path, data)
@@ -228,7 +228,7 @@ class FileDataLoader(LoaderABC):
                 if cached_f is None:
                     self._cached_file_objects[self.path] = f
 
-    def _load_lazily(self) -> LazyLoadedData | Iterable[LazyLoadedPartData]:
+    def _load_lazily(self) -> LazyLoadedData | tuple[LazyLoadedPartData, ...]:
         """Lazily load data. The actual data will be resolved when needed in a test"""
         if self.should_split_data:
             # @parametrize() loader handles lazy loading in two different modes depending on the file type and the
@@ -237,7 +237,7 @@ class FileDataLoader(LoaderABC):
             if self.is_streamable:
                 # Each line can be accessible with the offset without loading the entire file
                 offsets = self._scan_offsets()
-                return [
+                return tuple(
                     LazyLoadedPartData(
                         file_path=self.path,
                         file_loader=partial(self._load_part_data_now, offset, close=False),
@@ -245,7 +245,7 @@ class FileDataLoader(LoaderABC):
                         offset=offset,
                     )
                     for i, offset in enumerate(offsets)
-                ]
+                )
             else:
                 # Semi-lazy loading mode: The entire file content needs to be loaded once during the collection phase
                 # to be able to determine the number of parametrized tests by splitting the content. Once it is done,
@@ -253,8 +253,9 @@ class FileDataLoader(LoaderABC):
                 # NOTE: The actual data loaded with the file loader called during a test setup will be cached and
                 #       reused among tests for the same test function
                 loaded_data = self._load_now()
+                assert isinstance(loaded_data, tuple)
                 file_loader = lru_cache(maxsize=1)(self._load_now)
-                return [
+                return tuple(
                     LazyLoadedPartData(
                         file_path=self.path,
                         file_loader=file_loader,
@@ -262,8 +263,8 @@ class FileDataLoader(LoaderABC):
                         # Add the file loader to the cache when the part data is resolved
                         post_load_hook=partial(self._cached_loader_functions.add, file_loader),
                     )
-                    for i, _ in enumerate(cast(Iterable[LoadedData], loaded_data))
-                ]
+                    for i in range(len(loaded_data))
+                )
         else:
             return LazyLoadedData(file_path=self.path, file_loader=self._load_now)
 

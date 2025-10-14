@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from _pytest.mark import ParameterSet
 from pytest import Config
 
 from pytest_data_loader.types import (
@@ -84,17 +85,33 @@ def has_env_vars(path: str) -> bool:
     return bool(re.search(pattern, path))
 
 
-def generate_default_id(
+def generate_parameterset(
     load_attrs: DataLoaderLoadAttrs, loaded_data: LoadedData | LazyLoadedData | LazyLoadedPartData
-) -> str:
-    """Generate default param ID for the loaded data"""
-    if load_attrs.lazy_loading:
-        return repr(loaded_data)
-    else:
-        if load_attrs.loader.requires_file_path and load_attrs.loader.requires_parametrization:
-            return repr(loaded_data.data)
+) -> ParameterSet:
+    """Generate Pytest ParameterSet object for the loaded data
+
+    :param load_attrs: The load attributes
+    :param loaded_data: The loaded data
+    """
+
+    def generate_param_id() -> Any:
+        if load_attrs.id_func:
+            return bind_and_call_loader_func(load_attrs.id_func, loaded_data.file_path, loaded_data.data)
         else:
-            return loaded_data.file_name
+            if load_attrs.lazy_loading:
+                return repr(loaded_data)
+            else:
+                if load_attrs.loader.requires_file_path and load_attrs.loader.requires_parametrization:
+                    return repr(loaded_data.data)
+                else:
+                    return loaded_data.file_name
+
+    args: tuple[Any, ...]
+    if load_attrs.requires_file_path:
+        args = (loaded_data.file_path, loaded_data.data)
+    else:
+        args = (loaded_data.data,)
+    return pytest.param(*args, id=generate_param_id())
 
 
 @lru_cache(maxsize=1)
