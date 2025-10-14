@@ -2,7 +2,7 @@ import inspect
 import keyword
 import os
 import re
-from collections.abc import Callable, Generator, Iterable
+from collections.abc import Callable
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
@@ -84,19 +84,20 @@ def has_env_vars(path: str) -> bool:
     return bool(re.search(pattern, path))
 
 
-def generate_default_ids(
-    loaded_data: Iterable[LoadedData | LazyLoadedData | LazyLoadedPartData], load_attrs: DataLoaderLoadAttrs
-) -> Generator[str]:
-    """Generate default param IDs for the loaded data"""
+def generate_default_id(
+    load_attrs: DataLoaderLoadAttrs, loaded_data: LoadedData | LazyLoadedData | LazyLoadedPartData
+) -> str:
+    """Generate default param ID for the loaded data"""
     if load_attrs.lazy_loading:
-        return (repr(x) for x in loaded_data)
+        return repr(loaded_data)
     else:
         if load_attrs.loader.requires_file_path and load_attrs.loader.requires_parametrization:
-            return (repr(x.data) for x in loaded_data)
+            return repr(loaded_data.data)
         else:
-            return (x.file_name for x in loaded_data)
+            return loaded_data.file_name
 
 
+@lru_cache(maxsize=1)
 def get_num_func_args(f: Callable[..., Any]) -> int:
     """Returns number of arguments the function takes
 

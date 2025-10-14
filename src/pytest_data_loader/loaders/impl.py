@@ -84,30 +84,32 @@ class FileDataLoader(LoaderABC):
     @wraps(LoaderABC.__init__)  # type: ignore[misc]
     def __init__(self, *args: Any, **kwargs: Any):
         super().__init__(*args, **kwargs)
-        # caches used by the @parametrize loader.
-        # NOTE: In Pytest, these cache data will be cleared as a module teardown managed by the plugin
-        self._cached_file_objects: dict[Path, TextIOWrapper] = {}
-        self._cached_loader_functions: set[Callable[..., Any]] = set()
-        weakref.finalize(self, self.clear_cache)
-
         if self.load_attrs.force_binary and self.loader.requires_file_path and self.loader.requires_parametrization:
             raise ValueError("Parametrization of file data does not support force_binary=True")
 
-    @property
-    def is_streamable(self) -> bool:
-        """Whether the file content can be read line by line as stream without loading the entier file"""
-        return all(
+        self._is_streamable = all(
             [
                 not self.load_attrs.force_binary,
                 self.path.suffix in FileDataLoader.STREAMABLE_FILE_TYPES,
                 not any([self.load_attrs.onload_func, self.load_attrs.parametrizer_func]),
             ]
         )
+        self._should_split = self.loader.requires_file_path and self.loader.requires_parametrization
+        # caches used by the @parametrize loader.
+        # NOTE: In Pytest, these cache data will be cleared as a module teardown managed by the plugin
+        self._cached_file_objects: dict[Path, TextIOWrapper] = {}
+        self._cached_loader_functions: set[Callable[..., Any]] = set()
+        weakref.finalize(self, self.clear_cache)
+
+    @property
+    def is_streamable(self) -> bool:
+        """Whether the file content can be read line by line as stream without loading the entier file"""
+        return self._is_streamable
 
     @property
     def should_split_data(self) -> bool:
         """Whether the file content needs to be split or not"""
-        return self.loader.requires_file_path and self.loader.requires_parametrization
+        return self._should_split
 
     def load(self) -> LoadedData | LazyLoadedData | Iterable[LoadedData | LazyLoadedPartData]:
         """Load file data"""
