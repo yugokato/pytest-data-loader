@@ -1,6 +1,9 @@
+import inspect
 import os
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 from _pytest.pytester import Pytester
 from pytest import RunResult
@@ -35,6 +38,12 @@ def is_valid_fixture_names(args: str | tuple[str, ...]) -> bool:
     else:
         args = tuple(args)
     return 0 < len(args) < 3 and all(is_valid_fixture_name(x) for x in args)
+
+
+def get_num_func_args(loader_func: Callable[..., Any]) -> int:
+    sig = inspect.signature(loader_func)
+    parameters = sig.parameters
+    return len(parameters)
 
 
 def create_test_file_in_loader_dir(
@@ -150,7 +159,7 @@ def run_pytest_with_context(
     from pathlib import Path
     import pytest
     from pytest_data_loader import {loader.__name__}
-    from pytest_data_loader.utils import bind_and_call_loader_func
+    from pytest_data_loader.utils import validate_loader_func_args_and_normalize
 
     @{loader.__name__}({fixture_names!r}, {rel_path_str}{loader_options_str})
     def test(request, {fixture_names_str}):
@@ -200,7 +209,7 @@ def run_pytest_with_context(
         elif {loader.__name__}.__name__ == 'parametrize':
             if has_id_func:
                 id_func = eval({id_func_def!r})
-                expected_id = bind_and_call_loader_func(id_func, file_path, data)
+                expected_id = validate_loader_func_args_and_normalize(id_func)(file_path, data)
                 assert request.node.name.endswith(f"[{{expected_id}}]")
             else:
                 if is_lazy_loading:
