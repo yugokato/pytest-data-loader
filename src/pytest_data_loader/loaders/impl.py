@@ -18,9 +18,8 @@ from pytest_data_loader.types import (
     LazyLoadedPartData,
     LoadedData,
     LoadedDataType,
-    UnsupportedFuncArg,
 )
-from pytest_data_loader.utils import bind_and_call_loader_func
+from pytest_data_loader.utils import validate_loader_func_args_and_normalize
 
 T = TypeVar("T", bound=Callable[..., Any])
 
@@ -186,22 +185,24 @@ class FileDataLoader(LoaderABC):
 
         # Adjust the shape of data based on loader functions
         if self.load_attrs.onload_func:
-            data = bind_and_call_loader_func(self.load_attrs.onload_func, self.path, data)
+            data = self.load_attrs.onload_func(self.path, data)
 
         if self.should_split_data:
-            parametrizer_func = self.load_attrs.parametrizer_func or self._parametrizer_func
-            data = bind_and_call_loader_func(parametrizer_func, self.path, data)
+            parametrizer_func = self.load_attrs.parametrizer_func or validate_loader_func_args_and_normalize(
+                self._parametrizer_func
+            )
+            data = parametrizer_func(self.path, data)
             if not isinstance(data, Iterable) or isinstance(data, str | bytes):
                 raise ValueError(f"Parametrized data must be an iterable container, not {type(data).__name__!r}")
 
             if self.load_attrs.filter_func:
-                data = (x for x in data if bind_and_call_loader_func(self.load_attrs.filter_func, self.path, x))
+                data = (x for x in data if self.load_attrs.filter_func(self.path, x))
             if self.load_attrs.process_func:
-                data = (bind_and_call_loader_func(self.load_attrs.process_func, self.path, x) for x in data)
+                data = (self.load_attrs.process_func(self.path, x) for x in data)
             return tuple(LoadedData(file_path=self.path, data=x) for x in data)
         else:
             if self.load_attrs.process_func:
-                data = bind_and_call_loader_func(self.load_attrs.process_func, self.path, data)
+                data = self.load_attrs.process_func(self.path, data)
             return LoadedData(file_path=self.path, data=data)
 
     def _load_part_data_now(self, offset: int, /, *, close: bool = True) -> LoadedData:
@@ -219,7 +220,7 @@ class FileDataLoader(LoaderABC):
             f.seek(offset)
             line = cast(LoadedDataType, f.readline().rstrip("\r\n"))
             if self.load_attrs.process_func:
-                line = bind_and_call_loader_func(self.load_attrs.process_func, self.path, line)
+                line = self.load_attrs.process_func(self.path, line)
             return LoadedData(file_path=self.path, data=line)
         finally:
             if close:
@@ -243,9 +244,10 @@ class FileDataLoader(LoaderABC):
                         file_loader=partial(self._load_part_data_now, offset, close=False),
                         idx=i,
                         offset=offset,
+                        _marks=marks,
                         _id=param_id,
                     )
-                    for i, (offset, param_id) in enumerate(scan_results)
+                    for i, (offset, marks, param_id) in enumerate(scan_results)
                 )
             else:
                 # The entire file content needs to be loaded once during the collection phase
@@ -261,11 +263,10 @@ class FileDataLoader(LoaderABC):
                         file_path=self.path,
                         file_loader=file_loader,
                         idx=i,
-                        _id=(
-                            bind_and_call_loader_func(self.load_attrs.id_func, self.path, data.data)
-                            if self.load_attrs.id_func is not None
-                            else None
-                        ),
+                        _marks=self.load_attrs.marker_func(self.path, data.data)
+                        if self.load_attrs.marker_func
+                        else None,
+                        _id=self.load_attrs.id_func(self.path, data.data) if self.load_attrs.id_func else None,
                         # Add the file loader to the cache when the part data is resolved
                         post_load_hook=partial(self._cached_loader_functions.add, file_loader),
                     )
@@ -274,16 +275,17 @@ class FileDataLoader(LoaderABC):
         else:
             return LazyLoadedData(file_path=self.path, file_loader=self._load_now)
 
-    def _scan_file(self) -> Generator[tuple[int, Any]]:
+    def _scan_file(self) -> Generator[tuple[int, Any, Any]]:
         """Scan file and returns offset of each line that should be loaded.
 
         NOTE: The following loader functions will be applied to each line as part of the scan
         - filter_func
+        - marker_func
         - id_func
         """
         assert self.is_streamable
-        results: list[tuple[int, Any]] = []
-        buffer: list[tuple[int, Any]] = []
+        results = []
+        buffer = []
 
         with open(self.path, encoding="utf-8") as f:
             while True:
@@ -294,25 +296,24 @@ class FileDataLoader(LoaderABC):
                     break
 
                 line = line.rstrip("\r\n")
-                if not self.load_attrs.filter_func or bind_and_call_loader_func(
-                    self.load_attrs.filter_func, self.path, line
-                ):
-                    if self.load_attrs.id_func is not None:
-                        param_id = bind_and_call_loader_func(self.load_attrs.id_func, self.path, line)
-                    else:
-                        param_id = None
+                if not self.load_attrs.filter_func or self.load_attrs.filter_func(self.path, line):
+                    param_id = param_marks = None
+                    if self.load_attrs.marker_func:
+                        param_marks = self.load_attrs.marker_func(self.path, line)
+                    if self.load_attrs.id_func:
+                        param_id = self.load_attrs.id_func(self.path, line)
                     if self.strip_trailing_whitespace:
                         if line.rstrip() == "":
                             # whitespace-only line
-                            buffer.append((pos, param_id))
+                            buffer.append((pos, param_marks, param_id))
                         else:
                             # flush previous whitespace lines as they weren't trailing
                             if buffer:
                                 results.extend(buffer)
                                 buffer.clear()
-                            results.append((pos, param_id))
+                            results.append((pos, param_marks, param_id))
                     else:
-                        results.append((pos, param_id))
+                        results.append((pos, param_marks, param_id))
 
         yield from results
 
@@ -347,9 +348,7 @@ class DirectoryDataLoader(LoaderABC):
         for p in sorted(self.path.iterdir()):
             if p.is_file() and not p.name.startswith("."):
                 file_path = self.path / p.name
-                if self.load_attrs.filter_func is None or bind_and_call_loader_func(
-                    self.load_attrs.filter_func, file_path, UnsupportedFuncArg
-                ):
+                if not self.load_attrs.filter_func or self.load_attrs.filter_func(file_path):
                     file_loader = FileDataLoader(
                         file_path, self.load_attrs, strip_trailing_whitespace=self.strip_trailing_whitespace
                     )

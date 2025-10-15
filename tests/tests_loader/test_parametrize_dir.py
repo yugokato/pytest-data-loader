@@ -1,5 +1,6 @@
 from pathlib import Path
 
+import pytest
 from pytest import FixtureRequest
 
 from pytest_data_loader import parametrize_dir
@@ -13,7 +14,6 @@ from tests.tests_loader.helper import (
 
 # NOTE:
 # - lazy_loading option is separately tested in another test using pytester
-# - This file covers 3 types of data types the plugin handles differently: text file, json file, and binary file
 
 
 @parametrize_dir(("file_path", "data"), PATH_SOME_DIR)
@@ -49,3 +49,14 @@ def test_parametrize_dir_with_filter_func(file_path: Path, data: LoadedDataType)
 def test_parametrize_dir_with_process_func(file_path: Path, data: LoadedDataType) -> None:
     """Test @parametrize_dir loder with the process_func option"""
     assert data == "# " + file_path.read_text()
+
+
+@parametrize_dir(
+    ("file_path", "data"),
+    PATH_IMAGE_DIR,
+    marker_func=lambda x: getattr(pytest.mark, x.suffix[1:]),
+)
+def test_parametrize_dir_with_marker_func(request: FixtureRequest, file_path: Path, data: LoadedDataType) -> None:
+    """Test @parametrize_dir loder with the marker_func option"""
+    marker = request.node.get_closest_marker(file_path.suffix[1:])
+    assert marker

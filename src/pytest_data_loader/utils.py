@@ -2,14 +2,15 @@ import inspect
 import keyword
 import os
 import re
-from collections.abc import Callable
+from collections.abc import Callable, Collection
 from functools import lru_cache
+from inspect import Parameter
 from pathlib import Path
 from typing import Any
 
 import pytest
 from _pytest.mark import ParameterSet
-from pytest import Config
+from pytest import Config, Mark, MarkDecorator
 
 from pytest_data_loader.types import (
     DataLoaderIniOption,
@@ -17,8 +18,6 @@ from pytest_data_loader.types import (
     LazyLoadedData,
     LazyLoadedPartData,
     LoadedData,
-    LoadedDataType,
-    UnsupportedFuncArg,
 )
 
 
@@ -105,54 +104,66 @@ def generate_parameterset(
                     return loaded_data.file_name
         else:
             if isinstance(loaded_data, LazyLoadedPartData):
-                # When id_func is provided for the @parametrize loader, parameter ID is already generated when
+                # When id_func is provided for the @parametrize loader, parameter ID is generated when
                 # LazyLoadedPartData is created
-                return repr(loaded_data)
-            return bind_and_call_loader_func(load_attrs.id_func, loaded_data.file_path, loaded_data.data)
+                return loaded_data._id or repr(loaded_data)
+            return load_attrs.id_func(loaded_data.file_path, loaded_data.data)
+
+    def generate_param_marks() -> MarkDecorator | Collection[MarkDecorator | Mark]:
+        default_markers = ()
+        if load_attrs.marker_func is None:
+            return default_markers
+        else:
+            assert load_attrs.loader.requires_parametrization
+            if isinstance(loaded_data, LazyLoadedPartData):
+                # When marker_func is provided for the @parametrize loader, marks are generated when
+                # LazyLoadedPartData is created
+                marks = loaded_data._marks
+            else:
+                func_args: tuple[Any, ...]
+                if load_attrs.loader.requires_file_path:
+                    func_args = (loaded_data.file_path, loaded_data.data)
+                else:
+                    func_args = (loaded_data.file_path,)
+                marks = load_attrs.marker_func(*func_args)
+            return marks or default_markers
 
     args: tuple[Any, ...]
     if load_attrs.requires_file_path:
         args = (loaded_data.file_path, loaded_data.data)
     else:
         args = (loaded_data.data,)
-    return pytest.param(*args, id=generate_param_id())
+    return pytest.param(*args, marks=generate_param_marks(), id=generate_param_id())
 
 
-@lru_cache(maxsize=1)
-def get_num_func_args(f: Callable[..., Any]) -> int:
-    """Returns number of arguments the function takes
+def validate_loader_func_args_and_normalize(
+    loader_func: Callable[..., Any], with_file_path_only: bool = False
+) -> Callable[..., Any]:
+    """Validates the loader function definition and returns a normalized function that can take 2 arguments but call
+    the original function it with the right argument(s)
 
-    :param f: A function
+    :param loader_func: Loader function
+    :param with_file_path_only: The loader function must take only file path
     """
-    sig = inspect.signature(f)
-    return len(sig.parameters)
+    sig = inspect.signature(loader_func)
+    parameters = sig.parameters
+    len_func_args = len(parameters)
 
-
-def bind_and_call_loader_func(
-    loader_func: Callable[..., Any],
-    file_path: Path,
-    data: LoadedDataType | LazyLoadedData | LazyLoadedPartData | type[UnsupportedFuncArg],
-) -> LoadedDataType:
-    """Call a loader function with right arguments based on the function definition
-
-    :param loader_func: Loader function to call
-    :param file_path: Path to the loaded file
-    :param data: Loaded data
-    """
-    len_func_args = get_num_func_args(loader_func)
-    max_allowed_args = 1 if data is UnsupportedFuncArg else 2
+    max_allowed_args = 1 if with_file_path_only else 2
     if not 0 < len_func_args < max_allowed_args + 1:
         raise TypeError(
-            f"Detected invalid loader function. It must take up to {max_allowed_args} arguments. Got {len_func_args}"
+            f"Detected invalid loader function definition. It must take up to {max_allowed_args} arguments. "
+            f"Got {len_func_args}"
         )
+    if not all(p.kind == Parameter.POSITIONAL_OR_KEYWORD for p in parameters.values()):
+        raise TypeError("Detected invalid loader function definition. Only positional arguments are allowed")
 
     if len_func_args == 2:
-        return loader_func(file_path, data)
+        return lambda file_path, data: loader_func(file_path, data)
+    elif with_file_path_only:
+        return lambda file_path, *_: loader_func(file_path)
     else:
-        if data is UnsupportedFuncArg:
-            return loader_func(file_path)
-        else:
-            return loader_func(data)
+        return lambda _, data: loader_func(data)
 
 
 @lru_cache
