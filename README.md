@@ -235,7 +235,7 @@ Each loader supports different optional parameters you can use to change how you
 - `lazy_loading`: Enable or disable lazy loading
 - `force_binary`: Force the file to be read in binary mode
 - `onload_func`: A function to transform or preprocess loaded data before passing it to the test function
-- `id`: The ID for the loaded data. The file name is used if not specified
+- `id`: The parameter ID for the loaded data. The file name is used if not specified
 
 ### @parametrize
 - `lazy_loading`: Enable or disable lazy loading
@@ -243,7 +243,7 @@ Each loader supports different optional parameters you can use to change how you
 - `parametrizer_func`: A function to customize how the loaded data should be split
 - `filter_func`: A function to filter the split data parts. Only matching parts are included as test parameters
 - `process_func`: A function to adjust the shape of each split data before passing it to the test function
-- `id_func`: A function to generate a parameter ID for each test parameter, supported only when lazy_loading is `False`
+- `id_func`: A function to generate a parameter ID for each part data
 
 ### @parametrize_dir
 - `lazy_loading`: Enable or disable lazy loading

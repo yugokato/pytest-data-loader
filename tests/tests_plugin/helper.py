@@ -146,6 +146,7 @@ def run_pytest_with_context(
     import os
     from pathlib import Path
     from pytest_data_loader import {loader.__name__}
+    from pytest_data_loader.utils import bind_and_call_loader_func
 
     @{loader.__name__}({fixture_names!r}, {rel_path_str}{loader_options_str})
     def test(request, {fixture_names_str}):
@@ -165,6 +166,7 @@ def run_pytest_with_context(
             assert request.config.rootpath.is_relative_to(data_loader_root_dir)
 
         if len({fixtures!r}) == 1:
+            file_path = None
             data = {fixtures[0]}
             print(f"- data: {{repr(data)}}")
             assert isinstance(data, {data_type})
@@ -180,20 +182,31 @@ def run_pytest_with_context(
     """
 
     if check_test_id:
+        assert len(fixtures) == 2, "This test requires to give 2 fixture names"
         test_code += f"""
 
+        has_id = {bool(id_)}
+        has_id_func = {bool(id_func_def)}
+        is_lazy_loading = {bool(lazy_loading)}
         if {loader.__name__}.__name__ == 'load':
-            if {bool(id_)}:
-                request.node.name.endswith("[{id_!r}]")
+            if has_id:
+                assert request.node.name.endswith("[{id_}]")
             else:
-                request.node.name.endswith("[{{repr({fixtures[-1]})}}]")
+                assert request.node.name.endswith(f"[{{file_path.name}}]")
         elif {loader.__name__}.__name__ == 'parametrize':
-            if not {bool(id_func_def)}:
-                if {bool(lazy_loading)}:
+            if has_id_func:
+                id_func = eval({id_func_def!r})
+                expected_id = bind_and_call_loader_func(id_func, file_path, data)
+                assert request.node.name.endswith(f"[{{expected_id}}]")
+            else:
+                if is_lazy_loading:
                     idx = request.node.callspec.indices['{fixtures[-1]}']
-                    request.node.name.endswith("[{Path(test_context.relative_path).name!r}:part{{idx}}]")
+                    assert request.node.name.endswith(f"[{{file_path.name}}:part{{idx+1}}]")
                 else:
-                    request.node.name.endswith("[{Path(test_context.relative_path).name!r}]")
+                    assert request.node.name.endswith(f"[{{data!r}}]")
+        else:
+            assert request.node.name.endswith(f"[{{file_path.name}}]")
+
     """
     pytester.makepyfile(test_code)
 

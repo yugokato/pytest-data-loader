@@ -95,9 +95,7 @@ def generate_parameterset(
     """
 
     def generate_param_id() -> Any:
-        if load_attrs.id_func:
-            return bind_and_call_loader_func(load_attrs.id_func, loaded_data.file_path, loaded_data.data)
-        else:
+        if load_attrs.id_func is None:
             if load_attrs.lazy_loading:
                 return repr(loaded_data)
             else:
@@ -105,6 +103,12 @@ def generate_parameterset(
                     return repr(loaded_data.data)
                 else:
                     return loaded_data.file_name
+        else:
+            if isinstance(loaded_data, LazyLoadedPartData):
+                # When id_func is provided for the @parametrize loader, parameter ID is already generated when
+                # LazyLoadedPartData is created
+                return repr(loaded_data)
+            return bind_and_call_loader_func(load_attrs.id_func, loaded_data.file_path, loaded_data.data)
 
     args: tuple[Any, ...]
     if load_attrs.requires_file_path:

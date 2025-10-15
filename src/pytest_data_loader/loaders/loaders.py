@@ -37,7 +37,7 @@ def load(
     :param id: Explicitly specify the parameter ID for the loaded data. Defaults to the file name.
 
     NOTE:
-        - onload_func loader function must take either one (data) or two (file_path, data) arguments
+        - onload_func loader function must take either one (data) or two (file path, data) arguments
 
     Examples:
     >>> @load("data", "data.txt")
@@ -82,21 +82,21 @@ def parametrize(
                           file path, and the second will receive the loaded part data.
     :param relative_path: File path relative to one of the base data loader directories. The loader searches for the
                           closest data loader directory containing a matching file and loads the data from there.
-    :param lazy_loading: If True, the plugin performs lazy data loading in one of the following modes, depending on
-                         the file type and specified options:
-                         1. lazy loading: Applies to certain file extensions only, and only when neither
-                                          `onload_func` nor `parametrizer_func` is provided. the plugin determines
-                                          the number of parametrized tests without loading the file contents.
-                         2. Semi-lazy loading: The plugin loads the file once during the collection phase to determine
-                                               the number of parametrized tests, but it does not keep the loaded data
-                                               in memory.
+    :param lazy_loading: If True, the plugin will defer the timing of file loading to the test setup phase. Note that
+                         unlike other loaders, the plugin still needs to inspect the file data during the collection
+                         phase to determine the total number of parametrized tests. The inspection is done in one of
+                         the following modes, depending on the file type and specified options:
+                         1. Quick scan: Applies to certain file extensions only, and only when neither `onload_func`
+                            nor `parametrizer_func` is provided. the plugin determines the number of parametrized
+                            tests without loading the entire file contents in memory.
+                         2. Full scan: The plugin loads the entire file once during the collection phase to determine
+                                       the number of parametrized tests, but it does not keep the loaded data in memory.
                          In both modes, Pytest receives only small metadata (such as file paths and record indices) as
                          parameters. The actual data associated with each parameter is loaded lazily when needed
                          during the test setup phase.
                          If False, Pytest will receive the fully loaded data for each parameter during test collection
                          and retain it for the entire test session. This can lead to significant memory usage when
                          working with large files.
-                         NOTE: The id_func option is not supported when lazy loading is enabled
     :param onload_func: A function to transform or preprocess loaded data before splitting into parts.
                         NOTE: .json files will always be automatically parsed during the plugin-managed onload process
     :param parametrizer_func: A function to determine how the loaded data should be split. If not provided, the plugin
@@ -110,12 +110,11 @@ def parametrize(
     :param filter_func: A function to filter the split data parts. Only matching parts are included as the test
                         parameters.
     :param process_func: A function to adjust the shape of each split data before passing it to the test function.
-    :param id_func: A function to generate a parameter ID for each test parameter, supported only when lazy_loading is
-                    False. Defaults to "<file_name>:part<number>" when lazy loading, otherwise the part data itself is
-                    used.
+    :param id_func: A function to generate a parameter ID for each part data. Defaults to "<file_name>:part<number>"
+                    when lazy loading, otherwise the part data itself is used.
 
     NOTE:
-        - Each loader function must take either one (data) or two (file_path, data) arguments
+        - Each loader function must take either one (data) or two (file path, data) arguments
 
     Examples:
     >>> @parametrize("data", "data.txt")
@@ -128,9 +127,6 @@ def parametrize(
     >>>     assert data in [("key1": "value1"), ("key2": "value2")]
     >>>
     """
-    if lazy_loading and id_func:
-        raise ValueError(f"@{parametrize.__name__} loader does not support id_func when lazy_loading=True")
-
     return _setup_data_loader(
         cast(DataLoader, parametrize),
         fixture_names,
@@ -174,8 +170,8 @@ def parametrize_dir(
                          NOTE: .json files will always be automatically parsed during the plugin-managed onload process
 
     NOTE:
-        - filter_func must take only one argument (file_path)
-        - process_func loader function must take either one (data) or two (file_path, data) arguments
+        - filter_func must take only one argument (file path)
+        - process_func loader function must take either one (data) or two (file path, data) arguments
         - The plugin automatically asigns each file name to the parameter ID
 
     Examples:

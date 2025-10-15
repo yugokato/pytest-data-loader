@@ -86,9 +86,10 @@ class LazyLoadedData(LazyLoadedDataABC):
 class LazyLoadedPartData(LazyLoadedDataABC):
     idx: int
     offset: int | None = None
+    _id: Any = None
 
     def __repr__(self) -> str:
-        return f"{self.file_name}:part{self.idx + 1}"
+        return self._id or f"{self.file_name}:part{self.idx + 1}"
 
     def resolve(self) -> LoadedDataType:
         loaded_data = self.file_loader()
