@@ -88,8 +88,8 @@ class LazyLoadedData(LazyLoadedDataABC):
 class LazyLoadedPartData(LazyLoadedDataABC):
     idx: int
     offset: int | None = None
-    _marks: MarkDecorator | Collection[MarkDecorator | Mark] | None = None
-    _id: Any = None
+    # Temporarily store id and marks
+    meta: dict[str, Any]
 
     def __repr__(self) -> str:
         return f"{self.file_name}:part{self.idx + 1}"

@@ -25,8 +25,15 @@ def test_file_loader(loader: DataLoader, lazy_loading: bool, relative_path: str)
     """Test file loader with various file types and with/without lazy loading"""
     abs_file_path = ABS_PATH_LOADER_DIR / PATH_TEXT_FILE
     filename = abs_file_path.name
+    marks = (pytest.mark.foo, pytest.mark.bar)
     load_attrs = DataLoaderLoadAttrs(
-        loader=loader, fixture_names=("file_path", "data"), relative_path=Path(relative_path), lazy_loading=lazy_loading
+        loader=loader,
+        fixture_names=("file_path", "data"),
+        relative_path=Path(relative_path),
+        lazy_loading=lazy_loading,
+        # for @parametrize loader with lazy loading
+        id_func=lambda x: x,
+        marker_func=lambda x: marks,
     )
 
     loaded_data = FileDataLoader(abs_file_path, load_attrs=load_attrs, strip_trailing_whitespace=True).load()
@@ -40,6 +47,9 @@ def test_file_loader(loader: DataLoader, lazy_loading: bool, relative_path: str)
                 assert lazy_loaded_part.idx >= 0
                 assert lazy_loaded_part.offset >= 0
                 assert repr(lazy_loaded_part) == f"{filename}:part{lazy_loaded_part.idx + 1}"
+                assert set(lazy_loaded_part.meta.keys()) == {"marks", "id"}
+                assert lazy_loaded_part.meta["id"] > ""
+                assert lazy_loaded_part.meta["marks"] == marks
         else:
             assert isinstance(loaded_data, LazyLoadedData)
             assert loaded_data.file_path == abs_file_path
