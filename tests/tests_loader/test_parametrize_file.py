@@ -63,13 +63,7 @@ def test_parametrize_text_file_with_process_func(request: FixtureRequest, data: 
     assert data == f"# line{idx}"
 
 
-@parametrize(
-    "data",
-    PATH_TEXT_FILE,
-    id_func=lambda d: repr("#" + d),
-    # id_func is not supported when lazy_loading=True
-    lazy_loading=False,
-)
+@parametrize("data", PATH_TEXT_FILE, id_func=lambda d: repr("#" + d))
 def test_parametrize_text_file_with_id_func(request: FixtureRequest, data: str) -> None:
     """Test @parametrize loder with the id_func option using text file"""
     assert isinstance(data, str)
@@ -134,13 +128,7 @@ def test_parametrize_json_with_process_func(request: FixtureRequest, data: str) 
     assert data == f"key{idx}"
 
 
-@parametrize(
-    "data",
-    PATH_JSON_FILE_OBJECT,
-    id_func=lambda d: repr(d[0]),
-    # id_func is not supported when lazy_loading=True
-    lazy_loading=False,
-)
+@parametrize("data", PATH_JSON_FILE_OBJECT, id_func=lambda d: repr(d[0]))
 def test_parametrize_json_with_id_func(request: FixtureRequest, data: tuple[str, str]) -> None:
     """Test @parametrize loder with the id_func using JSON file"""
     assert isinstance(data, tuple)
@@ -170,8 +158,6 @@ def test_parametrize_binary_file_with_parametrizer_func(request: FixtureRequest,
     PATH_JPEG_FILE,
     parametrizer_func=lambda d: [d],  # single param
     id_func=lambda d: repr(d[:5]),
-    # id_func is not supported when lazy_loading=True
-    lazy_loading=False,
 )
 def test_parametrize_binary_file_with_id_func(request: FixtureRequest, data: bytes) -> None:
     """Test @parametrize loder with the id_func using binary file"""

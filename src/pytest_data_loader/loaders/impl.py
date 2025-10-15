@@ -233,21 +233,22 @@ class FileDataLoader(LoaderABC):
         if self.should_split_data:
             # @parametrize() loader handles lazy loading in two different modes depending on the file type and the
             # specified load options. If certain conditions are met, we can split the file content without actually
-            # loading the entire file at all. Otherwise, we fall back to the semi-lazy loading mode
+            # loading the entire file at all. Otherwise, we fall back to the other mode
             if self.is_streamable:
                 # Each line can be accessible with the offset without loading the entire file
-                offsets = self._scan_offsets()
+                scan_results = self._scan_file()
                 return tuple(
                     LazyLoadedPartData(
                         file_path=self.path,
                         file_loader=partial(self._load_part_data_now, offset, close=False),
                         idx=i,
                         offset=offset,
+                        _id=param_id,
                     )
-                    for i, offset in enumerate(offsets)
+                    for i, (offset, param_id) in enumerate(scan_results)
                 )
             else:
-                # Semi-lazy loading mode: The entire file content needs to be loaded once during the collection phase
+                # The entire file content needs to be loaded once during the collection phase
                 # to be able to determine the number of parametrized tests by splitting the content. Once it is done,
                 # we will not keep the data in memory
                 # NOTE: The actual data loaded with the file loader called during a test setup will be cached and
@@ -260,19 +261,29 @@ class FileDataLoader(LoaderABC):
                         file_path=self.path,
                         file_loader=file_loader,
                         idx=i,
+                        _id=(
+                            bind_and_call_loader_func(self.load_attrs.id_func, self.path, data.data)
+                            if self.load_attrs.id_func is not None
+                            else None
+                        ),
                         # Add the file loader to the cache when the part data is resolved
                         post_load_hook=partial(self._cached_loader_functions.add, file_loader),
                     )
-                    for i in range(len(loaded_data))
+                    for i, data in enumerate(loaded_data)
                 )
         else:
             return LazyLoadedData(file_path=self.path, file_loader=self._load_now)
 
-    def _scan_offsets(self) -> Generator[int]:
-        """Scan file and returns offset of each line that should be loaded"""
+    def _scan_file(self) -> Generator[tuple[int, Any]]:
+        """Scan file and returns offset of each line that should be loaded.
+
+        NOTE: The following loader functions will be applied to each line as part of the scan
+        - filter_func
+        - id_func
+        """
         assert self.is_streamable
-        offsets = []
-        offsets_buffer = []
+        results: list[tuple[int, Any]] = []
+        buffer: list[tuple[int, Any]] = []
 
         with open(self.path, encoding="utf-8") as f:
             while True:
@@ -282,23 +293,28 @@ class FileDataLoader(LoaderABC):
                     # EOF
                     break
 
+                line = line.rstrip("\r\n")
                 if not self.load_attrs.filter_func or bind_and_call_loader_func(
                     self.load_attrs.filter_func, self.path, line
                 ):
+                    if self.load_attrs.id_func is not None:
+                        param_id = bind_and_call_loader_func(self.load_attrs.id_func, self.path, line)
+                    else:
+                        param_id = None
                     if self.strip_trailing_whitespace:
                         if line.rstrip() == "":
                             # whitespace-only line
-                            offsets_buffer.append(pos)
+                            buffer.append((pos, param_id))
                         else:
                             # flush previous whitespace lines as they weren't trailing
-                            if offsets_buffer:
-                                offsets.extend(offsets_buffer)
-                                offsets_buffer.clear()
-                            offsets.append(pos)
+                            if buffer:
+                                results.extend(buffer)
+                                buffer.clear()
+                            results.append((pos, param_id))
                     else:
-                        offsets.append(pos)
+                        results.append((pos, param_id))
 
-        yield from offsets
+        yield from results
 
     def _read_file(self) -> str | bytes:
         """Read file data"""
