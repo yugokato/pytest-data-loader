@@ -17,12 +17,7 @@ from pytest_data_loader.types import (
     LoadedData,
     LoadedDataType,
 )
-from pytest_data_loader.utils import (
-    bind_and_call_loader_func,
-    generate_default_id,
-    parse_ini_option,
-    resolve_relative_path,
-)
+from pytest_data_loader.utils import generate_parameterset, parse_ini_option, resolve_relative_path
 
 
 def pytest_addoption(parser: Parser) -> None:
@@ -99,24 +94,15 @@ def pytest_generate_tests(metafunc: Metafunc) -> None:
                     | LazyLoadedPartData
                     | tuple[Path, LoadedDataType | LazyLoadedData | LazyLoadedPartData]
                 ]
-                if load_attrs.requires_file_path:
-                    values = ((x.file_path, x.data) for x in loaded_data)
-                else:
-                    values = (x.data for x in loaded_data)
-
-                if load_attrs.id_func:
-                    ids = (bind_and_call_loader_func(load_attrs.id_func, x.file_path, x.data) for x in loaded_data)
-                else:
-                    ids = (generate_default_id(load_attrs, x) for x in loaded_data)
+                values = (generate_parameterset(load_attrs, x) for x in loaded_data)
             else:
-                ids = None
                 values = []
 
             if len(load_attrs.fixture_names) == 1:
                 args = load_attrs.fixture_names[0]
             else:
                 args = load_attrs.fixture_names
-            metafunc.parametrize(args, values, ids=ids)
+            metafunc.parametrize(args, values)
         except Exception as e:
             # Add nodeid to the exception message so that a user can tell which test caused the error
             note = f"(nodeid: {node_id})"

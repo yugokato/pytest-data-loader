@@ -33,7 +33,7 @@ def test_file_loader(loader: DataLoader, lazy_loading: bool, relative_path: str)
 
     if lazy_loading:
         if loader == parametrize:
-            assert isinstance(loaded_data, list)
+            assert isinstance(loaded_data, tuple)
             for lazy_loaded_part in loaded_data:
                 assert isinstance(lazy_loaded_part, LazyLoadedPartData)
                 assert lazy_loaded_part.file_path == abs_file_path
@@ -46,7 +46,7 @@ def test_file_loader(loader: DataLoader, lazy_loading: bool, relative_path: str)
             assert repr(loaded_data) == f"{filename}"
     else:
         if loader == parametrize:
-            assert isinstance(loaded_data, list)
+            assert isinstance(loaded_data, tuple)
             for loaded_part in loaded_data:
                 assert isinstance(loaded_part, LoadedData)
                 assert loaded_part.file_path == abs_file_path
@@ -80,7 +80,7 @@ def test_file_loader_cache(loader: DataLoader, relative_path: str) -> None:
     assert file_loader._cached_loader_functions == set()
 
     if loader == parametrize:
-        assert isinstance(lazy_loaded_data, list)
+        assert isinstance(lazy_loaded_data, tuple)
         assert all(isinstance(x, LazyLoadedPartData) for x in lazy_loaded_data)
         for i, lazy_data in enumerate(lazy_loaded_data):
             lazy_data.resolve()
