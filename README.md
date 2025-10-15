@@ -61,9 +61,9 @@ Given you have the following project structure:
 │   ├── data1.json
 │   ├── data2.txt
 │   └── images/
-│       ├── image1.gif
-│       ├── image2.jpg
-│       └── image3.png
+│       ├── image.gif
+│       ├── image.jpg
+│       └── image.png
 ├── tests1/
 │   ├── data/
 │   │   ├── data1.txt
@@ -93,10 +93,10 @@ def test_something1(data):
 @load(("file_path", "data"), "data2.txt")
 def test_something2(file_path, data):
     """
-    data2.txt: line0\nline1\nline2
+    data2.txt: line1\nline2\nline3
     """
     assert file_path.name == "data2.txt"
-    assert data == "line0\nline1\nline2"
+    assert data == "line1\nline2\nline3"
 ```
 
 ```shell
@@ -140,10 +140,10 @@ def test_something1(data):
 @parametrize(("file_path", "data"), "data2.txt")
 def test_something2(file_path, data):
     """
-    data2.txt: line0\nline1\nline2
+    data2.txt: line1\nline2\nline3
     """
     assert file_path.name == "data2.txt"
-    assert data in ["line0", "line1", "line2"]
+    assert data in ["line1", "line2", "line3"]
 ```
 
 ```shell
@@ -199,9 +199,9 @@ $ pytest test_something.py -v
 <snip>
 collected 3 items                                                                              
 
-tests/test_something.py::test_something[image1.gif] PASSED                      [ 33%]
-tests/test_something.py::test_something[image2.jpg] PASSED                      [ 66%]
-tests/test_something.py::test_something[image3.png] PASSED                      [100%]
+tests/test_something.py::test_something[image.gif] PASSED                       [ 33%]
+tests/test_something.py::test_something[image.jpg] PASSED                       [ 66%]
+tests/test_something.py::test_something[image.png] PASSED                       [100%]
 
 ================================= 3 passed in 0.01s ==================================
 ```
@@ -221,10 +221,10 @@ If you need to disable this behavior for a specific test for some reason, you ca
 option on the loader.
 
 > [!NOTE]
-> Lazy loading in the `@parametrize` loader works slightly differently from other loaders. Since Pytest needs to know 
-> the total number of parameters in advance, the plugin may still need to load the file data once and split during test 
-> collection phase, depending on the file type and the specified loader options. But once it's done, those part data 
-> will not be kept as parameter values and will be loaded lazily later.
+> Lazy loading for the `@parametrize` loader works slightly differently from other loaders. Since Pytest needs to know 
+> the total number of parameters in advance, the plugin still needs to inspect the file data and split it once during 
+> test collection phase. But once it's done, those part data will not be kept as parameter values and will be loaded 
+> lazily later.
 
 
 
@@ -237,13 +237,22 @@ Each loader supports different optional parameters you can use to change how you
 - `onload_func`: A function to transform or preprocess loaded data before passing it to the test function
 - `id`: The parameter ID for the loaded data. The file name is used if not specified
 
+> [!NOTE]
+> `onload_func` must take either one (data) or two (file path, data) arguments
+
+
 ### @parametrize
 - `lazy_loading`: Enable or disable lazy loading
 - `onload_func`: A function to adjust the shape of the loaded data before splitting into parts
 - `parametrizer_func`: A function to customize how the loaded data should be split
 - `filter_func`: A function to filter the split data parts. Only matching parts are included as test parameters
 - `process_func`: A function to adjust the shape of each split data before passing it to the test function
+- `marker_func`: A function to apply Pytest marks to matching part data
 - `id_func`: A function to generate a parameter ID for each part data
+
+> [!NOTE]
+> Each loader function must take either one (data) or two (file path, data) arguments
+
 
 ### @parametrize_dir
 - `lazy_loading`: Enable or disable lazy loading
@@ -251,6 +260,11 @@ Each loader supports different optional parameters you can use to change how you
 - `filter_func`: A function to filter file paths. Only the contents of matching file paths are included as the test 
 parameters
 - `process_func`: A function to adjust the shape of each loaded file's data before passing it to the test function
+- `marker_func`: A function to apply Pytest marks to matching file paths
+
+> [!NOTE]
+> - `process_func` must take either one (data) or two (file path, data) arguments
+> - `filter_func` and `marker_func` must take only one argument (file path)
 
 
 

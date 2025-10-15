@@ -80,6 +80,7 @@ def run_pytest_with_context(
     parametrizer_func_def: str | None = None,
     filter_func_def: str | None = None,
     process_func_def: str | None = None,
+    marker_func_def: str | None = None,
     id_: str | None = None,
     id_func_def: str | None = None,
     collect_only: bool = False,
@@ -106,6 +107,8 @@ def run_pytest_with_context(
         loader_options.append(f"filter_func={filter_func_def}")
     if process_func_def:
         loader_options.append(f"process_func={process_func_def}")
+    if marker_func_def:
+        loader_options.append(f"marker_func={marker_func_def}")
     if id_:
         assert loader == load
         loader_options.append(f"id={id_!r}")
@@ -145,6 +148,7 @@ def run_pytest_with_context(
     test_code = f"""
     import os
     from pathlib import Path
+    import pytest
     from pytest_data_loader import {loader.__name__}
     from pytest_data_loader.utils import bind_and_call_loader_func
 

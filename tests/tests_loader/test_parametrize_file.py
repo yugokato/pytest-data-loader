@@ -1,5 +1,6 @@
 import json
 
+import pytest
 from pytest import FixtureRequest
 
 from pytest_data_loader import parametrize
@@ -61,6 +62,18 @@ def test_parametrize_text_file_with_process_func(request: FixtureRequest, data: 
     assert isinstance(data, str)
     idx = get_parametrized_test_idx(request, "data")
     assert data == f"# line{idx}"
+
+
+@parametrize("data", PATH_TEXT_FILE, marker_func=lambda d: pytest.mark.foo if d.endswith("0") else None)
+def test_parametrize_text_file_with_marker_func(request: FixtureRequest, data: str) -> None:
+    """Test @parametrize loder with the marker_func option using text file"""
+    assert isinstance(data, str)
+    idx = get_parametrized_test_idx(request, "data")
+    marker = request.node.get_closest_marker("foo")
+    if idx == 0:
+        assert marker
+    else:
+        assert marker is None
 
 
 @parametrize("data", PATH_TEXT_FILE, id_func=lambda d: repr("#" + d))
@@ -128,6 +141,18 @@ def test_parametrize_json_with_process_func(request: FixtureRequest, data: str) 
     assert data == f"key{idx}"
 
 
+@parametrize("data", PATH_JSON_FILE_OBJECT, marker_func=lambda d: pytest.mark.foo if d[0].endswith("0") else None)
+def test_parametrize_json_with_marker_func(request: FixtureRequest, data: tuple[str, str]) -> None:
+    """Test @parametrize loder with the marker_func option using JSON file"""
+    assert isinstance(data, tuple)
+    idx = get_parametrized_test_idx(request, "data")
+    marker = request.node.get_closest_marker("foo")
+    if idx == 0:
+        assert marker
+    else:
+        assert marker is None
+
+
 @parametrize("data", PATH_JSON_FILE_OBJECT, id_func=lambda d: repr(d[0]))
 def test_parametrize_json_with_id_func(request: FixtureRequest, data: tuple[str, str]) -> None:
     """Test @parametrize loder with the id_func using JSON file"""
@@ -165,6 +190,17 @@ def test_parametrize_binary_file_with_id_func(request: FixtureRequest, data: byt
     # Pytest internally applies repr() for the ID, which double escapes the ID value the plugin specifies for bytes.
     # For testing purpose, we adjust the nodeid value pytest holds to match with what we specified
     assert request.node.nodeid.encode("utf-8").decode("unicode_escape").endswith(f"[{data[:5]!r}]")
+
+
+@parametrize(
+    "data",
+    PATH_JPEG_FILE,
+    parametrizer_func=lambda d: [d],  # single param
+    marker_func=lambda _: pytest.mark.foo,
+)
+def test_parametrize_binary_file_with_marker_func(request: FixtureRequest, data: bytes) -> None:
+    """Test @parametrize loder with the marker_func using binary file"""
+    assert request.node.get_closest_marker("foo")
 
 
 def _truncate_binary(data: bytes, length: int = 5) -> bytes:

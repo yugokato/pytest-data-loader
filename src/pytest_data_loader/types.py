@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Collection, Iterable
 from dataclasses import dataclass
 from enum import auto
 from pathlib import Path
 from typing import Any, Protocol, TypeAlias, TypeVar, runtime_checkable
+
+from pytest import Mark, MarkDecorator
 
 from pytest_data_loader.compat import StrEnum
 from pytest_data_loader.constants import ROOT_DIR
@@ -86,10 +88,11 @@ class LazyLoadedData(LazyLoadedDataABC):
 class LazyLoadedPartData(LazyLoadedDataABC):
     idx: int
     offset: int | None = None
+    _marks: MarkDecorator | Collection[MarkDecorator | Mark] | None = None
     _id: Any = None
 
     def __repr__(self) -> str:
-        return self._id or f"{self.file_name}:part{self.idx + 1}"
+        return f"{self.file_name}:part{self.idx + 1}"
 
     def resolve(self) -> LoadedDataType:
         loaded_data = self.file_loader()
@@ -117,6 +120,7 @@ class DataLoaderLoadAttrs:
     parametrizer_func: Callable[..., Iterable[LoadedDataType]] | None = None
     filter_func: Callable[..., bool] | None = None
     process_func: Callable[..., LoadedDataType] | None = None
+    marker_func: Callable[..., MarkDecorator | Collection[MarkDecorator | Mark] | None] | None = None
     id_func: Callable[..., Any] | None = None
 
     def __post_init__(self) -> None:
@@ -173,6 +177,7 @@ class DataLoaderLoadAttrs:
             (self.parametrizer_func, "parametrizer_func"),
             (self.filter_func, "filter_func"),
             (self.process_func, "process_func"),
+            (self.marker_func, "marker_func"),
             (self.id_func, "id_func"),
         ]:
             if f and not callable(f):

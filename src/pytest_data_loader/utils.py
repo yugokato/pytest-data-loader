@@ -2,14 +2,14 @@ import inspect
 import keyword
 import os
 import re
-from collections.abc import Callable
+from collections.abc import Callable, Collection
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
 import pytest
 from _pytest.mark import ParameterSet
-from pytest import Config
+from pytest import Config, Mark, MarkDecorator
 
 from pytest_data_loader.types import (
     DataLoaderIniOption,
@@ -105,17 +105,35 @@ def generate_parameterset(
                     return loaded_data.file_name
         else:
             if isinstance(loaded_data, LazyLoadedPartData):
-                # When id_func is provided for the @parametrize loader, parameter ID is already generated when
+                # When id_func is provided for the @parametrize loader, parameter ID is generated when
                 # LazyLoadedPartData is created
-                return repr(loaded_data)
+                return loaded_data._id or repr(loaded_data)
             return bind_and_call_loader_func(load_attrs.id_func, loaded_data.file_path, loaded_data.data)
+
+    def generate_param_marks() -> MarkDecorator | Collection[MarkDecorator | Mark]:
+        default_markers = ()
+        if load_attrs.marker_func is None:
+            return default_markers
+        else:
+            assert load_attrs.loader.requires_parametrization
+            if isinstance(loaded_data, LazyLoadedPartData):
+                # When marker_func is provided for the @parametrize loader, marks are generated when
+                # LazyLoadedPartData is created
+                return loaded_data._marks or ()
+            else:
+                data: LoadedDataType | LazyLoadedData | LazyLoadedPartData | type[UnsupportedFuncArg]
+                if load_attrs.loader.requires_file_path:
+                    data = loaded_data.data
+                else:
+                    data = UnsupportedFuncArg
+                return bind_and_call_loader_func(load_attrs.marker_func, loaded_data.file_path, data) or default_markers
 
     args: tuple[Any, ...]
     if load_attrs.requires_file_path:
         args = (loaded_data.file_path, loaded_data.data)
     else:
         args = (loaded_data.data,)
-    return pytest.param(*args, id=generate_param_id())
+    return pytest.param(*args, marks=generate_param_marks(), id=generate_param_id())
 
 
 @lru_cache(maxsize=1)

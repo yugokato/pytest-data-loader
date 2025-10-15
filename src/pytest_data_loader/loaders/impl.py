@@ -243,9 +243,10 @@ class FileDataLoader(LoaderABC):
                         file_loader=partial(self._load_part_data_now, offset, close=False),
                         idx=i,
                         offset=offset,
+                        _marks=marks,
                         _id=param_id,
                     )
-                    for i, (offset, param_id) in enumerate(scan_results)
+                    for i, (offset, marks, param_id) in enumerate(scan_results)
                 )
             else:
                 # The entire file content needs to be loaded once during the collection phase
@@ -261,6 +262,9 @@ class FileDataLoader(LoaderABC):
                         file_path=self.path,
                         file_loader=file_loader,
                         idx=i,
+                        _marks=bind_and_call_loader_func(self.load_attrs.marker_func, self.path, data.data)
+                        if self.load_attrs.marker_func is not None
+                        else None,
                         _id=(
                             bind_and_call_loader_func(self.load_attrs.id_func, self.path, data.data)
                             if self.load_attrs.id_func is not None
@@ -274,16 +278,17 @@ class FileDataLoader(LoaderABC):
         else:
             return LazyLoadedData(file_path=self.path, file_loader=self._load_now)
 
-    def _scan_file(self) -> Generator[tuple[int, Any]]:
+    def _scan_file(self) -> Generator[tuple[int, Any, Any]]:
         """Scan file and returns offset of each line that should be loaded.
 
         NOTE: The following loader functions will be applied to each line as part of the scan
         - filter_func
+        - marker_func
         - id_func
         """
         assert self.is_streamable
-        results: list[tuple[int, Any]] = []
-        buffer: list[tuple[int, Any]] = []
+        results = []
+        buffer = []
 
         with open(self.path, encoding="utf-8") as f:
             while True:
@@ -297,22 +302,23 @@ class FileDataLoader(LoaderABC):
                 if not self.load_attrs.filter_func or bind_and_call_loader_func(
                     self.load_attrs.filter_func, self.path, line
                 ):
+                    param_id = marks = None
                     if self.load_attrs.id_func is not None:
                         param_id = bind_and_call_loader_func(self.load_attrs.id_func, self.path, line)
-                    else:
-                        param_id = None
+                    if self.load_attrs.marker_func is not None:
+                        marks = bind_and_call_loader_func(self.load_attrs.marker_func, self.path, line)
                     if self.strip_trailing_whitespace:
                         if line.rstrip() == "":
                             # whitespace-only line
-                            buffer.append((pos, param_id))
+                            buffer.append((pos, marks, param_id))
                         else:
                             # flush previous whitespace lines as they weren't trailing
                             if buffer:
                                 results.extend(buffer)
                                 buffer.clear()
-                            results.append((pos, param_id))
+                            results.append((pos, marks, param_id))
                     else:
-                        results.append((pos, param_id))
+                        results.append((pos, marks, param_id))
 
         yield from results
 

@@ -13,7 +13,7 @@ PATH_JSON_FILE_SCALAR = "json_scalar.json"
 PATH_JSON_FILE_ARRAY = "json_array.json"
 PATH_JSON_FILE_OBJECT = "json_object.json"
 PATH_JSON_FILE_NESTED_OBJECT = "json_nested_object.json"
-PATH_JPEG_FILE = str(Path(PATH_IMAGE_DIR, "image1.jpg"))
+PATH_JPEG_FILE = str(Path(PATH_IMAGE_DIR, "image.jpg"))
 
 
 def get_parametrized_test_idx(request: FixtureRequest, arg_name: str) -> int:
