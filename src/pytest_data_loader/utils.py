@@ -106,7 +106,7 @@ def generate_parameterset(
             if isinstance(loaded_data, LazyLoadedPartData):
                 # When id_func is provided for the @parametrize loader, parameter ID is generated when
                 # LazyLoadedPartData is created
-                return loaded_data._id or repr(loaded_data)
+                return loaded_data.meta["id"] or repr(loaded_data)
             return load_attrs.id_func(loaded_data.file_path, loaded_data.data)
 
     def generate_param_marks() -> MarkDecorator | Collection[MarkDecorator | Mark]:
@@ -118,7 +118,7 @@ def generate_parameterset(
             if isinstance(loaded_data, LazyLoadedPartData):
                 # When marker_func is provided for the @parametrize loader, marks are generated when
                 # LazyLoadedPartData is created
-                marks = loaded_data._marks
+                marks = loaded_data.meta["marks"]
             else:
                 func_args: tuple[Any, ...]
                 if load_attrs.loader.requires_file_path:
@@ -133,7 +133,11 @@ def generate_parameterset(
         args = (loaded_data.file_path, loaded_data.data)
     else:
         args = (loaded_data.data,)
-    return pytest.param(*args, marks=generate_param_marks(), id=generate_param_id())
+    try:
+        return pytest.param(*args, marks=generate_param_marks(), id=generate_param_id())
+    finally:
+        if isinstance(loaded_data, LazyLoadedPartData):
+            loaded_data.meta.clear()
 
 
 def validate_loader_func_args_and_normalize(

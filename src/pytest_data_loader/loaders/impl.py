@@ -244,8 +244,7 @@ class FileDataLoader(LoaderABC):
                         file_loader=partial(self._load_part_data_now, offset, close=False),
                         idx=i,
                         offset=offset,
-                        _marks=marks,
-                        _id=param_id,
+                        meta=dict(marks=marks, id=param_id),
                     )
                     for i, (offset, marks, param_id) in enumerate(scan_results)
                 )
@@ -263,10 +262,12 @@ class FileDataLoader(LoaderABC):
                         file_path=self.path,
                         file_loader=file_loader,
                         idx=i,
-                        _marks=self.load_attrs.marker_func(self.path, data.data)
-                        if self.load_attrs.marker_func
-                        else None,
-                        _id=self.load_attrs.id_func(self.path, data.data) if self.load_attrs.id_func else None,
+                        meta=dict(
+                            marks=self.load_attrs.marker_func(self.path, data.data)
+                            if self.load_attrs.marker_func
+                            else None,
+                            id=self.load_attrs.id_func(self.path, data.data) if self.load_attrs.id_func else None,
+                        ),
                         # Add the file loader to the cache when the part data is resolved
                         post_load_hook=partial(self._cached_loader_functions.add, file_loader),
                     )
