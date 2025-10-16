@@ -99,7 +99,7 @@ class LazyLoadedPartData(LazyLoadedDataABC):
         if self.post_load_hook:
             self.post_load_hook()
         if self.offset is None:
-            assert isinstance(loaded_data, tuple), type(loaded_data)
+            assert isinstance(loaded_data, list), type(loaded_data)
             part_data = loaded_data[self.idx]
         else:
             part_data = loaded_data
