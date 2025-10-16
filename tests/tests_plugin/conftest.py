@@ -21,6 +21,7 @@ if sys.platform == "win32":
     NEW_LINE = "\r\n"
 else:
     NEW_LINE = "\n"
+TRAILING_WHITESPACE = "  \t  "
 
 
 @pytest.fixture(params=[load, parametrize, parametrize_dir])
@@ -107,7 +108,7 @@ def file_extension(request: SubRequest) -> str:
 def file_content(request: SubRequest, file_extension: str) -> str | bytes:
     """File content for the file extension requested for the current test"""
     ext_content_map: dict[str, str | bytes] = {
-        ".txt": f"line1{NEW_LINE}line2{NEW_LINE}line3{NEW_LINE}",
+        ".txt": f"line1{NEW_LINE}line2{NEW_LINE}line3{TRAILING_WHITESPACE}{NEW_LINE}",
         ".json": json.dumps({"key1": "val1", "key2": "val2", "key3": "val3"}) + NEW_LINE,
         ".png": b"",  # will be filled when requested
     }
@@ -155,7 +156,7 @@ def test_context(
                 if strip_trailing_whitespace:
                     num_expected_tests = len(file_content.rstrip().splitlines())
                 else:
-                    num_expected_tests = len(file_content.splitlines())
+                    num_expected_tests = len(file_content.rstrip("\r\n").splitlines())
             elif file_extension == ".png":
                 num_expected_tests = 1
             else:
