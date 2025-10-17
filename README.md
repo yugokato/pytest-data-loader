@@ -31,7 +31,7 @@ def test_example(data):
     """
     Loads and injects data from data/example.json as the "data" fixture.
     
-    example.json: {"foo": 1, "bar": 2}
+    example.json: '{"foo": 1, "bar": 2}'
     """
     assert "foo" in data
 ```
@@ -85,7 +85,7 @@ from pytest_data_loader import load
 @load("data", "data1.json")
 def test_something1(data):
     """
-    data1.json: {"foo": 1, "bar": 2}
+    data1.json: '{"foo": 1, "bar": 2}'
     """
     assert data == {"foo": 1, "bar": 2}
 
@@ -93,7 +93,7 @@ def test_something1(data):
 @load(("file_path", "data"), "data2.txt")
 def test_something2(file_path, data):
     """
-    data2.txt: line1\nline2\nline3
+    data2.txt: "line1\nline2\nline3"
     """
     assert file_path.name == "data2.txt"
     assert data == "line1\nline2\nline3"
@@ -132,7 +132,7 @@ from pytest_data_loader import parametrize
 @parametrize("data", "data1.json")
 def test_something1(data):
     """
-    data1.json: {"foo": 1, "bar": 2}
+    data1.json: '{"foo": 1, "bar": 2}'
     """
     assert data in [("foo", 1), ("bar", 2)]
 
@@ -140,7 +140,7 @@ def test_something1(data):
 @parametrize(("file_path", "data"), "data2.txt")
 def test_something2(file_path, data):
     """
-    data2.txt: line1\nline2\nline3
+    data2.txt: "line1\nline2\nline3"
     """
     assert file_path.name == "data2.txt"
     assert data in ["line1", "line2", "line3"]
@@ -228,22 +228,69 @@ option on the loader.
 
 
 
+## File Reader
+
+You can specify a file reader the plugin should use when reading the file data. Here is an example of loading a CSV 
+file with CSV readers: 
+
+
+```python
+import csv
+
+from pytest_data_loader import load, parametrize
+
+
+# data.csv: "H1,H2,H3\nC1-1,C1-2,C1-3\nC2-1,C2-2,C2-3"
+
+@load("data", "data.csv", file_reader=csv.reader, encoding="utf-8-sig", newline="")
+def test_something1(data):
+    """Load CSV file with csv.reader reader"""
+    for row in data:
+        assert isinstance(row, list)
+
+
+@parametrize("data", "data.csv", file_reader=csv.DictReader, encoding="utf-8-sig", newline="")
+def test_something2(data):
+    """Load CSV file with csv.DictReader reader"""
+    assert isinstance(data, dict)
+```
+Here are some of the common readers you could use:
+- .json: `json.load` (NOTE: The plugin automatically applies this file reader for `.json` files by default)
+- .csv: `csv.reader`, `csv.DictReader`
+- .yml: `yaml.safe_load`, `yaml.safe_load_all` (requires `PyYAML` library)
+- .xml: `xml.etree.ElementTree.parse` (with `onload_func=lambda tree: tree.getroot()` if needed)
+- .toml: `tomllib.load` (or `tomli.load` from `tomli` library for Python <3.11)
+- .ini: `configparser.ConfigParser().read_file`  
+(NOTE: The test function will receive `None` as a data fixture if you specify `read_file` since it does not return anything. 
+You can explicitly return the `ConfigParser` object and pass it to the fixture if desired.  
+e.g. `file_reader=lambda f: (parser := ConfigParser(), parser.read_file(f))[0]`)
+
+
+> [!TIP]
+> - A file reader must take one argument (a file-like object)
+> - If you need to pass options to the file reader, use `lambda` function or regular a function.  
+> eg. `file_reader=lambda f: csv.reader(f, delimiter=";")`
+
+
 ## Loader Options
 
 Each loader supports different optional parameters you can use to change how your data is loaded.
 ### @load
 - `lazy_loading`: Enable or disable lazy loading
+- `file_reader`: A file reader the plugin should use to read the file data
 - `onload_func`: A function to transform or preprocess loaded data before passing it to the test function
 - `id`: The parameter ID for the loaded data. The file name is used if not specified
 - `**read_options`: File read options the plugin passes to `open()`. Supports only `mode`, `encoding`, and `newline` 
 options
 
 > [!NOTE]
-> `onload_func` must take either one (data) or two (file path, data) arguments
+> `onload_func` must take either one (data) or two (file path, data) arguments. When `file_reader` is provided, the data 
+is the reader object itself.
 
 
 ### @parametrize
 - `lazy_loading`: Enable or disable lazy loading
+- `file_reader`: A file reader the plugin should use to read the file data
 - `onload_func`: A function to adjust the shape of the loaded data before splitting into parts
 - `parametrizer_func`: A function to customize how the loaded data should be split
 - `filter_func`: A function to filter the split data parts. Only matching parts are included as test parameters
@@ -255,21 +302,23 @@ options
 
 
 > [!NOTE]
-> Each loader function must take either one (data) or two (file path, data) arguments
+> Each loader function must take either one (data) or two (file path, data) arguments. When `file_reader` is provided, 
+the data is the reader object itself
 
 
 ### @parametrize_dir
+- `lazy_loading`: Enable or disable lazy loading
+- `file_reader_func`: A function to specify file readers to matching file paths
 - `filter_func`: A function to filter file paths. Only the contents of matching file paths are included as the test 
 parameters
-- `lazy_loading`: Enable or disable lazy loading
 - `process_func`: A function to adjust the shape of each loaded file's data before passing it to the test function
 - `marker_func`: A function to apply Pytest marks to matching file paths
-- `read_func`: A function to specify file read options the plugin passes to `open()` to matching file paths . Supports 
-only `mode`, `encoding`, and `newline` options. It must return these options as a dictionary
+- `read_option_func`: A function to specify file read options the plugin passes to `open()` to matching file paths. 
+Supports only `mode`, `encoding`, and `newline` options. It must return these options as a dictionary
 
 > [!NOTE]
 > - `process_func` must take either one (data) or two (file path, data) arguments
-> - `filter_func`, `marker_func`, and `read_func` must take only one argument (file path)
+> - `file_reader_func`, `filter_func`, `marker_func`, and `read_option_func` must take only one argument (file path)
 
 
 

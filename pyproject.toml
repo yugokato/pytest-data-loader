@@ -31,7 +31,6 @@ dependencies = [
     "pytest>=7.0.0,<9",
     "pluggy>=1.2.0",
     'typing_extensions>=4.1.0; python_version < "3.11"'
-
 ]
 dynamic = ["version"]
 
@@ -44,7 +43,9 @@ lint = [
 test = [
     "pytest-mock>=3.0.0,<4",
     "pytest-smoke",
-    "pytest-xdist[psutil]>=2.3.0,<4"
+    "pytest-xdist[psutil]>=2.3.0,<4",
+    "pyyaml>=6.0.0",
+    'tomli>=2.3.0; python_version < "3.11"',
 ]
 dev = [
     "tox>=4.0.0,<5",
@@ -106,6 +107,7 @@ mypy_path = [
     "src"
 ]
 follow_imports = "skip"
+follow_untyped_imports = true
 check_untyped_defs = true
 disallow_any_generics = true
 disallow_untyped_defs = true

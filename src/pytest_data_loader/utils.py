@@ -13,6 +13,7 @@ from _pytest.mark import ParameterSet
 from pytest import Config, Mark, MarkDecorator
 
 from pytest_data_loader.types import (
+    DataLoaderFunctionType,
     DataLoaderIniOption,
     DataLoaderLoadAttrs,
     LazyLoadedData,
@@ -141,26 +142,32 @@ def generate_parameterset(
 
 
 def validate_loader_func_args_and_normalize(
-    loader_func: Callable[..., Any], with_file_path_only: bool = False
+    loader_func: Callable[..., Any], func_type: DataLoaderFunctionType | None = None, with_file_path_only: bool = False
 ) -> Callable[..., Any]:
     """Validates the loader function definition and returns a normalized function that can take 2 arguments but call
     the original function it with the right argument(s)
 
     :param loader_func: Loader function
+    :parma func_type: Loader function type
     :param with_file_path_only: The loader function must take only file path
     """
-    sig = inspect.signature(loader_func)
+    try:
+        sig = inspect.signature(loader_func)
+    except ValueError as e:
+        raise ValueError(f"Unsupported loader_func: {loader_func!r}") from e
+
     parameters = sig.parameters
     len_func_args = len(parameters)
 
     max_allowed_args = 1 if with_file_path_only else 2
+    err = None
     if not 0 < len_func_args < max_allowed_args + 1:
-        raise TypeError(
-            f"Detected invalid loader function definition. It must take up to {max_allowed_args} arguments. "
-            f"Got {len_func_args}"
-        )
-    if not all(p.kind == Parameter.POSITIONAL_OR_KEYWORD for p in parameters.values()):
-        raise TypeError("Detected invalid loader function definition. Only positional arguments are allowed")
+        err = f"It must take up to {max_allowed_args} arguments. Got {len_func_args}"
+    elif not all(p.kind == Parameter.POSITIONAL_OR_KEYWORD for p in parameters.values()):
+        err = "Only positional arguments are allowed"
+    if err:
+        f_type = f"{func_type} " if func_type else ""
+        raise TypeError(f"Detected invalid {f_type}loader function definition. {err}")
 
     if len_func_args == 2:
         return lambda file_path, data: loader_func(file_path, data)

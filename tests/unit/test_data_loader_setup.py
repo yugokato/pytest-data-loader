@@ -7,6 +7,8 @@ from pytest_data_loader import load
 from pytest_data_loader.constants import PYTEST_DATA_LOADER_ATTR
 from pytest_data_loader.types import DataLoaderLoadAttrs
 
+pytestmark = pytest.mark.unittest
+
 
 @pytest.mark.parametrize("fixture_names", ["data", "file_path, data", ("file_path", "data")])
 def test_data_loader_setup(fixture_names: Any) -> None:

@@ -7,6 +7,8 @@ from pytest_data_loader.loaders.impl import DirectoryDataLoader
 from pytest_data_loader.types import DataLoaderLoadAttrs, LazyLoadedData, LoadedData
 from tests.tests_loader.helper import ABS_PATH_LOADER_DIR, PATH_EMPTY_DIR, PATH_SOME_DIR
 
+pytestmark = pytest.mark.unittest
+
 
 @pytest.mark.parametrize("relative_path", [PATH_SOME_DIR, PATH_EMPTY_DIR])
 @pytest.mark.parametrize("lazy_loading", [True, False])

@@ -15,6 +15,8 @@ from tests.tests_loader.helper import (
     get_parametrized_test_idx,
 )
 
+pytestmark = pytest.mark.loaders
+
 # NOTE:
 # - lazy_loading option is separately tested in another test using pytester
 # - This file covers 3 types of data types the plugin handles differently: text file, json file, and binary file

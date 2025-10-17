@@ -12,6 +12,9 @@ from tests.tests_loader.helper import (
     PATH_TEXT_FILE,
 )
 
+pytestmark = pytest.mark.unittest
+
+
 LOCAL_LOADER_DIR = Path(__file__).resolve().parent / DEFAULT_LOADER_DIR_NAME
 
 
@@ -24,7 +27,7 @@ def test_path_resolver_should_find_from_upper_dir(request: FixtureRequest) -> No
     resolved_path = resolve_relative_path(
         DEFAULT_LOADER_DIR_NAME, request.config.rootpath, Path(PATH_JSON_FILE_OBJECT), Path(__file__), is_file=True
     )
-    assert resolved_path.parent == ABS_PATH_LOADER_DIR
+    assert resolved_path.parent.parent.parent == ABS_PATH_LOADER_DIR
 
 
 def test_path_resolver_should_find_nearest_file(request: FixtureRequest) -> None:
@@ -36,7 +39,7 @@ def test_path_resolver_should_find_nearest_file(request: FixtureRequest) -> None
     resolved_path = resolve_relative_path(
         DEFAULT_LOADER_DIR_NAME, request.config.rootpath, Path(PATH_TEXT_FILE), Path(__file__), is_file=True
     )
-    assert resolved_path.parent == LOCAL_LOADER_DIR
+    assert resolved_path.parent.parent == LOCAL_LOADER_DIR
 
 
 @pytest.mark.parametrize("is_file", [True, False])

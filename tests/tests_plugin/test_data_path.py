@@ -9,6 +9,8 @@ from pytest_data_loader.constants import ROOT_DIR
 from pytest_data_loader.types import DataLoader
 from tests.tests_plugin.helper import TestContext, create_test_file_in_loader_dir, run_pytest_with_context
 
+pytestmark = pytest.mark.plugin
+
 
 @pytest.mark.parametrize("collect_only", [True, False])
 @pytest.mark.parametrize("value_type", [str, Path])

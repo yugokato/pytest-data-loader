@@ -7,6 +7,7 @@ import pytest
 from _pytest.fixtures import SubRequest
 from pytest import Config, Metafunc, Parser
 
+from pytest_data_loader import parametrize
 from pytest_data_loader.constants import DEFAULT_LOADER_DIR_NAME, PYTEST_DATA_LOADER_ATTR
 from pytest_data_loader.loaders.impl import FileDataLoader, data_loader_factory
 from pytest_data_loader.types import (
@@ -75,7 +76,7 @@ def pytest_generate_tests(metafunc: Metafunc) -> None:
             data_loader = data_loader_factory(
                 test_data_path, load_attrs, strip_trailing_whitespace=strip_trailing_whitespace
             )
-            if isinstance(data_loader, FileDataLoader):
+            if load_attrs.loader == parametrize and isinstance(data_loader, FileDataLoader):
                 # Keep file loaders per module for clean up
                 data_loader_cache: set[FileDataLoader] | None
                 if data_loader_cache := getattr(metafunc.module, PYTEST_DATA_LOADER_ATTR, None):

@@ -1,6 +1,6 @@
 from collections.abc import Callable, Collection, Iterable
 from pathlib import Path
-from typing import Any, cast
+from typing import Any, TypeVar, cast
 
 from pytest import Mark, MarkDecorator
 
@@ -12,13 +12,28 @@ from pytest_data_loader.types import (
     DataLoaderPathType,
     FileReadOptions,
     HashableDict,
-    LoadedDataType,
     TestFunc,
 )
 
-from .impl import loader
+T = TypeVar("T", bound=Callable[..., Any])
 
 __all__ = ["load", "parametrize", "parametrize_dir"]
+
+
+def loader(path_type: DataLoaderPathType, /, *, parametrize: bool = False) -> Callable[[T], T]:
+    """Decorator to register a decorated function as a data loader
+
+    :param path_type: A type of the relative path it allows. file or directory
+    :param parametrize: Whether the loader needs to perform parametrization or not
+    """
+
+    def wrapper(loader_func: T) -> T:
+        loader_func.requires_file_path = DataLoaderPathType(path_type) == DataLoaderPathType.FILE  # type: ignore[attr-defined]
+        loader_func.requires_parametrization = parametrize is True  # type: ignore[attr-defined]
+        loader_func.should_split_data = bool(loader_func.requires_file_path and loader_func.requires_parametrization)  # type: ignore[attr-defined]
+        return loader_func
+
+    return wrapper
 
 
 @loader(DataLoaderPathType.FILE)
@@ -28,7 +43,8 @@ def load(
     /,
     *,
     lazy_loading: bool = True,
-    onload_func: Callable[..., LoadedDataType] | None = None,
+    file_reader: Callable[..., Iterable[Any] | object] | None = None,
+    onload_func: Callable[..., Any] | None = None,
     id: str | None = None,
     **read_options: Unpack[FileReadOptions],
 ) -> Callable[[TestFunc], TestFunc]:
@@ -42,6 +58,12 @@ def load(
                           closest data loader directory containing a matching file and loads the data from there.
     :param lazy_loading: If True, the plugin will defer the timing of file loading to the test setup phase. If False,
                          the data will be loaded during the test collection phase, which could cause a performance issue
+    :param file_reader: A file reader the plugin should use to read the file data.
+                        (e.g. csv.reader, csv.DictReader, yaml.safe_load, etc.)
+                        It must take a file-like object as the first argument. If the file_reader needs to take
+                        options, use lambda function instead.
+                        e.g. file_reader=lambda f: csv.reader(f, delimiter=';')
+                        NOTE: The test function will receive the reader object as is
     :param onload_func: A function to transform or preprocess loaded data before passing it to the test function.
                         NOTE: .json files will always be automatically parsed during the plugin-managed onload process
     :param id: Explicitly specify the parameter ID for the loaded data. Defaults to the file name.
@@ -49,15 +71,16 @@ def load(
                          encoding, and newline options.
 
     NOTE:
-        - onload_func loader function must take either one (data) or two (file path, data) arguments
+        - onload_func loader function must take either one (data) or two (file path, data) arguments. When file_reader
+          is provided, the data is the reader object itself
 
     Examples:
     >>> @load("data", "data.txt")
-    >>> def test_example(data: LoadedDataType):
+    >>> def test_example(data: str):
     >>>     assert data == "foo\\nbar"
     >>>
     >>> @load(("file_path", "data"), "data.json")
-    >>> def test_example2(file_path: Path, data: LoadedDataType):
+    >>> def test_example2(file_path: Path, data: dict[str, Any]):
     >>>     assert file_path.name == "data.json"
     >>>     assert data == {"key": "value"}
     """
@@ -66,6 +89,7 @@ def load(
         fixture_names,
         relative_path,
         lazy_loading=lazy_loading,
+        file_reader=file_reader,
         onload_func=onload_func,
         id_func=(lambda _: id) if id is not None else None,
         **read_options,
@@ -79,10 +103,11 @@ def parametrize(
     /,
     *,
     lazy_loading: bool = True,
-    onload_func: Callable[..., LoadedDataType] | None = None,
-    parametrizer_func: Callable[..., Iterable[LoadedDataType]] | None = None,
+    file_reader: Callable[..., Iterable[Any] | object] | None = None,
+    onload_func: Callable[..., Any] | None = None,
+    parametrizer_func: Callable[..., Iterable[Any]] | None = None,
     filter_func: Callable[..., bool] | None = None,
-    process_func: Callable[..., LoadedDataType] | None = None,
+    process_func: Callable[..., Any] | None = None,
     marker_func: Callable[..., MarkDecorator | Collection[MarkDecorator | Mark] | None] | None = None,
     id_func: Callable[..., Any] | None = None,
     **read_options: Unpack[FileReadOptions],
@@ -111,6 +136,11 @@ def parametrize(
                          If False, Pytest will receive the fully loaded data for each parameter during test collection
                          and retain it for the entire test session. This can lead to significant memory usage when
                          working with large files.
+    :param file_reader: A file reader the plugin should use to read the file data.
+                        (e.g. csv.reader, csv.DictReader, yaml.safe_load, etc.)
+                        It must take a file-like object as the first argument. If the file_reader needs to take
+                        options, use lambda function.
+                        e.g. file_reader=lambda f: csv.reader(f, delimiter=';')
     :param onload_func: A function to transform or preprocess loaded data before splitting into parts.
                         NOTE: .json files will always be automatically parsed during the plugin-managed onload process
     :param parametrizer_func: A function to determine how the loaded data should be split. If not provided, the plugin
@@ -131,15 +161,16 @@ def parametrize(
                          encoding, and newline options.
 
     NOTE:
-        - Each loader function must take either one (data) or two (file path, data) arguments
+        - Each loader function must take either one (data) or two (file path, data) arguments. When file_reader
+          is provided, the data is the reader object itself
 
     Examples:
     >>> @parametrize("data", "data.txt")
-    >>> def test_example(data: LoadedDataType):
+    >>> def test_example(data: list[str]):
     >>>     assert data in ["foo", "bar"]
     >>>
     >>> @parametrize(("file_path", "data"), "data.json")
-    >>> def test_example2(file_path: Path, data: LoadedDataType):
+    >>> def test_example2(file_path: Path, data: list[tuple[str, str]]):
     >>>     assert file_path.name == "data.json"
     >>>     assert data in [("key1": "value1"), ("key2": "value2")]
     >>>
@@ -149,6 +180,7 @@ def parametrize(
         fixture_names,
         relative_path,
         lazy_loading=lazy_loading,
+        file_reader=file_reader,
         onload_func=onload_func,
         parametrizer_func=parametrizer_func,
         filter_func=filter_func,
@@ -166,10 +198,11 @@ def parametrize_dir(
     /,
     *,
     lazy_loading: bool = True,
+    file_reader_func: Callable[[Path], Callable[..., Iterable[Any] | object]] | None = None,
     filter_func: Callable[[Path], bool] | None = None,
-    process_func: Callable[..., LoadedDataType] | None = None,
+    process_func: Callable[..., Any] | None = None,
     marker_func: Callable[[Path], MarkDecorator | Collection[MarkDecorator | Mark] | None] | None = None,
-    read_func: Callable[[Path], FileReadOptions | dict[str, Any]] | None = None,
+    read_option_func: Callable[[Path], FileReadOptions | dict[str, Any]] | None = None,
 ) -> Callable[[TestFunc], TestFunc]:
     """A file loader that dynamically parametrizes the decorated test function with the content of files stored in the
     specified directory.
@@ -182,27 +215,29 @@ def parametrize_dir(
                           the closest data loader directory containing a matching directory and loads files from there.
     :param lazy_loading: If True, the plugin will defer the timing of file loading to the test setup phase. If False,
                          the data will be loaded during the test collection phase, which could cause a performance issue
+    :param file_reader_func: A function to specify file readers to matching file paths.
     :param filter_func: A function to filter file paths. Only the contents of matching file paths are included as the
                         test parameters.
     :param process_func: A function to adjust the shape of each loaded file's data before passing it to the test
                          function.
                          NOTE: .json files will always be automatically parsed during the plugin-managed onload process
     :param marker_func: A function to apply Pytest markers to mathing file paths
-    :param read_func: A function to specify file read options the plugin passes to `open()` to matching file paths.
-                      Supports only mode, encoding, and newline options. It must return these options as a dictionary.
+    :param read_option_func: A function to specify file read options the plugin passes to `open()` to matching file
+                             paths. Supports only mode, encoding, and newline options. It must return these options as
+                             a dictionary.
 
     NOTE:
-        - filter_func, marker_func, and read_func must take only one argument (file path)
+        - file_reader_func, filter_func, marker_func, and read_option_func must take only one argument (file path)
         - process_func loader function must take either one (data) or two (file path, data) arguments
         - The plugin automatically asigns each file name to the parameter ID
 
     Examples:
     >>> @parametrize_dir("data", "data_dir")
-    >>> def test_example(data: LoadedDataType):
+    >>> def test_example(data: str):
     >>>     assert data in ["foo", "bar", "baz"]
     >>>
     >>> @parametrize_dir(("file_path", "data"), "data_dir")
-    >>> def test_example2(file_path: Path, data: LoadedDataType):
+    >>> def test_example2(file_path: Path, data: str):
     >>>     assert file_path.name in ["data1.txt", "data2.txt", "data3.txt"]
     >>>     assert data in ["foo", "bar", "baz"]
     """
@@ -211,10 +246,11 @@ def parametrize_dir(
         fixture_names,
         relative_path,
         lazy_loading=lazy_loading,
+        file_reader_func=file_reader_func,
         filter_func=filter_func,
         process_func=process_func,
         marker_func=marker_func,
-        read_func=read_func,
+        read_option_func=read_option_func,
     )
 
 
@@ -225,13 +261,15 @@ def _setup_data_loader(
     /,
     *,
     lazy_loading: bool = True,
-    onload_func: Callable[..., LoadedDataType] | None = None,
-    parametrizer_func: Callable[..., Iterable[LoadedDataType]] | None = None,
+    file_reader: Callable[..., Iterable[Any] | object] | None = None,
+    file_reader_func: Callable[..., Callable[..., Iterable[Any] | object]] | None = None,
+    onload_func: Callable[..., Any] | None = None,
+    parametrizer_func: Callable[..., Iterable[Any]] | None = None,
     filter_func: Callable[..., bool] | None = None,
-    process_func: Callable[..., LoadedDataType] | None = None,
+    process_func: Callable[..., Any] | None = None,
     id_func: Callable[..., Any] | None = None,
     marker_func: Callable[..., MarkDecorator | Collection[MarkDecorator | Mark]] | None = None,
-    read_func: Callable[[Path], FileReadOptions | dict[str, Any]] | None = None,
+    read_option_func: Callable[[Path], FileReadOptions | dict[str, Any]] | None = None,
     **read_options: Unpack[FileReadOptions],
 ) -> Callable[[TestFunc], TestFunc]:
     """Set up a test function and inject loder attributes that are used by pytest_generate_tests hook"""
@@ -253,13 +291,15 @@ def _setup_data_loader(
                 fixture_names=cast(tuple[str, ...], fixture_names),
                 relative_path=cast(Path, relative_path),
                 lazy_loading=lazy_loading,
+                file_reader=file_reader,
+                file_reader_func=file_reader_func,
                 onload_func=onload_func,
                 parametrizer_func=parametrizer_func,
                 filter_func=filter_func,
                 process_func=process_func,
                 marker_func=marker_func,
                 id_func=id_func,
-                read_func=read_func,
+                read_option_func=read_option_func,
                 read_options=HashableDict(read_options),
             ),
         )

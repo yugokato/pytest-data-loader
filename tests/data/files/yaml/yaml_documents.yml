@@ -1,0 +1,33 @@
+# 1. ConfigMap
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: app-config
+data:
+  APP_MODE: "production"
+  FEATURE_FLAG: "true"
+---
+# 2. Secret
+apiVersion: v1
+kind: Secret
+metadata:
+  name: app-secret
+type: Opaque
+data:
+  API_KEY: c2VjcmV0X2tleQ==  # base64 for "secret_key"
+---
+# 3. Pod
+apiVersion: v1
+kind: Pod
+metadata:
+  name: app-pod
+spec:
+  containers:
+    - name: app
+      image: busybox
+      command: ["sh", "-c", "echo $APP_MODE && echo $FEATURE_FLAG && echo $API_KEY && sleep 3600"]
+      envFrom:
+        - configMapRef:
+            name: app-config
+        - secretRef:
+            name: app-secret
