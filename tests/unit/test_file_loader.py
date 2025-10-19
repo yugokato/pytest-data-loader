@@ -97,7 +97,7 @@ def test_file_loader_cache(loader: DataLoader, relative_path: str) -> None:
             if file_loader.is_streamable:
                 # The file object should be cached
                 assert len(file_loader._cached_file_objects) == 1
-                assert abs_file_path in file_loader._cached_file_objects
+                assert (abs_file_path, file_loader.read_options) in file_loader._cached_file_objects
             else:
                 # The file loader function should be cached
                 assert lazy_data.file_loader in file_loader._cached_loader_functions

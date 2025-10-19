@@ -29,7 +29,9 @@ classifiers = [
 ]
 dependencies = [
     "pytest>=7.0.0,<9",
-    "pluggy>=1.2.0"
+    "pluggy>=1.2.0",
+    'typing_extensions>=4.1.0; python_version < "3.11"'
+
 ]
 dynamic = ["version"]
 

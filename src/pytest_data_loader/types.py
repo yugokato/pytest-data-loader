@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from collections.abc import Callable, Collection, Iterable
-from dataclasses import dataclass
+from collections.abc import Callable, Collection, Iterable, Mapping
+from dataclasses import dataclass, field
 from enum import auto
 from pathlib import Path
-from typing import Any, Protocol, TypeAlias, TypeVar, runtime_checkable
+from typing import Any, Literal, Protocol, TypeAlias, TypedDict, TypeVar, runtime_checkable
 
 from pytest import Mark, MarkDecorator
 
@@ -16,6 +16,26 @@ T = TypeVar("T")
 TestFunc = TypeVar("TestFunc", bound=Callable[..., Any])
 JsonType: TypeAlias = str | int | float | bool | None | list["JsonType"] | dict[str, "JsonType"]
 LoadedDataType: TypeAlias = JsonType | bytes | tuple[str, JsonType] | Iterable["LoadedDataType"]
+
+
+class HashableDict(dict[str, Any]):
+    """A hashable dictionary"""
+
+    def __hash__(self) -> int:  # type: ignore[override]
+        return hash(tuple((k, HashableDict.freeze(v)) for k, v in self.items()))
+
+    @staticmethod
+    def freeze(obj: Any) -> Any:
+        """Recursively convert an object to be immutable and hashable
+
+        :param obj: Any object
+        """
+        if isinstance(obj, HashableDict | Mapping):
+            return tuple((k, HashableDict.freeze(v)) for k, v in obj.items())
+        elif isinstance(obj, tuple | Collection) and not isinstance(obj, str | bytes):
+            return tuple(HashableDict.freeze(x) for x in obj)
+        else:
+            return obj
 
 
 class DataLoaderIniOption(StrEnum):
@@ -36,6 +56,16 @@ class DataLoader(Protocol):
 class DataLoaderPathType(StrEnum):
     FILE = auto()
     DIRECTORY = auto()
+
+
+class DataLoaderFunctionType(StrEnum):
+    ONLOAD_FUNC = auto()
+    PARAMETRIZER_FUNC = auto()
+    FILTER_FUNC = auto()
+    PROCESS_FUNC = auto()
+    MARKER_FUNC = auto()
+    ID_FUNC = auto()
+    READ_FUNC = auto()
 
 
 @dataclass(frozen=True, kw_only=True, slots=True)
@@ -115,18 +145,20 @@ class DataLoaderLoadAttrs:
     fixture_names: tuple[str, ...]
     relative_path: Path
     lazy_loading: bool = True
-    force_binary: bool = False
     onload_func: Callable[..., LoadedDataType] | None = None
     parametrizer_func: Callable[..., Iterable[LoadedDataType]] | None = None
     filter_func: Callable[..., bool] | None = None
     process_func: Callable[..., LoadedDataType] | None = None
     marker_func: Callable[..., MarkDecorator | Collection[MarkDecorator | Mark] | None] | None = None
     id_func: Callable[..., Any] | None = None
+    read_func: Callable[[Path], FileReadOptions | dict[str, Any]] | None = None
+    read_options: HashableDict = field(default_factory=HashableDict)
 
     def __post_init__(self) -> None:
         self._validate_fixture_names()
         self._validate_relative_path()
         self._validate_loader_func()
+        self._validate_read_options(self.read_options)
 
     @property
     def requires_file_path(self) -> bool:
@@ -176,20 +208,40 @@ class DataLoaderLoadAttrs:
         from pytest_data_loader.utils import validate_loader_func_args_and_normalize
 
         for f, name in [
-            (self.onload_func, "onload_func"),
-            (self.parametrizer_func, "parametrizer_func"),
-            (self.filter_func, "filter_func"),
-            (self.process_func, "process_func"),
-            (self.marker_func, "marker_func"),
-            (self.id_func, "id_func"),
+            (self.onload_func, DataLoaderFunctionType.ONLOAD_FUNC),
+            (self.parametrizer_func, DataLoaderFunctionType.PARAMETRIZER_FUNC),
+            (self.filter_func, DataLoaderFunctionType.FILTER_FUNC),
+            (self.process_func, DataLoaderFunctionType.PROCESS_FUNC),
+            (self.marker_func, DataLoaderFunctionType.MARKER_FUNC),
+            (self.id_func, DataLoaderFunctionType.ID_FUNC),
+            (self.read_func, DataLoaderFunctionType.READ_FUNC),
         ]:
             if f is not None:
                 if not callable(f):
                     raise TypeError(f"{name}: Must be a callable, not {type(f).__name__!r}")
-                with_file_path_only = self.loader == parametrize_dir and name in ("filter_func", "marker_func")
+                with_file_path_only = self.loader == parametrize_dir and name in (
+                    DataLoaderFunctionType.FILTER_FUNC,
+                    DataLoaderFunctionType.MARKER_FUNC,
+                    DataLoaderFunctionType.READ_FUNC,
+                )
                 self._modify_value(
                     name, validate_loader_func_args_and_normalize(f, with_file_path_only=with_file_path_only)
                 )
 
+    @staticmethod
+    def _validate_read_options(read_options: FileReadOptions | dict[str, Any]) -> None:
+        if not isinstance(read_options, dict):
+            raise TypeError(f"read_options: Expected a dict, but got {type(read_options).__name__!r}")
+        if unsupported := set(read_options.keys()).difference(set(FileReadOptions.__annotations__.keys())):
+            raise ValueError(f"Unsupported read options: {', '.join(unsupported)}")
+        if (mode := read_options.get("mode")) and mode not in ("r", "rt", "rb"):
+            raise ValueError(f"read_options: Invalid read mode: {mode}")
+
     def _modify_value(self, field_name: str, new_value: Any) -> None:
         object.__setattr__(self, field_name, new_value)
+
+
+class FileReadOptions(TypedDict, total=False):
+    mode: Literal["r", "rt", "rb"]
+    encoding: str
+    newline: Literal[None, "", "\n", "\r", "\r\n"]

@@ -8,7 +8,7 @@ from typing import Any
 from _pytest.pytester import Pytester
 from pytest import RunResult
 
-from pytest_data_loader import load, parametrize
+from pytest_data_loader import load, parametrize, parametrize_dir
 from pytest_data_loader.types import DataLoader
 from pytest_data_loader.utils import is_valid_fixture_name
 
@@ -92,6 +92,7 @@ def run_pytest_with_context(
     marker_func_def: str | None = None,
     id_: str | None = None,
     id_func_def: str | None = None,
+    read_func_def: str | None = None,
     collect_only: bool = False,
     check_test_id: bool = False,
 ) -> RunResult:
@@ -124,6 +125,9 @@ def run_pytest_with_context(
     if id_func_def:
         assert loader == parametrize
         loader_options.append(f"id_func={id_func_def}")
+    if read_func_def:
+        assert loader == parametrize_dir
+        loader_options.append(f"read_func={read_func_def}")
     loader_options_str = ", " + ", ".join(loader_options) if loader_options else ""
 
     # Make sure to apply repr() on the string value to handle window's path correctly

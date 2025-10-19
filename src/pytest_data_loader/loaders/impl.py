@@ -14,6 +14,7 @@ from pytest_data_loader.types import (
     DataLoader,
     DataLoaderLoadAttrs,
     DataLoaderPathType,
+    HashableDict,
     LazyLoadedData,
     LazyLoadedPartData,
     LoadedData,
@@ -83,12 +84,10 @@ class FileDataLoader(LoaderABC):
     @wraps(LoaderABC.__init__)  # type: ignore[misc]
     def __init__(self, *args: Any, **kwargs: Any):
         super().__init__(*args, **kwargs)
-        if self.load_attrs.force_binary and self.loader.requires_file_path and self.loader.requires_parametrization:
-            raise ValueError("Parametrization of file data does not support force_binary=True")
-
+        self.read_options = self.load_attrs.read_options
         self._is_streamable = all(
             [
-                not self.load_attrs.force_binary,
+                self.read_mode != "rb",
                 self.path.suffix in FileDataLoader.STREAMABLE_FILE_TYPES,
                 not any([self.load_attrs.onload_func, self.load_attrs.parametrizer_func]),
             ]
@@ -96,9 +95,23 @@ class FileDataLoader(LoaderABC):
         self._should_split = self.loader.requires_file_path and self.loader.requires_parametrization
         # caches used by the @parametrize loader.
         # NOTE: In Pytest, these cache data will be cleared as a module teardown managed by the plugin
-        self._cached_file_objects: dict[Path, TextIOWrapper] = {}
+        self._cached_file_objects: dict[tuple[Path, HashableDict], TextIOWrapper] = {}
         self._cached_loader_functions: set[Callable[..., Any]] = set()
         weakref.finalize(self, self.clear_cache)
+
+    @property
+    def read_mode(self) -> str:
+        if mode := self.read_options.get("mode"):
+            return mode
+        elif any(x in self.read_options for x in ("encoding", "newline")):
+            return "r"
+        else:
+            # This will be identified on the first file read
+            return "auto"
+
+    @read_mode.setter
+    def read_mode(self, mode: str) -> None:
+        self.read_options["mode"] = mode
 
     @property
     def is_streamable(self) -> bool:
@@ -214,8 +227,7 @@ class FileDataLoader(LoaderABC):
         if not self.is_streamable:
             raise NotImplementedError("Part data loading is not supported for this type of file")
 
-        cached_f = self._cached_file_objects.get(self.path)
-        f = cached_f or open(self.path, encoding="utf-8")
+        f = self._get_file_obj()
         try:
             f.seek(offset)
             line = cast(LoadedDataType, f.readline().rstrip("\r\n"))
@@ -223,11 +235,14 @@ class FileDataLoader(LoaderABC):
                 line = self.load_attrs.process_func(self.path, line)
             return LoadedData(file_path=self.path, data=line)
         finally:
+            has_cache = (self.path, self.read_options) in self._cached_file_objects
             if close:
                 f.close()
+                if has_cache:
+                    del self._cached_file_objects[(self.path, self.read_options)]
             else:
-                if cached_f is None:
-                    self._cached_file_objects[self.path] = f
+                if not has_cache:
+                    self._cached_file_objects[(self.path, self.read_options)] = f
 
     def _load_lazily(self) -> LazyLoadedData | Iterable[LazyLoadedPartData]:
         """Lazily load data. The actual data will be resolved when needed in a test"""
@@ -237,7 +252,7 @@ class FileDataLoader(LoaderABC):
             # loading the entire file at all. Otherwise, we fall back to the other mode
             if self.is_streamable:
                 # Each line can be accessible with the offset without loading the entire file
-                scan_results = self._scan_file()
+                scan_results = self._scan_text_file()
                 return [
                     LazyLoadedPartData(
                         file_path=self.path,
@@ -276,7 +291,13 @@ class FileDataLoader(LoaderABC):
         else:
             return LazyLoadedData(file_path=self.path, file_loader=self._load_now)
 
-    def _scan_file(self) -> Generator[tuple[int, Any, Any]]:
+    def _get_file_obj(self) -> TextIOWrapper:
+        """Get file object from cache or open a new one"""
+        f = self._cached_file_objects.get((self.path, self.read_options), open(self.path, **self.read_options))
+        f.seek(0)
+        return f
+
+    def _scan_text_file(self) -> Generator[tuple[int, Any, Any]]:
         """Scan file and returns offset of each line that should be loaded.
 
         NOTE: The following loader functions will be applied to each line as part of the scan
@@ -288,7 +309,7 @@ class FileDataLoader(LoaderABC):
         results = []
         buffer = []
 
-        with open(self.path, encoding="utf-8") as f:
+        with open(self.path, **self.read_options) as f:
             while True:
                 pos = f.tell()
                 line = f.readline()
@@ -322,15 +343,20 @@ class FileDataLoader(LoaderABC):
         """Read file data"""
         assert self.path.is_absolute()
         data: str | bytes
-        if self.load_attrs.force_binary:
-            data = self.path.read_bytes()
-        else:
-            # Detect whether the file is ascii or binary
+        if self.read_mode == "auto":
             try:
                 # Without specifying encoding, this logic fails for binary data on windows
-                data = self.path.read_text(encoding="utf-8")
+                with open(self.path, encoding="utf-8", **self.read_options) as f:
+                    data = f.read()
             except UnicodeDecodeError:
-                data = self.path.read_bytes()
+                read_mode = "rb"
+                with open(self.path, read_mode, **self.read_options) as f:
+                    data = f.read()
+                # set the determined read mode
+                self.read_mode = read_mode
+        else:
+            with open(self.path, **self.read_options) as f:
+                data = f.read()
         return data
 
 
@@ -353,6 +379,10 @@ class DirectoryDataLoader(LoaderABC):
                     file_loader = FileDataLoader(
                         file_path, self.load_attrs, strip_trailing_whitespace=self.strip_trailing_whitespace
                     )
+                    if self.load_attrs.read_func:
+                        read_options = self.load_attrs.read_func(file_path) or HashableDict()
+                        self.load_attrs._validate_read_options(read_options)
+                        file_loader.read_options = read_options
                     loaded_data = file_loader.load()
                     assert isinstance(loaded_data, LoadedData | LazyLoadedData), type(loaded_data)
                     loaded_files.append(loaded_data)
