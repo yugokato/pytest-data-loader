@@ -4,8 +4,17 @@ from typing import Any, cast
 
 from pytest import Mark, MarkDecorator
 
+from pytest_data_loader.compat import Unpack
 from pytest_data_loader.constants import PYTEST_DATA_LOADER_ATTR
-from pytest_data_loader.types import DataLoader, DataLoaderLoadAttrs, DataLoaderPathType, LoadedDataType, TestFunc
+from pytest_data_loader.types import (
+    DataLoader,
+    DataLoaderLoadAttrs,
+    DataLoaderPathType,
+    FileReadOptions,
+    HashableDict,
+    LoadedDataType,
+    TestFunc,
+)
 
 from .impl import loader
 
@@ -19,9 +28,9 @@ def load(
     /,
     *,
     lazy_loading: bool = True,
-    force_binary: bool = False,
     onload_func: Callable[..., LoadedDataType] | None = None,
     id: str | None = None,
+    **read_options: Unpack[FileReadOptions],
 ) -> Callable[[TestFunc], TestFunc]:
     """A file loader that loads the file content and passes it to the test function.
 
@@ -33,10 +42,11 @@ def load(
                           closest data loader directory containing a matching file and loads the data from there.
     :param lazy_loading: If True, the plugin will defer the timing of file loading to the test setup phase. If False,
                          the data will be loaded during the test collection phase, which could cause a performance issue
-    :param force_binary: If True, the file will be read in binary mode. Default is auto-detected based on file content.
     :param onload_func: A function to transform or preprocess loaded data before passing it to the test function.
                         NOTE: .json files will always be automatically parsed during the plugin-managed onload process
     :param id: Explicitly specify the parameter ID for the loaded data. Defaults to the file name.
+    :param read_options: File read options the plugin passes to `open()` when reading the file. Supports only mode,
+                         encoding, and newline options.
 
     NOTE:
         - onload_func loader function must take either one (data) or two (file path, data) arguments
@@ -56,9 +66,9 @@ def load(
         fixture_names,
         relative_path,
         lazy_loading=lazy_loading,
-        force_binary=force_binary,
         onload_func=onload_func,
         id_func=(lambda _: id) if id is not None else None,
+        **read_options,
     )
 
 
@@ -75,6 +85,7 @@ def parametrize(
     process_func: Callable[..., LoadedDataType] | None = None,
     marker_func: Callable[..., MarkDecorator | Collection[MarkDecorator | Mark] | None] | None = None,
     id_func: Callable[..., Any] | None = None,
+    **read_options: Unpack[FileReadOptions],
 ) -> Callable[[TestFunc], TestFunc]:
     """A file loader that dynamically parametrizes the decorated test function by splitting the loaded file content
     into logical parts.
@@ -116,6 +127,8 @@ def parametrize(
     :param marker_func: A function to apply Pytest markers to mathing part data
     :param id_func: A function to generate a parameter ID for each part data. Defaults to "<file_name>:part<number>"
                     when lazy loading, otherwise the part data itself is used.
+    :param read_options: File read options the plugin passes to `open()` when reading the file. Supports only mode,
+                         encoding, and newline options.
 
     NOTE:
         - Each loader function must take either one (data) or two (file path, data) arguments
@@ -136,12 +149,13 @@ def parametrize(
         fixture_names,
         relative_path,
         lazy_loading=lazy_loading,
-        filter_func=filter_func,
         onload_func=onload_func,
         parametrizer_func=parametrizer_func,
+        filter_func=filter_func,
         process_func=process_func,
         marker_func=marker_func,
         id_func=id_func,
+        **read_options,
     )
 
 
@@ -152,10 +166,10 @@ def parametrize_dir(
     /,
     *,
     lazy_loading: bool = True,
-    force_binary: bool = False,
     filter_func: Callable[[Path], bool] | None = None,
     process_func: Callable[..., LoadedDataType] | None = None,
     marker_func: Callable[[Path], MarkDecorator | Collection[MarkDecorator | Mark] | None] | None = None,
+    read_func: Callable[[Path], FileReadOptions | dict[str, Any]] | None = None,
 ) -> Callable[[TestFunc], TestFunc]:
     """A file loader that dynamically parametrizes the decorated test function with the content of files stored in the
     specified directory.
@@ -168,16 +182,17 @@ def parametrize_dir(
                           the closest data loader directory containing a matching directory and loads files from there.
     :param lazy_loading: If True, the plugin will defer the timing of file loading to the test setup phase. If False,
                          the data will be loaded during the test collection phase, which could cause a performance issue
-    :param force_binary: If True, each file will be read in binary mode. Default is auto-detected based on file content.
     :param filter_func: A function to filter file paths. Only the contents of matching file paths are included as the
                         test parameters.
     :param process_func: A function to adjust the shape of each loaded file's data before passing it to the test
                          function.
                          NOTE: .json files will always be automatically parsed during the plugin-managed onload process
     :param marker_func: A function to apply Pytest markers to mathing file paths
+    :param read_func: A function to specify file read options the plugin passes to `open()` to matching file paths.
+                      Supports only mode, encoding, and newline options. It must return these options as a dictionary.
 
     NOTE:
-        - filter_func and marker_func must take only one argument (file path)
+        - filter_func, marker_func, and read_func must take only one argument (file path)
         - process_func loader function must take either one (data) or two (file path, data) arguments
         - The plugin automatically asigns each file name to the parameter ID
 
@@ -196,10 +211,10 @@ def parametrize_dir(
         fixture_names,
         relative_path,
         lazy_loading=lazy_loading,
-        force_binary=force_binary,
         filter_func=filter_func,
         process_func=process_func,
         marker_func=marker_func,
+        read_func=read_func,
     )
 
 
@@ -210,13 +225,14 @@ def _setup_data_loader(
     /,
     *,
     lazy_loading: bool = True,
-    force_binary: bool = False,
     onload_func: Callable[..., LoadedDataType] | None = None,
     parametrizer_func: Callable[..., Iterable[LoadedDataType]] | None = None,
     filter_func: Callable[..., bool] | None = None,
     process_func: Callable[..., LoadedDataType] | None = None,
     id_func: Callable[..., Any] | None = None,
     marker_func: Callable[..., MarkDecorator | Collection[MarkDecorator | Mark]] | None = None,
+    read_func: Callable[[Path], FileReadOptions | dict[str, Any]] | None = None,
+    **read_options: Unpack[FileReadOptions],
 ) -> Callable[[TestFunc], TestFunc]:
     """Set up a test function and inject loder attributes that are used by pytest_generate_tests hook"""
 
@@ -237,13 +253,14 @@ def _setup_data_loader(
                 fixture_names=cast(tuple[str, ...], fixture_names),
                 relative_path=cast(Path, relative_path),
                 lazy_loading=lazy_loading,
-                force_binary=force_binary,
                 onload_func=onload_func,
                 parametrizer_func=parametrizer_func,
                 filter_func=filter_func,
                 process_func=process_func,
                 marker_func=marker_func,
                 id_func=id_func,
+                read_func=read_func,
+                read_options=HashableDict(read_options),
             ),
         )
         return test_func

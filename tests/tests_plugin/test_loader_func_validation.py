@@ -16,6 +16,7 @@ SUPPORTED_LOADERS = {
     "process_func": [parametrize, parametrize_dir],
     "marker_func": [parametrize, parametrize_dir],
     "id_func": [parametrize],
+    "read_func": [parametrize_dir],
 }
 
 
@@ -317,6 +318,60 @@ def test_id_func_validation(
                 assert f"{err} It must take up to 2 arguments" in str(result.stdout)
         else:
             assert f"id_func: Must be a callable, not {type(loader_func).__name__!r}" in str(result.stdout)
+
+
+@pytest.mark.parametrize("collect_only", [True, False])
+@pytest.mark.parametrize(
+    ("loader_func_def", "is_valid"),
+    [
+        pytest.param("lambda x:{}", True, id="1arg"),
+        pytest.param("lambda x,y:{}", False, id="2args"),
+        pytest.param("lambda x,y,z:{}", False, id="3args"),
+        pytest.param("lambda:{}", False, id="0arg"),
+        pytest.param("lambda *args:{}", False, id="*args"),
+        pytest.param("lambda **kwargs:{}", False, id="**kwargs"),
+        pytest.param("True", False, id="not_callable"),
+        pytest.param("lambda x:x", False, id="invalid_value"),
+        pytest.param("lambda x:{'mode': 'w'}", False, id="invalid_read_mode"),
+    ],
+)
+@pytest.mark.parametrize("lazy_loading", [True, False])
+@pytest.mark.parametrize("loader", SUPPORTED_LOADERS["read_func"])
+def test_read_func_validation(
+    test_context: TestContext,
+    loader: DataLoader,
+    loader_func_def: str,
+    is_valid: bool,
+    lazy_loading: bool,
+    collect_only: bool,
+) -> None:
+    """Test validation around the read_func parameter"""
+    result = run_pytest_with_context(
+        test_context, lazy_loading=lazy_loading, read_func_def=loader_func_def, collect_only=collect_only
+    )
+    if is_valid:
+        assert result.ret == ExitCode.OK
+        if not collect_only:
+            result.assert_outcomes(passed=test_context.num_expected_tests)
+    else:
+        assert result.ret == ExitCode.INTERRUPTED
+        result.assert_outcomes(errors=1)
+        loader_func = eval(f"{loader_func_def}")
+        if callable(loader_func):
+            num_args = get_num_func_args(loader_func)
+            max_allowed = 1 if loader == parametrize_dir else 2
+            err = "Detected invalid loader function definition."
+            if "*" in loader_func_def:
+                assert f"{err} Only positional arguments are allowed" in str(result.stdout)
+            elif num_args == 1:
+                if "mode" in loader_func_def:
+                    assert "read_options: Invalid read mode: " in str(result.stdout)
+                else:
+                    assert "read_options: Expected a dict, but got " in str(result.stdout)
+            else:
+                assert f"{err} It must take up to {max_allowed} arguments" in str(result.stdout)
+        else:
+            assert f"read_func: Must be a callable, not {type(loader_func).__name__!r}" in str(result.stdout)
 
 
 @pytest.mark.parametrize("collect_only", [True, False])

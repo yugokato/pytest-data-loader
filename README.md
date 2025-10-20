@@ -214,7 +214,7 @@ tests/test_something.py::test_something[image.png] PASSED                       
 
 ## Lazy Loading
 
-Lazy loading is enabled by default for all loaders to improve performance, especially with large datasets. During the 
+Lazy loading is enabled by default for all loaders to improve efficiency, especially with large datasets. During the 
 test collection phase, Pytest receives a lazy object as a test parameter instead of the actual data. The data is 
 resolved only when it is needed during test setup.    
 If you need to disable this behavior for a specific test for some reason, you can specify the `lazy_loading=False` 
@@ -233,9 +233,10 @@ option on the loader.
 Each loader supports different optional parameters you can use to change how your data is loaded.
 ### @load
 - `lazy_loading`: Enable or disable lazy loading
-- `force_binary`: Force the file to be read in binary mode
 - `onload_func`: A function to transform or preprocess loaded data before passing it to the test function
 - `id`: The parameter ID for the loaded data. The file name is used if not specified
+- `**read_options`: File read options the plugin passes to `open()`. Supports only `mode`, `encoding`, and `newline` 
+options
 
 > [!NOTE]
 > `onload_func` must take either one (data) or two (file path, data) arguments
@@ -249,22 +250,26 @@ Each loader supports different optional parameters you can use to change how you
 - `process_func`: A function to adjust the shape of each split data before passing it to the test function
 - `marker_func`: A function to apply Pytest marks to matching part data
 - `id_func`: A function to generate a parameter ID for each part data
+- `**read_options`: File read options the plugin passes to `open()`. Supports only `mode`, `encoding`, and `newline` 
+options
+
 
 > [!NOTE]
 > Each loader function must take either one (data) or two (file path, data) arguments
 
 
 ### @parametrize_dir
-- `lazy_loading`: Enable or disable lazy loading
-- `force_binary`: Force each file to be read in binary mode
 - `filter_func`: A function to filter file paths. Only the contents of matching file paths are included as the test 
 parameters
+- `lazy_loading`: Enable or disable lazy loading
 - `process_func`: A function to adjust the shape of each loaded file's data before passing it to the test function
 - `marker_func`: A function to apply Pytest marks to matching file paths
+- `read_func`: A function to specify file read options the plugin passes to `open()` to matching file paths . Supports 
+only `mode`, `encoding`, and `newline` options. It must return these options as a dictionary
 
 > [!NOTE]
 > - `process_func` must take either one (data) or two (file path, data) arguments
-> - `filter_func` and `marker_func` must take only one argument (file path)
+> - `filter_func`, `marker_func`, and `read_func` must take only one argument (file path)
 
 
 

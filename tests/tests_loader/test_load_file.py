@@ -25,9 +25,9 @@ def test_load_text_file_with_no_options(data: str) -> None:
     assert data == (ABS_PATH_LOADER_DIR / PATH_TEXT_FILE).read_text()
 
 
-@load("data", PATH_TEXT_FILE, force_binary=True)
-def test_load_text_file_with_force_binary(data: bytes) -> None:
-    """Test @load loader with the force_binary option using text file"""
+@load("data", PATH_TEXT_FILE, mode="rb")
+def test_load_text_file_in_binary_mode(data: bytes) -> None:
+    """Test @load loader in binary mode using text file"""
     assert isinstance(data, bytes)
     assert data == (ABS_PATH_LOADER_DIR / PATH_TEXT_FILE).read_bytes()
 
@@ -53,9 +53,9 @@ def test_load_json_file_with_no_options(data: dict[str, Any]) -> None:
     assert data == json.loads((ABS_PATH_LOADER_DIR / PATH_JSON_FILE_OBJECT).read_text())
 
 
-@load("data", PATH_JSON_FILE_OBJECT, force_binary=True)
+@load("data", PATH_JSON_FILE_OBJECT, mode="rb")
 def test_load_json_file_with_force_binary(data: dict[str, Any]) -> None:
-    """Test @load loder with the force_binary option using JSON file"""
+    """Test @load loder in binary mode using JSON file"""
     assert isinstance(data, dict)
     assert data == json.loads((ABS_PATH_LOADER_DIR / PATH_JSON_FILE_OBJECT).read_bytes())
 
@@ -81,9 +81,9 @@ def test_load_binary_file_with_no_options(data: bytes) -> None:
     assert data == (ABS_PATH_LOADER_DIR / PATH_JPEG_FILE).read_bytes()
 
 
-@load("data", PATH_JPEG_FILE, force_binary=True)
+@load("data", PATH_JPEG_FILE, mode="rb")
 def test_load_binary_file_with_force_binary(data: bytes) -> None:
-    """Test @load loder with the force_binary option using binary file"""
+    """Test @load loder in binary mode using binary file"""
     assert isinstance(data, bytes)
     assert data == (ABS_PATH_LOADER_DIR / PATH_JPEG_FILE).read_bytes()
 
