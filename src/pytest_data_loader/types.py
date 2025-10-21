@@ -1,11 +1,12 @@
 from __future__ import annotations
 
+import inspect
 from abc import ABC, abstractmethod
 from collections.abc import Callable, Collection, Iterable, Mapping
 from dataclasses import dataclass, field
 from enum import auto
 from pathlib import Path
-from typing import Any, Literal, Protocol, TypeAlias, TypedDict, TypeVar, runtime_checkable
+from typing import Any, Literal, ParamSpec, Protocol, TypeAlias, TypedDict, TypeVar, runtime_checkable
 
 from pytest import Mark, MarkDecorator
 
@@ -13,9 +14,10 @@ from pytest_data_loader.compat import StrEnum
 from pytest_data_loader.constants import ROOT_DIR
 
 T = TypeVar("T")
+P = ParamSpec("P")
 TestFunc = TypeVar("TestFunc", bound=Callable[..., Any])
 JsonType: TypeAlias = str | int | float | bool | None | list["JsonType"] | dict[str, "JsonType"]
-LoadedDataType: TypeAlias = JsonType | bytes | tuple[str, JsonType] | Iterable["LoadedDataType"]
+LoadedDataType: TypeAlias = JsonType | bytes | tuple[str, JsonType] | object | Iterable["LoadedDataType"]
 
 
 class HashableDict(dict[str, Any]):
@@ -48,6 +50,7 @@ class DataLoaderIniOption(StrEnum):
 class DataLoader(Protocol):
     requires_file_path: bool
     requires_parametrization: bool
+    should_split_data: bool
     __name__: str
 
     def __call__(self, *args: Any, **kwargs: Any) -> Any: ...
@@ -59,13 +62,14 @@ class DataLoaderPathType(StrEnum):
 
 
 class DataLoaderFunctionType(StrEnum):
+    FILE_READER_FUNC = auto()
     ONLOAD_FUNC = auto()
     PARAMETRIZER_FUNC = auto()
     FILTER_FUNC = auto()
     PROCESS_FUNC = auto()
     MARKER_FUNC = auto()
     ID_FUNC = auto()
-    READ_FUNC = auto()
+    READ_OPTION_FUNC = auto()
 
 
 @dataclass(frozen=True, kw_only=True, slots=True)
@@ -117,7 +121,7 @@ class LazyLoadedData(LazyLoadedDataABC):
 @dataclass(frozen=True, kw_only=True, slots=True)
 class LazyLoadedPartData(LazyLoadedDataABC):
     idx: int
-    offset: int | None = None
+    pos: int | None = None
     # Temporarily store id and marks
     meta: dict[str, Any]
 
@@ -128,12 +132,13 @@ class LazyLoadedPartData(LazyLoadedDataABC):
         loaded_data = self.file_loader()
         if self.post_load_hook:
             self.post_load_hook()
-        if self.offset is None:
+
+        if isinstance(loaded_data, LoadedData):
+            part_data = loaded_data
+        else:
             assert isinstance(loaded_data, list), type(loaded_data)
             part_data = loaded_data[self.idx]
-        else:
-            part_data = loaded_data
-        assert isinstance(part_data, LoadedData), type(part_data)
+            assert isinstance(part_data, LoadedData), type(part_data)
         return part_data.data
 
 
@@ -145,18 +150,21 @@ class DataLoaderLoadAttrs:
     fixture_names: tuple[str, ...]
     relative_path: Path
     lazy_loading: bool = True
-    onload_func: Callable[..., LoadedDataType] | None = None
-    parametrizer_func: Callable[..., Iterable[LoadedDataType]] | None = None
+    file_reader: Callable[..., Iterable[Any] | object] | None = None
+    file_reader_func: Callable[[Path], Callable[..., Iterable[Any] | object]] | None = None
+    onload_func: Callable[..., Any] | None = None
+    parametrizer_func: Callable[..., Iterable[Any]] | None = None
     filter_func: Callable[..., bool] | None = None
-    process_func: Callable[..., LoadedDataType] | None = None
+    process_func: Callable[..., Any] | None = None
     marker_func: Callable[..., MarkDecorator | Collection[MarkDecorator | Mark] | None] | None = None
     id_func: Callable[..., Any] | None = None
-    read_func: Callable[[Path], FileReadOptions | dict[str, Any]] | None = None
+    read_option_func: Callable[[Path], FileReadOptions | dict[str, Any]] | None = None
     read_options: HashableDict = field(default_factory=HashableDict)
 
     def __post_init__(self) -> None:
         self._validate_fixture_names()
         self._validate_relative_path()
+        self._validate_file_reader(self.file_reader)
         self._validate_loader_func()
         self._validate_read_options(self.read_options)
 
@@ -203,30 +211,48 @@ class DataLoaderLoadAttrs:
         if self.relative_path.is_absolute():
             raise ValueError(f"{err}: It can not be an absolute path: {orig_value!r}")
 
+    @staticmethod
+    def _validate_file_reader(file_reader: Any | None) -> None:
+        if file_reader:
+            if not (
+                (inspect.isclass(file_reader) and issubclass(file_reader, Iterable))
+                or callable(file_reader)
+                or hasattr(file_reader, "__iter__")
+            ):
+                got = file_reader if inspect.isclass(file_reader) else type(file_reader)
+                raise TypeError(f"file_reader: Expected an iterable or a callable, but got {got.__name__!r}")
+
     def _validate_loader_func(self) -> None:
         from pytest_data_loader import parametrize_dir
         from pytest_data_loader.utils import validate_loader_func_args_and_normalize
 
-        for f, name in [
+        for f, func_type in [
+            (self.file_reader_func, DataLoaderFunctionType.FILE_READER_FUNC),
             (self.onload_func, DataLoaderFunctionType.ONLOAD_FUNC),
             (self.parametrizer_func, DataLoaderFunctionType.PARAMETRIZER_FUNC),
             (self.filter_func, DataLoaderFunctionType.FILTER_FUNC),
             (self.process_func, DataLoaderFunctionType.PROCESS_FUNC),
             (self.marker_func, DataLoaderFunctionType.MARKER_FUNC),
             (self.id_func, DataLoaderFunctionType.ID_FUNC),
-            (self.read_func, DataLoaderFunctionType.READ_FUNC),
+            (self.read_option_func, DataLoaderFunctionType.READ_OPTION_FUNC),
         ]:
             if f is not None:
                 if not callable(f):
-                    raise TypeError(f"{name}: Must be a callable, not {type(f).__name__!r}")
-                with_file_path_only = self.loader == parametrize_dir and name in (
+                    raise TypeError(f"{func_type}: Must be a callable, not {type(f).__name__!r}")
+                with_file_path_only = self.loader == parametrize_dir and func_type in (
+                    DataLoaderFunctionType.FILE_READER_FUNC,
                     DataLoaderFunctionType.FILTER_FUNC,
                     DataLoaderFunctionType.MARKER_FUNC,
-                    DataLoaderFunctionType.READ_FUNC,
+                    DataLoaderFunctionType.READ_OPTION_FUNC,
                 )
                 self._modify_value(
-                    name, validate_loader_func_args_and_normalize(f, with_file_path_only=with_file_path_only)
+                    func_type,
+                    validate_loader_func_args_and_normalize(
+                        f, func_type=func_type, with_file_path_only=with_file_path_only
+                    ),
                 )
+        if self.file_reader and self.parametrizer_func is not None:
+            raise ValueError("parametrizer_func option is not supported when file_reader is provided")
 
     @staticmethod
     def _validate_read_options(read_options: FileReadOptions | dict[str, Any]) -> None:

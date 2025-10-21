@@ -1,0 +1,6 @@
+<?xml version="1.1" encoding="UTF-8"?>
+<root>
+  <child>
+    <data>Line one&#x85;Line two</data>
+  </child>
+</root>

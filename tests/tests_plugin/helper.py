@@ -8,8 +8,8 @@ from typing import Any
 from _pytest.pytester import Pytester
 from pytest import RunResult
 
-from pytest_data_loader import load, parametrize, parametrize_dir
-from pytest_data_loader.types import DataLoader
+from pytest_data_loader import parametrize
+from pytest_data_loader.types import DataLoader, DataLoaderFunctionType
 from pytest_data_loader.utils import is_valid_fixture_name
 
 
@@ -92,7 +92,8 @@ def run_pytest_with_context(
     marker_func_def: str | None = None,
     id_: str | None = None,
     id_func_def: str | None = None,
-    read_func_def: str | None = None,
+    file_reader_func_def: str | None = None,
+    read_option_func_def: str | None = None,
     collect_only: bool = False,
     check_test_id: bool = False,
 ) -> RunResult:
@@ -110,24 +111,23 @@ def run_pytest_with_context(
     if lazy_loading is False:
         loader_options.append(f"lazy_loading={lazy_loading}")
     if onload_func_def:
-        loader_options.append(f"onload_func={onload_func_def}")
+        loader_options.append(f"{DataLoaderFunctionType.ONLOAD_FUNC}={onload_func_def}")
     if parametrizer_func_def:
-        loader_options.append(f"parametrizer_func={parametrizer_func_def}")
+        loader_options.append(f"{DataLoaderFunctionType.PARAMETRIZER_FUNC}={parametrizer_func_def}")
     if filter_func_def:
-        loader_options.append(f"filter_func={filter_func_def}")
+        loader_options.append(f"{DataLoaderFunctionType.FILTER_FUNC}={filter_func_def}")
     if process_func_def:
-        loader_options.append(f"process_func={process_func_def}")
+        loader_options.append(f"{DataLoaderFunctionType.PROCESS_FUNC}={process_func_def}")
     if marker_func_def:
-        loader_options.append(f"marker_func={marker_func_def}")
+        loader_options.append(f"{DataLoaderFunctionType.MARKER_FUNC}={marker_func_def}")
     if id_:
-        assert loader == load
         loader_options.append(f"id={id_!r}")
     if id_func_def:
-        assert loader == parametrize
-        loader_options.append(f"id_func={id_func_def}")
-    if read_func_def:
-        assert loader == parametrize_dir
-        loader_options.append(f"read_func={read_func_def}")
+        loader_options.append(f"{DataLoaderFunctionType.ID_FUNC}={id_func_def}")
+    if file_reader_func_def:
+        loader_options.append(f"{DataLoaderFunctionType.FILE_READER_FUNC}={file_reader_func_def}")
+    if read_option_func_def:
+        loader_options.append(f"{DataLoaderFunctionType.READ_OPTION_FUNC}={read_option_func_def}")
     loader_options_str = ", " + ", ".join(loader_options) if loader_options else ""
 
     # Make sure to apply repr() on the string value to handle window's path correctly

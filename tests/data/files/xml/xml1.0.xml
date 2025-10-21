@@ -1,0 +1,12 @@
+<?xml version="1.0"?>
+<root>
+    <child name="foo">
+        <data>1</data>
+    </child>
+    <child name="bar">
+        <data>2</data>
+    </child>
+    <child name="foobar">
+        <data>3</data>
+    </child>
+</root>

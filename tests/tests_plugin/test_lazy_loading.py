@@ -7,6 +7,8 @@ from pytest_data_loader import parametrize
 from pytest_data_loader.types import LazyLoadedData, LazyLoadedPartData
 from tests.tests_plugin.helper import TestContext, run_pytest_with_context
 
+pytestmark = pytest.mark.plugin
+
 
 @pytest.mark.parametrize("collect_only", [True, False])
 @pytest.mark.parametrize("file_extension", [".txt", ".json", ".png"], indirect=True)

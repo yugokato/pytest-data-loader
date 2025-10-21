@@ -1,6 +1,7 @@
 import json
 from typing import Any
 
+import pytest
 from pytest import FixtureRequest
 
 from pytest_data_loader import load
@@ -11,6 +12,8 @@ from tests.tests_loader.helper import (
     PATH_JSON_FILE_OBJECT,
     PATH_TEXT_FILE,
 )
+
+pytestmark = pytest.mark.loaders
 
 # NOTE:
 # - lazy_loading option is separately tested in another test using pytester

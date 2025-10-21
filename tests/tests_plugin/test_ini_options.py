@@ -14,6 +14,9 @@ from tests.tests_plugin.helper import (
     run_pytest_with_context,
 )
 
+pytestmark = pytest.mark.plugin
+
+
 if sys.platform == "win32":
     ENV_VAR = "%FOO%"
 else:

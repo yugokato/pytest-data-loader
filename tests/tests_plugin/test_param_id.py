@@ -5,6 +5,8 @@ from pytest_data_loader import load, parametrize, parametrize_dir
 from pytest_data_loader.types import DataLoader
 from tests.tests_plugin.helper import TestContext, run_pytest_with_context
 
+pytestmark = pytest.mark.plugin
+
 
 @pytest.mark.parametrize("id", [None, "foo"])
 @pytest.mark.parametrize("loader", [load])

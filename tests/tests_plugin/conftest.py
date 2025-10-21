@@ -153,6 +153,7 @@ def test_context(
             if file_extension == ".json":
                 num_expected_tests = len(json.loads(file_content).items())
             elif file_extension == ".txt":
+                assert isinstance(file_content, str)
                 if strip_trailing_whitespace:
                     num_expected_tests = len(file_content.rstrip().splitlines())
                 else:
