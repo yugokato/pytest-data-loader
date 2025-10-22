@@ -150,16 +150,15 @@ def test_something2(file_path, data):
 $ pytest test_something.py -v
 ================================ test session starts =================================
 <snip>
-collected 6 items                                                                              
+collected 5 items                                                                              
 
-tests/test_something.py::test_something1[data1.json:part1] PASSED               [ 16%]
-tests/test_something.py::test_something1[data1.json:part2] PASSED               [ 33%]
-tests/test_something.py::test_something1[data1.json:part3] PASSED               [ 50%]
-tests/test_something.py::test_something2[data2.txt:part1] PASSED                [ 66%]
-tests/test_something.py::test_something2[data2.txt:part2] PASSED                [ 83%]
+tests/test_something.py::test_something1[data1.json:part1] PASSED               [ 20%]
+tests/test_something.py::test_something1[data1.json:part2] PASSED               [ 40%]
+tests/test_something.py::test_something2[data2.txt:part1] PASSED                [ 60%]
+tests/test_something.py::test_something2[data2.txt:part2] PASSED                [ 80%]
 tests/test_something.py::test_something2[data2.txt:part3] PASSED                [100%]
 
-================================= 6 passed in 0.01s ==================================
+================================= 5 passed in 0.01s ==================================
 ```
 
 > [!TIP]
@@ -251,25 +250,39 @@ def test_something1(data):
 
 @parametrize("data", "data.csv", file_reader=csv.DictReader, encoding="utf-8-sig", newline="")
 def test_something2(data):
-    """Load CSV file with csv.DictReader reader"""
+    """Parametrize CSV file data with csv.DictReader reader"""
     assert isinstance(data, dict)
 ```
+
 Here are some of the common readers you could use:
 - .json: `json.load` (NOTE: The plugin automatically applies this file reader for `.json` files by default)
 - .csv: `csv.reader`, `csv.DictReader`
 - .yml: `yaml.safe_load`, `yaml.safe_load_all` (requires `PyYAML` library)
-- .xml: `xml.etree.ElementTree.parse` (with `onload_func=lambda tree: tree.getroot()` if needed)
+- .xml: `xml.etree.ElementTree.parse`
 - .toml: `tomllib.load` (or `tomli.load` from `tomli` library for Python <3.11)
-- .ini: `configparser.ConfigParser().read_file`  
-(NOTE: The test function will receive `None` as a data fixture if you specify `read_file` since it does not return anything. 
-You can explicitly return the `ConfigParser` object and pass it to the fixture if desired.  
-e.g. `file_reader=lambda f: (parser := ConfigParser(), parser.read_file(f))[0]`)
+- .ini: `configparser.ConfigParser().read_file`
+- .pdf: `pypdf.PdfReader` (requires `pypdf` library)
 
 
 > [!TIP]
 > - A file reader must take one argument (a file-like object)
-> - If you need to pass options to the file reader, use `lambda` function or regular a function.  
+> - If you need to pass options to the file reader, use `lambda` function or a regular function.  
 > eg. `file_reader=lambda f: csv.reader(f, delimiter=";")`
+> - You can adjust the final data the test function receives using loader functions. For example, 
+> the following code will parametrize the test with the text data from each PDF page   
+>  ```
+>  @parametrize(
+>      "data", 
+>      "test.pdf", 
+>      file_reader=pypdf.PdfReader, 
+>      parametrizer_func=lambda r: r.pages,
+>      process_func=lambda p: p.extract_text().rstrip(),
+>      mode="rb"
+>  )
+>  def test_something(data: str):
+>      ...
+>  ```
+
 
 
 ## Loader Options
