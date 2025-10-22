@@ -3,7 +3,7 @@ import keyword
 import os
 import re
 from collections.abc import Callable, Collection
-from functools import lru_cache
+from functools import lru_cache, wraps
 from inspect import Parameter
 from pathlib import Path
 from typing import Any
@@ -170,11 +170,11 @@ def validate_loader_func_args_and_normalize(
         raise TypeError(f"Detected invalid {f_type}loader function definition. {err}")
 
     if len_func_args == 2:
-        return lambda file_path, data: loader_func(file_path, data)
+        return wraps(loader_func)(lambda file_path, data: loader_func(file_path, data))
     elif with_file_path_only:
-        return lambda file_path, *_: loader_func(file_path)
+        return wraps(loader_func)(lambda file_path, *_: loader_func(file_path))
     else:
-        return lambda _, data: loader_func(data)
+        return wraps(loader_func)(lambda _, data: loader_func(data))
 
 
 @lru_cache

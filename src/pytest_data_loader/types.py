@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import inspect
 from abc import ABC, abstractmethod
 from collections.abc import Callable, Collection, Iterable, Mapping
 from dataclasses import dataclass, field
@@ -215,11 +214,11 @@ class DataLoaderLoadAttrs:
     def _validate_file_reader(file_reader: Any | None) -> None:
         if file_reader:
             if not (
-                (inspect.isclass(file_reader) and issubclass(file_reader, Iterable))
+                (isinstance(file_reader, type) and issubclass(file_reader, Iterable))
                 or callable(file_reader)
                 or hasattr(file_reader, "__iter__")
             ):
-                got = file_reader if inspect.isclass(file_reader) else type(file_reader)
+                got = file_reader if isinstance(file_reader, type) else type(file_reader)
                 raise TypeError(f"file_reader: Expected an iterable or a callable, but got {got.__name__!r}")
 
     def _validate_loader_func(self) -> None:
@@ -251,8 +250,6 @@ class DataLoaderLoadAttrs:
                         f, func_type=func_type, with_file_path_only=with_file_path_only
                     ),
                 )
-        if self.file_reader and self.parametrizer_func is not None:
-            raise ValueError("parametrizer_func option is not supported when file_reader is provided")
 
     @staticmethod
     def _validate_read_options(read_options: FileReadOptions | dict[str, Any]) -> None:

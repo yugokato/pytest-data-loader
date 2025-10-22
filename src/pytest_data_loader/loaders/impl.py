@@ -130,9 +130,19 @@ class FileDataLoader(LoaderABC):
 
     @cached_property
     @requires_loader(parametrize)
-    def parametrizer_func(self) -> Callable[..., Any]:
-        """Normalized parametrizer function"""
-        return self.load_attrs.parametrizer_func or validate_loader_func_args_and_normalize(self._parametrizer_func)
+    def parametrizer_func(self) -> Callable[..., Iterable[Any]]:
+        """Returns a normalized parametrizer function that also validates the func result"""
+        f = self.load_attrs.parametrizer_func or validate_loader_func_args_and_normalize(self._parametrizer_func)
+
+        @wraps(f)
+        def _parametrizer_func(*args: Any, **kwargs: Any) -> Iterable[Any]:
+            parametrized_data = f(*args, **kwargs)
+            if not isinstance(parametrized_data, Iterable) or isinstance(parametrized_data, str | bytes):
+                t = parametrized_data if isinstance(parametrized_data, type) else type(parametrized_data)
+                raise ValueError(f"Parametrized data must be an iterable container, not {t.__name__!r}")
+            return parametrized_data
+
+        return _parametrizer_func
 
     def load(self) -> LoadedData | LazyLoadedData | Iterable[LoadedData | LazyLoadedPartData]:
         """Load file data"""
@@ -218,9 +228,6 @@ class FileDataLoader(LoaderABC):
 
         if self.loader.should_split_data:
             data = self.parametrizer_func(self.path, data)
-            if not isinstance(data, Iterable) or isinstance(data, str | bytes):
-                raise ValueError(f"Parametrized data must be an iterable container, not {type(data).__name__!r}")
-
             if self.load_attrs.filter_func:
                 data = (x for x in data if self.load_attrs.filter_func(self.path, x))
             if self.load_attrs.process_func:
