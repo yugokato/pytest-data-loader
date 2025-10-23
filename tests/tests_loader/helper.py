@@ -32,6 +32,22 @@ PATH_INI_FILE = PATH_INI_FILE_DIR / "ini.ini"
 PATH_PDF_FILE = PATH_PDF_FILE_DIR / "pdf.pdf"
 PATH_JPEG_FILE = Path(PATH_IMAGE_DIR, "image.jpg")
 
+PATHS_TEXT_FILES = [
+    PATH_TEXT_FILE,
+    PATH_JSON_FILE_SCALAR,
+    PATH_JSON_FILE_ARRAY,
+    PATH_JSON_FILE_OBJECT,
+    PATH_JSON_FILE_NESTED_OBJECT,
+    PATH_CSV_FILE,
+    PATH_CSV_FILE_SEMICOLON,
+    PATH_XML_FILE,
+    PATH_YAML_FILE,
+    PATH_YAML_DOCUMENTS_FILE,
+    PATH_TOML_FILE,
+    PATH_INI_FILE,
+]
+PATHS_BINARY_FILES = [PATH_PDF_FILE, PATH_JPEG_FILE]
+
 
 def get_parametrized_test_idx(request: FixtureRequest, arg_name: str) -> int:
     return request.node.callspec.indices[arg_name]
