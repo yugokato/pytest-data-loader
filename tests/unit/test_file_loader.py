@@ -8,37 +8,12 @@ import pytest
 from pytest_data_loader import load, parametrize, parametrize_dir
 from pytest_data_loader.loaders.impl import FileDataLoader
 from pytest_data_loader.types import DataLoader, DataLoaderLoadAttrs, LazyLoadedData, LazyLoadedPartData, LoadedData
-from tests.tests_loader.helper import (
-    ABS_PATH_LOADER_DIR,
-    PATH_CSV_FILE,
-    PATH_INI_FILE,
-    PATH_JSON_FILE_ARRAY,
-    PATH_JSON_FILE_OBJECT,
-    PATH_JSON_FILE_SCALAR,
-    PATH_TEXT_FILE,
-    PATH_TOML_FILE,
-    PATH_XML_FILE,
-    PATH_YAML_FILE,
-)
+from tests.tests_loader.helper import ABS_PATH_LOADER_DIR, PATHS_BINARY_FILES, PATHS_TEXT_FILES
 
 pytestmark = pytest.mark.unittest
 
 
-@pytest.mark.parametrize(
-    "relative_path",
-    [
-        # PATH_TEXT_FILE,
-        PATH_JSON_FILE_OBJECT,
-        # PATH_JSON_FILE_ARRAY,
-        # PATH_JSON_FILE_SCALAR,
-        # PATH_CSV_FILE,
-        # PATH_XML_FILE,
-        # PATH_YAML_FILE,
-        # PATH_TOML_FILE,
-        # PATH_INI_FILE,
-        # PATH_JPEG_FILE,
-    ],
-)
+@pytest.mark.parametrize("relative_path", [*PATHS_TEXT_FILES, *PATHS_BINARY_FILES])
 @pytest.mark.parametrize("lazy_loading", [True, False])
 @pytest.mark.parametrize("loader", [load, parametrize, parametrize_dir])
 def test_file_loader(loader: DataLoader, lazy_loading: bool, relative_path: Path) -> None:
@@ -51,6 +26,7 @@ def test_file_loader(loader: DataLoader, lazy_loading: bool, relative_path: Path
         fixture_names=("file_path", "data"),
         relative_path=relative_path,
         lazy_loading=lazy_loading,
+        parametrizer_func=(lambda x: [x]) if relative_path in PATHS_BINARY_FILES else None,
         # for @parametrize loader with lazy loading
         id_func=lambda x: repr(x),
         marker_func=lambda x: marks,
@@ -68,7 +44,11 @@ def test_file_loader(loader: DataLoader, lazy_loading: bool, relative_path: Path
                 assert isinstance(lazy_loaded_part, LazyLoadedPartData)
                 assert lazy_loaded_part.file_path == abs_file_path
                 assert lazy_loaded_part.idx >= 0
-                assert lazy_loaded_part.pos >= 0
+                if file_loader.is_streamable:
+                    assert lazy_loaded_part.pos is not None
+                    assert lazy_loaded_part.pos >= 0
+                else:
+                    assert lazy_loaded_part.pos is None
                 assert repr(lazy_loaded_part) == f"{filename}:part{lazy_loaded_part.idx + 1}"
                 assert set(lazy_loaded_part.meta.keys()) == {"marks", "id"}
                 assert lazy_loaded_part.meta["id"] > ""
@@ -88,20 +68,7 @@ def test_file_loader(loader: DataLoader, lazy_loading: bool, relative_path: Path
             assert loaded_data.file_path == abs_file_path
 
 
-@pytest.mark.parametrize(
-    "relative_path",
-    [
-        PATH_TEXT_FILE,
-        PATH_JSON_FILE_OBJECT,
-        PATH_JSON_FILE_ARRAY,
-        PATH_JSON_FILE_SCALAR,
-        PATH_CSV_FILE,
-        PATH_XML_FILE,
-        PATH_YAML_FILE,
-        PATH_TOML_FILE,
-        PATH_INI_FILE,
-    ],
-)
+@pytest.mark.parametrize("relative_path", [*PATHS_TEXT_FILES, *PATHS_BINARY_FILES])
 @pytest.mark.parametrize("loader", [load, parametrize, parametrize_dir])
 def test_file_loader_cached_file_loaders(loader: DataLoader, relative_path: Path) -> None:
     """Test the file loader's three different cache logic used for the @parametrize loader with lazy loading.
@@ -109,22 +76,15 @@ def test_file_loader_cached_file_loaders(loader: DataLoader, relative_path: Path
     """
     abs_file_path = ABS_PATH_LOADER_DIR / relative_path
     load_attrs = DataLoaderLoadAttrs(
-        loader=loader, fixture_names=("file_path", "data"), relative_path=relative_path, lazy_loading=True
+        loader=loader,
+        fixture_names=("file_path", "data"),
+        relative_path=relative_path,
+        lazy_loading=True,
+        parametrizer_func=(lambda x: [x]) if relative_path in PATHS_BINARY_FILES else None,
     )
     file_loader = FileDataLoader(abs_file_path, load_attrs=load_attrs, strip_trailing_whitespace=True)
     if relative_path.suffix == ".json":
         assert file_loader.file_reader is not None
-
-    if relative_path in (
-        PATH_TEXT_FILE,
-        PATH_JSON_FILE_OBJECT,
-        PATH_JSON_FILE_ARRAY,
-        PATH_JSON_FILE_SCALAR,
-        PATH_CSV_FILE,
-    ):
-        assert file_loader.is_streamable
-    else:
-        assert not file_loader.is_streamable
 
     lazy_loaded_data = file_loader._load_lazily()
 
