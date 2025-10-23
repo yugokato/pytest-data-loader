@@ -1,3 +1,4 @@
+import inspect
 from collections.abc import Callable, Collection, Iterable
 from pathlib import Path
 from typing import Any, TypeVar, cast
@@ -9,7 +10,7 @@ from pytest_data_loader.constants import PYTEST_DATA_LOADER_ATTR
 from pytest_data_loader.types import (
     DataLoader,
     DataLoaderLoadAttrs,
-    DataLoaderPathType,
+    DataLoaderType,
     FileReadOptions,
     HashableDict,
     TestFunc,
@@ -20,23 +21,23 @@ T = TypeVar("T", bound=Callable[..., Any])
 __all__ = ["load", "parametrize", "parametrize_dir"]
 
 
-def loader(path_type: DataLoaderPathType, /, *, parametrize: bool = False) -> Callable[[T], T]:
+def loader(loader_type: DataLoaderType, /, *, parametrize: bool = False) -> Callable[[T], T]:
     """Decorator to register a decorated function as a data loader
 
-    :param path_type: A type of the relative path it allows. file or directory
+    :param loader_type: A type of the loader. file or directory
     :param parametrize: Whether the loader needs to perform parametrization or not
     """
 
     def wrapper(loader_func: T) -> T:
-        loader_func.requires_file_path = DataLoaderPathType(path_type) == DataLoaderPathType.FILE  # type: ignore[attr-defined]
+        loader_func.is_file_loader = DataLoaderType(loader_type) == DataLoaderType.FILE  # type: ignore[attr-defined]
         loader_func.requires_parametrization = parametrize is True  # type: ignore[attr-defined]
-        loader_func.should_split_data = bool(loader_func.requires_file_path and loader_func.requires_parametrization)  # type: ignore[attr-defined]
+        loader_func.should_split_data = bool(loader_func.is_file_loader and loader_func.requires_parametrization)  # type: ignore[attr-defined]
         return loader_func
 
     return wrapper
 
 
-@loader(DataLoaderPathType.FILE)
+@loader(DataLoaderType.FILE)
 def load(
     fixture_names: str | tuple[str, str],
     relative_path: Path | str,
@@ -96,7 +97,7 @@ def load(
     )
 
 
-@loader(DataLoaderPathType.FILE, parametrize=True)
+@loader(DataLoaderType.FILE, parametrize=True)
 def parametrize(
     fixture_names: str | tuple[str, str],
     relative_path: Path | str,
@@ -191,7 +192,7 @@ def parametrize(
     )
 
 
-@loader(DataLoaderPathType.DIRECTORY, parametrize=True)
+@loader(DataLoaderType.DIRECTORY, parametrize=True)
 def parametrize_dir(
     fixture_names: str | tuple[str, str],
     relative_path: Path | str,
@@ -202,7 +203,7 @@ def parametrize_dir(
     filter_func: Callable[[Path], bool] | None = None,
     process_func: Callable[..., Any] | None = None,
     marker_func: Callable[[Path], MarkDecorator | Collection[MarkDecorator | Mark] | None] | None = None,
-    read_option_func: Callable[[Path], FileReadOptions | dict[str, Any]] | None = None,
+    read_option_func: Callable[[Path], dict[str, Any]] | None = None,
 ) -> Callable[[TestFunc], TestFunc]:
     """A file loader that dynamically parametrizes the decorated test function with the content of files stored in the
     specified directory.
@@ -268,8 +269,8 @@ def _setup_data_loader(
     filter_func: Callable[..., bool] | None = None,
     process_func: Callable[..., Any] | None = None,
     id_func: Callable[..., Any] | None = None,
-    marker_func: Callable[..., MarkDecorator | Collection[MarkDecorator | Mark]] | None = None,
-    read_option_func: Callable[[Path], FileReadOptions | dict[str, Any]] | None = None,
+    marker_func: Callable[..., MarkDecorator | Collection[MarkDecorator | Mark] | None] | None = None,
+    read_option_func: Callable[[Path], dict[str, Any]] | None = None,
     **read_options: Unpack[FileReadOptions],
 ) -> Callable[[TestFunc], TestFunc]:
     """Set up a test function and inject loder attributes that are used by pytest_generate_tests hook"""
@@ -287,6 +288,7 @@ def _setup_data_loader(
             PYTEST_DATA_LOADER_ATTR,
             DataLoaderLoadAttrs(
                 loader=loader,
+                search_from=Path(inspect.getabsfile(test_func)),
                 # fixture_names and relative_path will be validated and normalized in __post_init__()
                 fixture_names=cast(tuple[str, ...], fixture_names),
                 relative_path=cast(Path, relative_path),

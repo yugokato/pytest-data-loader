@@ -8,8 +8,8 @@ versions](https://img.shields.io/pypi/pyversions/pytest-data-loader.svg)](https:
 [![Code style ruff](https://img.shields.io/badge/code%20style-ruff-000000.svg)](https://docs.astral.sh/ruff/)
 
 `pytest-data-loader` is a `pytest` plugin for loading test data from files to facilitate data-driven testing.  
-In addition to loading data from a single file, it supports dynamic test parametrization by splitting file data into 
-parts or by loading multiple files from a directory.
+In addition to loading data from a single file, it also supports dynamic test parametrization either by splitting file 
+data into parts or by loading multiple files from a directory.
 
 
 ## Installation
@@ -47,8 +47,8 @@ loading test data. As a common design, each loader takes two positional argument
                    from. The plugin will search for the closest "data" directory from the test file's directory and up 
                    towards the Pytest root directory
 
-Additionally, each loader supports different optional keyword arguments to customize how the data is loaded. See the 
-"Loader Options" section for details.
+Additionally, each loader supports different optional keyword arguments to customize how the data is loaded. See 
+[Loader Options](#loader-options) section for details.
 
 
 
@@ -73,7 +73,7 @@ Given you have the following project structure:
 ```
 The plugin searches for a `data` directory relative to the test file to locate data files.
 
-### 1. Load file data (`@load`)
+### 1. Load file data — `@load`
 `@load` is a file loader that loads the file content and passes it to the test function.
 
 ```python
@@ -119,7 +119,7 @@ tests/test_something.py::test_something2[data2.txt] PASSED                      
 > This behavior applies to all loaders.
 
 
-### 2. Parametrize file data (`@parametrize`)
+### 2. Parametrize file data — `@parametrize`
 `@parametrize` is a file loader that dynamically parametrizes the decorated test function by splitting the loaded file 
 content into logical parts. The test function will then receive the part data as loaded data for the current test.
 
@@ -172,10 +172,10 @@ tests/test_something.py::test_something2[data2.txt:part3] PASSED                
 >   - Binary file: Unsupported. Requires specifying a custom split logic as the `parametrizer_func` loader option 
 
 
-### 3. Parametrize files in a directory (`@parametrize_dir`)
+### 3. Parametrize files in a directory — `@parametrize_dir`
 
-`@parametrize_dir` is a file loader that dynamically parametrizes the decorated test function with the contents of the 
-files stored in the specified directory. The test function will then receive the content of each file as loaded data 
+`@parametrize_dir` is a directory loader that dynamically parametrizes the decorated test function with the 
+contents of the files stored in the specified directory. The test function will then receive the content of each file as loaded data 
 for the current test.
 
 ```python
@@ -229,11 +229,36 @@ option on the loader.
 
 ## File Reader
 
-You can specify a file reader the plugin should use when reading the file data. Here is an example of loading a CSV 
-file with CSV readers: 
+You can specify a file reader the plugin should use when reading the file data, with/without file read options that 
+will be passed to `open()`. This can be done either as a `conftest.py` level registration or as a test-level 
+configuration. If both are done, the test level configuration takes precedence over `conftest.py` level registration.  
+If multiple `conftest.py` files register a reader for the same file extension, the closest one from the current test 
+becomes effective.  
 
+Here are some examples of loading a CSV file using the built-in CSV readers with file read options:
+
+### `conftest.py` level registration
+
+This registration automatically applies to all tests located in the same directory and any of its subdirectories.
 
 ```python
+# conftest.py
+
+import csv
+
+import pytest_data_loader
+
+
+pytest_data_loader.register_reader(".csv", csv.reader, encoding="utf-8-sig", newline="")
+```
+
+### Per-test configuration with loader options
+
+This applies only to the relevant tests, and overrides the one registered in `conftest.py`. 
+
+```python
+# test_something.py
+
 import csv
 
 from pytest_data_loader import load, parametrize
@@ -254,6 +279,12 @@ def test_something2(data):
     assert isinstance(data, dict)
 ```
 
+> [!NOTE]
+> If only read options are specified without a `file_reader` in a loader, the plugin will search for an existing file 
+> reader registered in `conftest.py` if there is any, and applies it with the new read options for the test. But if 
+> only a `file_reader` is specified with no read options in a loder, no read options will be applied.
+
+
 Here are some of the common readers you could use:
 - .json: `json.load` (NOTE: The plugin automatically applies this file reader for `.json` files by default)
 - .csv: `csv.reader`, `csv.DictReader`
@@ -265,12 +296,12 @@ Here are some of the common readers you could use:
 
 
 > [!TIP]
-> - A file reader must take one argument (a file-like object)
+> - A file reader must take one argument (a file-like object returned by `open()`)
 > - If you need to pass options to the file reader, use `lambda` function or a regular function.  
 > eg. `file_reader=lambda f: csv.reader(f, delimiter=";")`
 > - You can adjust the final data the test function receives using loader functions. For example, 
 > the following code will parametrize the test with the text data from each PDF page   
->  ```
+>  ```python
 >  @parametrize(
 >      "data", 
 >      "test.pdf", 
@@ -288,6 +319,7 @@ Here are some of the common readers you could use:
 ## Loader Options
 
 Each loader supports different optional parameters you can use to change how your data is loaded.
+
 ### @load
 - `lazy_loading`: Enable or disable lazy loading
 - `file_reader`: A file reader the plugin should use to read the file data
@@ -313,10 +345,9 @@ is the reader object itself.
 - `**read_options`: File read options the plugin passes to `open()`. Supports only `mode`, `encoding`, `errors`, 
 and `newline` options
 
-
 > [!NOTE]
 > Each loader function must take either one (data) or two (file path, data) arguments. When `file_reader` is provided, 
-the data is the reader object itself
+the data is the reader object itself.
 
 
 ### @parametrize_dir
