@@ -68,7 +68,7 @@ def load(
                         NOTE: .json files will always be automatically parsed during the plugin-managed onload process
     :param id: Explicitly specify the parameter ID for the loaded data. Defaults to the file name.
     :param read_options: File read options the plugin passes to `open()` when reading the file. Supports only mode,
-                         encoding, and newline options.
+                         encoding, errors, and newline options.
 
     NOTE:
         - onload_func loader function must take either one (data) or two (file path, data) arguments. When file_reader
@@ -158,7 +158,7 @@ def parametrize(
     :param id_func: A function to generate a parameter ID for each part data. Defaults to "<file_name>:part<number>"
                     when lazy loading, otherwise the part data itself is used.
     :param read_options: File read options the plugin passes to `open()` when reading the file. Supports only mode,
-                         encoding, and newline options.
+                         encoding, errors, and newline options.
 
     NOTE:
         - Each loader function must take either one (data) or two (file path, data) arguments. When file_reader
@@ -223,8 +223,8 @@ def parametrize_dir(
                          NOTE: .json files will always be automatically parsed during the plugin-managed onload process
     :param marker_func: A function to apply Pytest markers to mathing file paths
     :param read_option_func: A function to specify file read options the plugin passes to `open()` to matching file
-                             paths. Supports only mode, encoding, and newline options. It must return these options as
-                             a dictionary.
+                             paths. Supports only mode, encoding, errors, and newline options. It must return these
+                             options as a dictionary.
 
     NOTE:
         - file_reader_func, filter_func, marker_func, and read_option_func must take only one argument (file path)

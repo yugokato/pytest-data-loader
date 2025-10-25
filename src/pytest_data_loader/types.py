@@ -267,4 +267,7 @@ class DataLoaderLoadAttrs:
 class FileReadOptions(TypedDict, total=False):
     mode: Literal["r", "rt", "rb"]
     encoding: str
+    errors: Literal[
+        "strict", "ignore", "replace", "surrogateescape", "xmlcharrefreplace", "backslashreplace", "namereplace"
+    ]
     newline: Literal[None, "", "\n", "\r", "\r\n"]
