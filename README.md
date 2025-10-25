@@ -310,8 +310,8 @@ is the reader object itself.
 - `process_func`: A function to adjust the shape of each split data before passing it to the test function
 - `marker_func`: A function to apply Pytest marks to matching part data
 - `id_func`: A function to generate a parameter ID for each part data
-- `**read_options`: File read options the plugin passes to `open()`. Supports only `mode`, `encoding`, and `newline` 
-options
+- `**read_options`: File read options the plugin passes to `open()`. Supports only `mode`, `encoding`, `errors`, 
+and `newline` options
 
 
 > [!NOTE]
@@ -327,7 +327,7 @@ parameters
 - `process_func`: A function to adjust the shape of each loaded file's data before passing it to the test function
 - `marker_func`: A function to apply Pytest marks to matching file paths
 - `read_option_func`: A function to specify file read options the plugin passes to `open()` to matching file paths. 
-Supports only `mode`, `encoding`, and `newline` options. It must return these options as a dictionary
+Supports only `mode`, `encoding`, `errors`, and `newline` options. It must return these options as a dictionary
 
 > [!NOTE]
 > - `process_func` must take either one (data) or two (file path, data) arguments
