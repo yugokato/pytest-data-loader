@@ -293,8 +293,8 @@ Each loader supports different optional parameters you can use to change how you
 - `file_reader`: A file reader the plugin should use to read the file data
 - `onload_func`: A function to transform or preprocess loaded data before passing it to the test function
 - `id`: The parameter ID for the loaded data. The file name is used if not specified
-- `**read_options`: File read options the plugin passes to `open()`. Supports only `mode`, `encoding`, and `newline` 
-options
+- `**read_options`: File read options the plugin passes to `open()`. Supports only `mode`, `encoding`, `errors`, and 
+`newline` options
 
 > [!NOTE]
 > `onload_func` must take either one (data) or two (file path, data) arguments. When `file_reader` is provided, the data 
