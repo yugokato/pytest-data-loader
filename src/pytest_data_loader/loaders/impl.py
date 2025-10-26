@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import logging
 import weakref
 from abc import ABC, abstractmethod
@@ -11,6 +10,7 @@ from pathlib import Path
 from typing import Any, ClassVar, ParamSpec, TypeVar
 
 from pytest_data_loader import parametrize
+from pytest_data_loader.loaders.reader import FileReader
 from pytest_data_loader.types import (
     DataLoader,
     DataLoaderLoadAttrs,
@@ -84,15 +84,18 @@ class FileDataLoader(LoaderABC):
     """File loader for loading single file"""
 
     STREAMABLE_FILE_TYPES: ClassVar[tuple[str, ...]] = (".txt", ".log", ".csv", ".tsv")
-    DEFAULT_FILE_READERS: ClassVar[dict[str, Any]] = {".json": json.load}
 
     @wraps(LoaderABC.__init__)  # type: ignore[misc]
     def __init__(self, *args: Any, **kwargs: Any):
         super().__init__(*args, **kwargs)
-        self.read_options = self.load_attrs.read_options
         self.file_reader = self.load_attrs.file_reader
-        if self.file_reader is None and (default_reader := FileDataLoader.DEFAULT_FILE_READERS.get(self.path.suffix)):
-            self.file_reader = default_reader
+        self.read_options = self.load_attrs.read_options
+        if not self.file_reader:
+            if registered_reader := FileReader.get_registered_reader(self.load_attrs.search_from, self.path.suffix):
+                self.file_reader = registered_reader.reader
+                if not self.read_options:
+                    self.read_options = registered_reader.read_options
+        assert isinstance(self.read_options, HashableDict)
         self._is_streamable = self.file_reader is not None or all(
             # non-structured text data can be read line by line
             [
@@ -318,7 +321,12 @@ class FileDataLoader(LoaderABC):
 
     def _get_file_obj(self) -> TextIOWrapper:
         """Get file object from cache or open a new one"""
-        f = self._cached_file_objects.get((self.path, self.read_options), open(self.path, **self.read_options))
+        f = self._cached_file_objects.get((self.path, self.read_options))
+        is_closed = f and f.closed
+        if not f or is_closed:
+            f = open(self.path, **self.read_options)
+            if is_closed:
+                self._cached_file_objects[(self.path, self.read_options)] = f
         f.seek(0)
         return f
 
@@ -415,7 +423,7 @@ class DirectoryDataLoader(LoaderABC):
     @wraps(LoaderABC.__init__)  # type: ignore[misc]
     def __init__(self, *args: Any, **kwargs: Any):
         super().__init__(*args, **kwargs)
-        if self.loader.requires_file_path:
+        if self.loader.is_file_loader:
             raise NotImplementedError(f"Unsupported loader for {DirectoryDataLoader.__name__}: {self.loader}")
 
     def load(self) -> Iterable[LoadedData | LazyLoadedData]:  # type: ignore[override]
@@ -428,14 +436,17 @@ class DirectoryDataLoader(LoaderABC):
                     file_loader = FileDataLoader(
                         file_path, self.load_attrs, strip_trailing_whitespace=self.strip_trailing_whitespace
                     )
+                    file_reader = read_options = None
                     if self.load_attrs.read_option_func:
-                        read_options = self.load_attrs.read_option_func(file_path) or {}
-                        self.load_attrs._validate_read_options(read_options)
-                        file_loader.read_options = HashableDict(read_options)
+                        read_options = self.load_attrs.read_option_func(file_path)
                     if self.load_attrs.file_reader_func:
                         file_reader = self.load_attrs.file_reader_func(file_path)
-                        self.load_attrs._validate_file_reader(file_reader)
-                        file_loader.file_reader = file_reader
+                    if file_reader or read_options:
+                        FileReader.validate(file_reader, read_options)
+                        if file_reader:
+                            file_loader.file_reader = file_reader
+                        if read_options:
+                            file_loader.read_options = HashableDict(read_options)
                     loaded_data = file_loader.load()
                     assert isinstance(loaded_data, LoadedData | LazyLoadedData), type(loaded_data)
                     loaded_files.append(loaded_data)

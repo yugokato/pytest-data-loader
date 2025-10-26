@@ -160,7 +160,9 @@ def run_pytest_with_context(
 
     test_code = f"""
     import os
+    import json
     from pathlib import Path
+
     import pytest
     from pytest_data_loader import {loader.__name__}
     from pytest_data_loader.utils import validate_loader_func_args_and_normalize

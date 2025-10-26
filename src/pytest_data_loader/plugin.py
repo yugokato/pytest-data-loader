@@ -1,11 +1,10 @@
-import inspect
 import sys
 from collections.abc import Generator, Iterable
 from pathlib import Path
 
 import pytest
 from _pytest.fixtures import SubRequest
-from pytest import Config, Metafunc, Parser
+from pytest import Config, Metafunc, Parser, StashKey
 
 from pytest_data_loader import parametrize
 from pytest_data_loader.constants import DEFAULT_LOADER_DIR_NAME, PYTEST_DATA_LOADER_ATTR
@@ -13,12 +12,15 @@ from pytest_data_loader.loaders.impl import FileDataLoader, data_loader_factory
 from pytest_data_loader.types import (
     DataLoaderIniOption,
     DataLoaderLoadAttrs,
+    DataLoaderOption,
     LazyLoadedData,
     LazyLoadedPartData,
     LoadedData,
     LoadedDataType,
 )
-from pytest_data_loader.utils import generate_parameterset, parse_ini_option, resolve_relative_path
+from pytest_data_loader.utils import generate_parameterset, resolve_relative_path
+
+STASH_KEY_DATA_LOADER_OPTION = StashKey[DataLoaderOption]()
 
 
 def pytest_addoption(parser: Parser) -> None:
@@ -48,9 +50,7 @@ def pytest_addoption(parser: Parser) -> None:
 
 def pytest_configure(config: Config) -> None:
     """Parse INI options for the plugin and fail early with a nice USAGE_ERROR error if validation fails"""
-    parse_ini_option(config, DataLoaderIniOption.DATA_LOADER_DIR_NAME)
-    parse_ini_option(config, DataLoaderIniOption.DATA_LOADER_ROOT_DIR)
-    parse_ini_option(config, DataLoaderIniOption.DATA_LOADER_STRIP_TRAILING_WHITESPACE)
+    config.stash[STASH_KEY_DATA_LOADER_OPTION] = DataLoaderOption(config)
 
 
 def pytest_generate_tests(metafunc: Metafunc) -> None:
@@ -59,22 +59,17 @@ def pytest_generate_tests(metafunc: Metafunc) -> None:
     if load_attrs := getattr(test_func, PYTEST_DATA_LOADER_ATTR, None):
         node_id = metafunc.definition.nodeid
         try:
-            cfg = metafunc.config
-            data_loader_dir_name = parse_ini_option(cfg, DataLoaderIniOption.DATA_LOADER_DIR_NAME)
-            data_loader_root_dir = parse_ini_option(cfg, DataLoaderIniOption.DATA_LOADER_ROOT_DIR)
-            strip_trailing_whitespace = parse_ini_option(cfg, DataLoaderIniOption.DATA_LOADER_STRIP_TRAILING_WHITESPACE)
-            assert isinstance(strip_trailing_whitespace, bool)
-            search_from = Path(inspect.getabsfile(test_func))
+            data_loader_option = metafunc.config.stash[STASH_KEY_DATA_LOADER_OPTION]
             test_data_path = resolve_relative_path(
-                data_loader_dir_name,
-                data_loader_root_dir,
+                data_loader_option.loader_dir_name,
+                data_loader_option.loader_root_dir,
                 load_attrs.relative_path,
-                search_from,
-                is_file=load_attrs.loader.requires_file_path,
+                load_attrs.search_from,
+                is_file=load_attrs.loader.is_file_loader,
             )
 
             data_loader = data_loader_factory(
-                test_data_path, load_attrs, strip_trailing_whitespace=strip_trailing_whitespace
+                test_data_path, load_attrs, strip_trailing_whitespace=data_loader_option.strip_trailing_whitespace
             )
             if load_attrs.loader == parametrize and isinstance(data_loader, FileDataLoader):
                 # Keep file loaders per module for clean up

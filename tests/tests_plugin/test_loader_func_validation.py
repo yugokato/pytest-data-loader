@@ -402,22 +402,24 @@ def test_read_option_func_validation(
 @pytest.mark.parametrize(
     ("loader_func_def", "is_valid"),
     [
-        pytest.param("lambda f:[]", True, id="1arg"),
-        pytest.param("lambda x,y:[]", False, id="2args"),
-        pytest.param("lambda x,y,z:[]", False, id="3args"),
-        pytest.param("lambda:[]", False, id="0arg"),
-        pytest.param("lambda *args:[]", False, id="*args"),
-        pytest.param("lambda **kwargs:[]", False, id="**kwargs"),
+        pytest.param("lambda x:json.load", True, id="1arg"),
+        pytest.param("lambda x,y:json.load", False, id="2args"),
+        pytest.param("lambda x,y,z:json.load", False, id="3args"),
+        pytest.param("lambda:json.load", False, id="0arg"),
+        pytest.param("lambda *args:json.load", False, id="*args"),
+        pytest.param("lambda **kwargs:json.load", False, id="**kwargs"),
         pytest.param("True", False, id="not_callable"),
         pytest.param("lambda x:True", False, id="invalid_value"),
     ],
 )
 @pytest.mark.parametrize("lazy_loading", [True, False])
+@pytest.mark.parametrize("file_extension", [".json"], indirect=True)
 @pytest.mark.parametrize("loader", SUPPORTED_LOADERS[DataLoaderFunctionType.FILE_READER_FUNC])
 def test_file_reader_func_validation(
     test_context: TestContext,
     loader: DataLoader,
     loader_func_def: str,
+    file_extension: str,
     is_valid: bool,
     lazy_loading: bool,
     collect_only: bool,

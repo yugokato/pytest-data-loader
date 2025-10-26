@@ -23,6 +23,7 @@ def test_file_loader(loader: DataLoader, lazy_loading: bool, relative_path: Path
     marks = (pytest.mark.foo, pytest.mark.bar)
     load_attrs = DataLoaderLoadAttrs(
         loader=loader,
+        search_from=Path(__file__),
         fixture_names=("file_path", "data"),
         relative_path=relative_path,
         lazy_loading=lazy_loading,
@@ -77,6 +78,7 @@ def test_file_loader_cached_file_loaders(loader: DataLoader, relative_path: Path
     abs_file_path = ABS_PATH_LOADER_DIR / relative_path
     load_attrs = DataLoaderLoadAttrs(
         loader=loader,
+        search_from=Path(__file__),
         fixture_names=("file_path", "data"),
         relative_path=relative_path,
         lazy_loading=True,
