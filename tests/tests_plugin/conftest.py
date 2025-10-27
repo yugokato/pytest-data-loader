@@ -141,7 +141,7 @@ def test_context(
 ) -> TestContext:
     """Test context fixture that sets up minimum data for various conditions passed via the dependent fixtures"""
     test_data_dir = pytester.mkdir(loader_dir_name)
-    if loader.requires_file_path:
+    if loader.is_file_loader:
         relative_path = create_test_file_in_loader_dir(
             pytester,
             loader_dir_name,

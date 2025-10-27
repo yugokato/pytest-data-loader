@@ -7,7 +7,7 @@ from enum import auto
 from pathlib import Path
 from typing import Any, Literal, ParamSpec, Protocol, TypeAlias, TypedDict, TypeVar, runtime_checkable
 
-from pytest import Mark, MarkDecorator
+from pytest import Config, Mark, MarkDecorator
 
 from pytest_data_loader.compat import StrEnum
 from pytest_data_loader.constants import ROOT_DIR
@@ -45,9 +45,24 @@ class DataLoaderIniOption(StrEnum):
     DATA_LOADER_STRIP_TRAILING_WHITESPACE = auto()
 
 
+class DataLoaderOption:
+    def __init__(self, config: Config):
+        self._config = config
+        self.loader_dir_name = self._parse_ini_option(DataLoaderIniOption.DATA_LOADER_DIR_NAME)
+        self.loader_root_dir = self._parse_ini_option(DataLoaderIniOption.DATA_LOADER_ROOT_DIR)
+        self.strip_trailing_whitespace = self._parse_ini_option(
+            DataLoaderIniOption.DATA_LOADER_STRIP_TRAILING_WHITESPACE
+        )
+
+    def _parse_ini_option(self, option: DataLoaderIniOption) -> str | bool | Path:
+        from pytest_data_loader.utils import parse_ini_option
+
+        return parse_ini_option(self._config, option)
+
+
 @runtime_checkable
 class DataLoader(Protocol):
-    requires_file_path: bool
+    is_file_loader: bool
     requires_parametrization: bool
     should_split_data: bool
     __name__: str
@@ -55,7 +70,7 @@ class DataLoader(Protocol):
     def __call__(self, *args: Any, **kwargs: Any) -> Any: ...
 
 
-class DataLoaderPathType(StrEnum):
+class DataLoaderType(StrEnum):
     FILE = auto()
     DIRECTORY = auto()
 
@@ -146,6 +161,7 @@ class DataLoaderLoadAttrs:
     """Data loader attributes added for a test function that uses a data loader decorator"""
 
     loader: DataLoader
+    search_from: Path
     fixture_names: tuple[str, ...]
     relative_path: Path
     lazy_loading: bool = True
@@ -157,15 +173,16 @@ class DataLoaderLoadAttrs:
     process_func: Callable[..., Any] | None = None
     marker_func: Callable[..., MarkDecorator | Collection[MarkDecorator | Mark] | None] | None = None
     id_func: Callable[..., Any] | None = None
-    read_option_func: Callable[[Path], FileReadOptions | dict[str, Any]] | None = None
+    read_option_func: Callable[[Path], dict[str, Any]] | None = None
     read_options: HashableDict = field(default_factory=HashableDict)
 
     def __post_init__(self) -> None:
+        from pytest_data_loader.loaders.reader import FileReader
+
         self._validate_fixture_names()
         self._validate_relative_path()
-        self._validate_file_reader(self.file_reader)
         self._validate_loader_func()
-        self._validate_read_options(self.read_options)
+        FileReader.validate(self.file_reader, self.read_options)
 
     @property
     def requires_file_path(self) -> bool:
@@ -210,17 +227,6 @@ class DataLoaderLoadAttrs:
         if self.relative_path.is_absolute():
             raise ValueError(f"{err}: It can not be an absolute path: {orig_value!r}")
 
-    @staticmethod
-    def _validate_file_reader(file_reader: Any | None) -> None:
-        if file_reader:
-            if not (
-                (isinstance(file_reader, type) and issubclass(file_reader, Iterable))
-                or callable(file_reader)
-                or hasattr(file_reader, "__iter__")
-            ):
-                got = file_reader if isinstance(file_reader, type) else type(file_reader)
-                raise TypeError(f"file_reader: Expected an iterable or a callable, but got {got.__name__!r}")
-
     def _validate_loader_func(self) -> None:
         from pytest_data_loader import parametrize_dir
         from pytest_data_loader.utils import validate_loader_func_args_and_normalize
@@ -251,23 +257,14 @@ class DataLoaderLoadAttrs:
                     ),
                 )
 
-    @staticmethod
-    def _validate_read_options(read_options: FileReadOptions | dict[str, Any]) -> None:
-        if not isinstance(read_options, dict):
-            raise TypeError(f"read_options: Expected a dict, but got {type(read_options).__name__!r}")
-        if unsupported := set(read_options.keys()).difference(set(FileReadOptions.__annotations__.keys())):
-            raise ValueError(f"Unsupported read options: {', '.join(unsupported)}")
-        if (mode := read_options.get("mode")) and mode not in ("r", "rt", "rb"):
-            raise ValueError(f"read_options: Invalid read mode: {mode}")
-
     def _modify_value(self, field_name: str, new_value: Any) -> None:
         object.__setattr__(self, field_name, new_value)
 
 
 class FileReadOptions(TypedDict, total=False):
-    mode: Literal["r", "rt", "rb"]
-    encoding: str
+    mode: Literal["r", "rt", "rb", None]
+    encoding: str | None
     errors: Literal[
-        "strict", "ignore", "replace", "surrogateescape", "xmlcharrefreplace", "backslashreplace", "namereplace"
+        "strict", "ignore", "replace", "surrogateescape", "xmlcharrefreplace", "backslashreplace", "namereplace", None
     ]
-    newline: Literal[None, "", "\n", "\r", "\r\n"]
+    newline: Literal["", "\n", "\r", "\r\n", None]

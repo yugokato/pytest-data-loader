@@ -99,7 +99,7 @@ def generate_parameterset(
             if load_attrs.lazy_loading:
                 return repr(loaded_data)
             else:
-                if load_attrs.loader.requires_file_path and load_attrs.loader.requires_parametrization:
+                if load_attrs.loader.is_file_loader and load_attrs.loader.requires_parametrization:
                     return repr(loaded_data.data)
                 else:
                     return loaded_data.file_name
@@ -122,7 +122,7 @@ def generate_parameterset(
                 marks = loaded_data.meta["marks"]
             else:
                 func_args: tuple[Any, ...]
-                if load_attrs.loader.requires_file_path:
+                if load_attrs.loader.is_file_loader:
                     func_args = (loaded_data.file_path, loaded_data.data)
                 else:
                     func_args = (loaded_data.file_path,)

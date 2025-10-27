@@ -22,7 +22,7 @@ def test_loader_with_valid_data_path(
     relative_path = create_test_file_in_loader_dir(
         test_context.pytester, test_context.loader_dir, relative_dir, is_dir=True, file_name="test.txt"
     )
-    if not test_context.loader.requires_file_path:
+    if not test_context.loader.is_file_loader:
         relative_path = relative_path.parent
     path: Path | str
     if value_type is str:
@@ -46,7 +46,7 @@ def test_loader_with_unmatched_data_path_type(test_context: TestContext, collect
     """Test that relative path type that isn't allowed for each loader is handled properly"""
     pytester = test_context.pytester
     file_path = create_test_file_in_loader_dir(pytester, "some_dir", Path(f"other_dir{os.sep}foo.txt"))
-    if test_context.loader.requires_file_path:
+    if test_context.loader.is_file_loader:
         unmatched_path = file_path.parent
     else:
         unmatched_path = file_path

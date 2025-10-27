@@ -17,6 +17,7 @@ def test_directory_loader(lazy_loading: bool, relative_path: str) -> None:
     abs_dir_path = ABS_PATH_LOADER_DIR / relative_path
     load_attrs = DataLoaderLoadAttrs(
         loader=parametrize_dir,
+        search_from=Path(__file__),
         fixture_names=("file_path", "data"),
         relative_path=Path(relative_path),
         lazy_loading=lazy_loading,
