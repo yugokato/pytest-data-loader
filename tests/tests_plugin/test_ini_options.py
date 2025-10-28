@@ -10,7 +10,7 @@ from pytest_data_loader.types import DataLoader, DataLoaderIniOption
 from tests.tests_plugin.helper import (
     LoaderRootDir,
     TestContext,
-    create_test_file_in_loader_dir,
+    create_test_data_in_loader_dir,
     run_pytest_with_context,
 )
 
@@ -60,7 +60,7 @@ def test_ini_option_data_loader_root_dir(
 
     # Create test data in the resolved loader root dir
     relative_data_path = f"{test_ini_option_data_loader_root_dir.__name__}.txt"
-    create_test_file_in_loader_dir(
+    create_test_data_in_loader_dir(
         test_context.pytester,
         DEFAULT_LOADER_DIR_NAME,
         relative_data_path,
@@ -76,7 +76,7 @@ def test_ini_option_data_loader_root_dir(
 
     result = run_pytest_with_context(
         test_context,
-        relative_data_path=relative_data_path,
+        path=relative_data_path,
         data_loader_root_dir=loader_root_dir.resolved_path,
         collect_only=collect_only,
     )

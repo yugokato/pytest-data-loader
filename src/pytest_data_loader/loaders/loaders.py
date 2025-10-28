@@ -40,7 +40,7 @@ def loader(loader_type: DataLoaderType, /, *, parametrize: bool = False) -> Call
 @loader(DataLoaderType.FILE)
 def load(
     fixture_names: str | tuple[str, str],
-    relative_path: Path | str,
+    path: Path | str,
     /,
     *,
     lazy_loading: bool = True,
@@ -55,8 +55,9 @@ def load(
                           name is provided, the loaded data will be passed to that fixture. If two names are provided
                           either as a tuple or as a comma-separated string, the first fixture will receive the file
                           path, and the second will receive the loaded data.
-    :param relative_path: File path relative to one of the base data loader directories. The loader searches for the
-                          closest data loader directory containing a matching file and loads the data from there.
+    :param path: Path to the file to load. It can be either an absolute path or a path relative to one of the base data
+                 directories. When a relative path is provided, the loader searches for the nearest data directory
+                 containing a matching file and loads the data from there.
     :param lazy_loading: If True, the plugin will defer the timing of file loading to the test setup phase. If False,
                          the data will be loaded during the test collection phase, which could cause a performance issue
     :param file_reader: A file reader the plugin should use to read the file data.
@@ -88,7 +89,7 @@ def load(
     return _setup_data_loader(
         cast(DataLoader, load),
         fixture_names,
-        relative_path,
+        path,
         lazy_loading=lazy_loading,
         file_reader=file_reader,
         onload_func=onload_func,
@@ -100,7 +101,7 @@ def load(
 @loader(DataLoaderType.FILE, parametrize=True)
 def parametrize(
     fixture_names: str | tuple[str, str],
-    relative_path: Path | str,
+    path: Path | str,
     /,
     *,
     lazy_loading: bool = True,
@@ -120,8 +121,9 @@ def parametrize(
                           name is provided, the loaded part data will be passed to that fixture. If two names are
                           provided either as a tuple or as a comma-separated string, the first fixture will receive the
                           file path, and the second will receive the loaded part data.
-    :param relative_path: File path relative to one of the base data loader directories. The loader searches for the
-                          closest data loader directory containing a matching file and loads the data from there.
+    :param path: Path to the file to load. It can be either an absolute path or a path relative to one of the base data
+                 directories. When a relative path is provided, the loader searches for the nearest data directory
+                 containing a matching file and loads the data from there.
     :param lazy_loading: If True, the plugin will defer the timing of file loading to the test setup phase. Note that
                          unlike other loaders, the plugin still needs to inspect the file data during the collection
                          phase to determine the total number of parametrized tests. The inspection is done in one of
@@ -179,7 +181,7 @@ def parametrize(
     return _setup_data_loader(
         cast(DataLoader, parametrize),
         fixture_names,
-        relative_path,
+        path,
         lazy_loading=lazy_loading,
         file_reader=file_reader,
         onload_func=onload_func,
@@ -195,7 +197,7 @@ def parametrize(
 @loader(DataLoaderType.DIRECTORY, parametrize=True)
 def parametrize_dir(
     fixture_names: str | tuple[str, str],
-    relative_path: Path | str,
+    path: Path | str,
     /,
     *,
     lazy_loading: bool = True,
@@ -212,8 +214,9 @@ def parametrize_dir(
                           name is provided, the loaded data will be passed to that fixture. If two names are provided
                           either as a tuple or as a comma-separated string, the first fixture will receive the file
                           path, and the second will receive the loaded data.
-    :param relative_path: Directory path relative to one of the base data loader directories. The loader searches for
-                          the closest data loader directory containing a matching directory and loads files from there.
+    :param path: Path to the directory to load files from. It can be either an absolute path or a path relative to one
+                 of the data directories. When a relative path is provided, the loader searches for the nearest data
+                 directory containing a matching directory and loads files from there.
     :param lazy_loading: If True, the plugin will defer the timing of file loading to the test setup phase. If False,
                          the data will be loaded during the test collection phase, which could cause a performance issue
     :param file_reader_func: A function to specify file readers to matching file paths.
@@ -245,7 +248,7 @@ def parametrize_dir(
     return _setup_data_loader(
         cast(DataLoader, parametrize_dir),
         fixture_names,
-        relative_path,
+        path,
         lazy_loading=lazy_loading,
         file_reader_func=file_reader_func,
         filter_func=filter_func,
@@ -258,7 +261,7 @@ def parametrize_dir(
 def _setup_data_loader(
     loader: DataLoader,
     fixture_names: str | tuple[str, str],
-    relative_path: Path | str,
+    path: Path | str,
     /,
     *,
     lazy_loading: bool = True,
@@ -289,9 +292,9 @@ def _setup_data_loader(
             DataLoaderLoadAttrs(
                 loader=loader,
                 search_from=Path(inspect.getabsfile(test_func)),
-                # fixture_names and relative_path will be validated and normalized in __post_init__()
+                # fixture_names and path will be validated and normalized in __post_init__()
                 fixture_names=cast(tuple[str, ...], fixture_names),
-                relative_path=cast(Path, relative_path),
+                path=cast(Path, path),
                 lazy_loading=lazy_loading,
                 file_reader=file_reader,
                 file_reader_func=file_reader_func,

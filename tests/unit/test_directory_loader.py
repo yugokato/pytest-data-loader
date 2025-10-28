@@ -10,23 +10,23 @@ from tests.tests_loader.helper import ABS_PATH_LOADER_DIR, PATH_EMPTY_DIR, PATH_
 pytestmark = pytest.mark.unittest
 
 
-@pytest.mark.parametrize("relative_path", [PATH_SOME_DIR, PATH_EMPTY_DIR])
+@pytest.mark.parametrize("path", [PATH_SOME_DIR, PATH_EMPTY_DIR])
 @pytest.mark.parametrize("lazy_loading", [True, False])
-def test_directory_loader(lazy_loading: bool, relative_path: str) -> None:
+def test_directory_loader(lazy_loading: bool, path: str) -> None:
     """Test directory loader with various file types and with/without lazy loading"""
-    abs_dir_path = ABS_PATH_LOADER_DIR / relative_path
+    abs_dir_path = ABS_PATH_LOADER_DIR / path
     load_attrs = DataLoaderLoadAttrs(
         loader=parametrize_dir,
         search_from=Path(__file__),
         fixture_names=("file_path", "data"),
-        relative_path=Path(relative_path),
+        path=Path(path),
         lazy_loading=lazy_loading,
     )
 
     loaded_files = DirectoryDataLoader(abs_dir_path, load_attrs=load_attrs, strip_trailing_whitespace=True).load()
     assert isinstance(loaded_files, list)
 
-    if relative_path == PATH_EMPTY_DIR:
+    if path == PATH_EMPTY_DIR:
         assert loaded_files == []
     else:
         assert len(loaded_files) > 0

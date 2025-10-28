@@ -7,9 +7,9 @@ versions](https://img.shields.io/pypi/pyversions/pytest-data-loader.svg)](https:
 [![test](https://github.com/yugokato/pytest-data-loader/actions/workflows/test.yml/badge.svg?branch=main)](https://github.com/yugokato/pytest-data-loader/actions/workflows/test.yml?query=branch%3Amain)
 [![Code style ruff](https://img.shields.io/badge/code%20style-ruff-000000.svg)](https://docs.astral.sh/ruff/)
 
-`pytest-data-loader` is a `pytest` plugin for loading test data from files to facilitate data-driven testing.  
-In addition to loading data from a single file, it also supports dynamic test parametrization either by splitting file 
-data into parts or by loading multiple files from a directory.
+`pytest-data-loader` is a `pytest` plugin that simplifies loading test data from files for data-driven testing.  
+It supports not only loading a single file, but also dynamic test parametrization either by splitting file data into 
+parts or by loading multiple files from a directory.
 
 
 ## Installation
@@ -29,7 +29,7 @@ from pytest_data_loader import load
 @load("data", "example.json")
 def test_example(data):
     """
-    Loads and injects data from data/example.json as the "data" fixture.
+    Loads data/example.json and injects it as the "data" fixture.
     
     example.json: '{"foo": 1, "bar": 2}'
     """
@@ -39,13 +39,14 @@ def test_example(data):
 ## Usage
 
 The plugin provides three data loaders — `@load`, `@parametrize`, and `@parametrize_dir` — available as decorators for 
-loading test data. As a common design, each loader takes two positional arguments: 
+loading test data. Each loader takes two positional arguments: 
 
 - `fixture_names`: Name(s) of the fixture(s) that will be made available to the test function. It supports either one
                    (receiving file data) or two (receiving file path and file data) fixture names
-- `relative_path`: File or directory path relative to one of the base "data" loader directories to load test data 
-                   from. The plugin will search for the closest "data" directory from the test file's directory and up 
-                   towards the Pytest root directory
+- `path`: Path to the file or directory to load data from. It can be either an absolute path or a path relative to one
+          of the project's data directories. When a relative path is provided, the plugin searches upward from the 
+          test file's directory toward the Pytest root directory to find the nearest data directory containing the 
+          target file.
 
 Additionally, each loader supports different optional keyword arguments to customize how the data is loaded. See 
 [Loader Options](#loader-options) section for details.
@@ -71,7 +72,7 @@ Given you have the following project structure:
 │   └── test_something_else.py
 └── test_something.py
 ```
-The plugin searches for a `data` directory relative to the test file to locate data files.
+The plugin searches for a data directory (default name: `data`) that contains the specified file or directory.
 
 ### 1. Load file data — `@load`
 `@load` is a file loader that loads the file content and passes it to the test function.
@@ -213,11 +214,10 @@ tests/test_something.py::test_something[image.png] PASSED                       
 
 ## Lazy Loading
 
-Lazy loading is enabled by default for all loaders to improve efficiency, especially with large datasets. During the 
-test collection phase, Pytest receives a lazy object as a test parameter instead of the actual data. The data is 
-resolved only when it is needed during test setup.    
-If you need to disable this behavior for a specific test for some reason, you can specify the `lazy_loading=False` 
-option on the loader.
+Lazy loading is enabled by default for all data loaders to improve efficiency, especially with large datasets.  During 
+test collection, pytest receives a lazy object as a test parameter instead of the actual data. The data is resolved 
+only when it is needed during test setup.    
+If you need to disable this behavior for a specific test, pass `lazy_loading=False` to the data loader.
 
 > [!NOTE]
 > Lazy loading for the `@parametrize` loader works slightly differently from other loaders. Since Pytest needs to know 
@@ -234,6 +234,18 @@ will be passed to `open()`. This can be done either as a `conftest.py` level reg
 configuration. If both are done, the test level configuration takes precedence over `conftest.py` level registration.  
 If multiple `conftest.py` files register a reader for the same file extension, the closest one from the current test 
 becomes effective.  
+
+Here are some of the common readers you could use:
+
+| File type | Reader                                  | Notes                                             |
+|-----------|-----------------------------------------|---------------------------------------------------|
+| .json     | `json.load`                             | The plugin automatically uses this by default     |
+| .csv      | `csv.reader`, `csv.DictReader`          |                                                   |
+| .yml      | `yaml.safe_load`, `yaml.safe_load_all`  | Requires `PyYAML`                                 |
+| .xml      | `xml.etree.ElementTree.parse`           |                                                   |
+| .toml     | `tomllib.load`                          | `tomli.load` for Python <3.11  (Requires `tomli`) |
+| .ini      | `configparser.ConfigParser().read_file` |                                                   |
+| .pdf      | `pypdf.PdfReader`                       | Requires `pypdf`                                  |
 
 Here are some examples of loading a CSV file using the built-in CSV readers with file read options:
 
@@ -253,7 +265,7 @@ import pytest_data_loader
 pytest_data_loader.register_reader(".csv", csv.reader, newline="")
 ```
 
-The registered file reader automatically appies to all tests located in the same directory and any of its subdirectories.
+The registered file reader automatically applies to all tests located in the same directory and any of its subdirectories.
 
 ```python
 # test_something.py
@@ -299,17 +311,6 @@ def test_something2(data):
 > If only read options are specified without a `file_reader` in a loader, the plugin will search for an existing file 
 > reader registered in `conftest.py` if there is any, and applies it with the new read options for the test. But if 
 > only a `file_reader` is specified with no read options in a loder, no read options will be applied.
-
-
-Here are some of the common readers you could use:
-- .json: `json.load` (NOTE: The plugin automatically applies this file reader for `.json` files by default)
-- .csv: `csv.reader`, `csv.DictReader`
-- .yml: `yaml.safe_load`, `yaml.safe_load_all` (requires `PyYAML` library)
-- .xml: `xml.etree.ElementTree.parse`
-- .toml: `tomllib.load` (or `tomli.load` from `tomli` library for Python <3.11)
-- .ini: `configparser.ConfigParser().read_file`
-- .pdf: `pypdf.PdfReader` (requires `pypdf` library)
-
 
 > [!TIP]
 > - A file reader must take one argument (a file-like object returned by `open()`)
@@ -385,14 +386,14 @@ Supports only `mode`, `encoding`, `errors`, and `newline` options. It must retur
 ## INI Options
 
 ### `data_loader_dir_name`
-A base directory name to load test data from. The file or directory path specified to a loader is considered a 
-relative path to one of these base directories in the directory tree.  
+The base directory name to load test data from. When a relative file or directory path is provided to a data loader, 
+it is resolved relative to the nearest matching data directory in the directory tree.  
 Plugin default: `data`
 
 ### `data_loader_root_dir`
-Specifies the absolute or relative path to the project's actual root directory. By default, the search is limited to 
+Absolute or relative path to the project's root directory. By default, the search is limited to 
 within pytest's rootdir, which may differ from the project's top-level directory. Setting this option allows data 
-loader directories located outside pytest's rootdir to be found. 
+directories located outside pytest's rootdir to be found. 
 Environment variables are supported using the `${VAR}` or `$VAR` (or `%VAR%` for windows) syntax.  
 Plugin default: Pytest rootdir (`config.rootpath`)
 

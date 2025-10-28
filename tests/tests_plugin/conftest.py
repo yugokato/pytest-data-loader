@@ -13,7 +13,7 @@ from pytest_data_loader import load, parametrize, parametrize_dir
 from pytest_data_loader.constants import DEFAULT_LOADER_DIR_NAME
 from pytest_data_loader.types import DataLoader
 from pytest_data_loader.utils import has_env_vars
-from tests.tests_plugin.helper import LoaderRootDir, TestContext, create_test_file_in_loader_dir
+from tests.tests_plugin.helper import LoaderRootDir, TestContext, create_test_context
 
 pytest_plugins = "pytester"
 
@@ -136,54 +136,16 @@ def test_context(
     loader_dir_name: str,
     file_extension: str,
     file_content: str | bytes,
-    strip_trailing_whitespace: bool,
     loader_root_dir: LoaderRootDir,
+    strip_trailing_whitespace: bool,
 ) -> TestContext:
     """Test context fixture that sets up minimum data for various conditions passed via the dependent fixtures"""
-    test_data_dir = pytester.mkdir(loader_dir_name)
-    if loader.is_file_loader:
-        relative_path = create_test_file_in_loader_dir(
-            pytester,
-            loader_dir_name,
-            f"file{file_extension}",
-            loader_root_dir=loader_root_dir.resolved_path,
-            data=file_content,
-        )
-        if loader.requires_parametrization:
-            if file_extension == ".json":
-                num_expected_tests = len(json.loads(file_content).items())
-            elif file_extension == ".txt":
-                assert isinstance(file_content, str)
-                if strip_trailing_whitespace:
-                    num_expected_tests = len(file_content.rstrip().splitlines())
-                else:
-                    num_expected_tests = len(file_content.rstrip("\r\n").splitlines())
-            elif file_extension == ".png":
-                num_expected_tests = 1
-            else:
-                raise NotImplementedError(f"Not supported for {file_extension} file")
-        else:
-            num_expected_tests = 1
-    else:
-        relative_path = Path("dir")
-        num_expected_tests = 2
-        [
-            create_test_file_in_loader_dir(
-                pytester,
-                loader_dir_name,
-                relative_path / f"file{i}{file_extension}",
-                loader_root_dir=loader_root_dir.resolved_path,
-                data=file_content,
-            )
-            for i in range(num_expected_tests)
-        ]
-
-    return TestContext(
-        pytester=pytester,
-        loader=loader,
-        loader_dir=test_data_dir,
-        relative_path=relative_path,
-        test_file_ext=file_extension,
-        test_file_content=file_content,
-        num_expected_tests=num_expected_tests,
+    return create_test_context(
+        pytester,
+        loader,
+        file_extension=file_extension,
+        file_content=file_content,
+        loader_dir_name=loader_dir_name,
+        loader_root_dir=loader_root_dir,
+        strip_trailing_whitespace=strip_trailing_whitespace,
     )

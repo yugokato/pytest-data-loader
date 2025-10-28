@@ -8,7 +8,7 @@ from pytest import Config, Metafunc, Parser, StashKey
 
 from pytest_data_loader import parametrize
 from pytest_data_loader.constants import DEFAULT_LOADER_DIR_NAME, PYTEST_DATA_LOADER_ATTR
-from pytest_data_loader.loaders.impl import FileDataLoader, data_loader_factory
+from pytest_data_loader.loaders.impl import FileDataLoader, data_loader_factory, resolve_relative_path
 from pytest_data_loader.types import (
     DataLoaderIniOption,
     DataLoaderLoadAttrs,
@@ -18,7 +18,7 @@ from pytest_data_loader.types import (
     LoadedData,
     LoadedDataType,
 )
-from pytest_data_loader.utils import generate_parameterset, resolve_relative_path
+from pytest_data_loader.utils import generate_parameterset
 
 STASH_KEY_DATA_LOADER_OPTION = StashKey[DataLoaderOption]()
 
@@ -28,16 +28,16 @@ def pytest_addoption(parser: Parser) -> None:
         DataLoaderIniOption.DATA_LOADER_DIR_NAME,
         type="string",
         default=DEFAULT_LOADER_DIR_NAME,
-        help="[pytest-data-loader] Overrides the plugin default value for data loader directory name.",
+        help="[pytest-data-loader] The base directory name to load test data from.",
     )
     parser.addini(
         DataLoaderIniOption.DATA_LOADER_ROOT_DIR,
         type="string",
         default="",
-        help="[pytest-data-loader] Specifies the absolute or relative path to the project's actual root directory. "
-        "This directory defines the upper boundary when searching for data loader directories. By default, the search "
-        "is limited to within pytest's rootdir, which may differ from the project's top-level directory. Setting this "
-        "option allows data loader directories located outside pytest's rootdir to be found. "
+        help="[pytest-data-loader] Absolute or relative path to the project's root directory. This directory defines "
+        "the upper boundary when searching for data directories. By default, the search is limited to within pytest's "
+        "rootdir, which may differ from the project's top-level directory. Setting this option allows data directories "
+        "located outside pytest's rootdir to be found. "
         "Environment variables are supported using the ${VAR} or $VAR (or %VAR% for windows) syntax.",
     )
     parser.addini(
@@ -60,13 +60,16 @@ def pytest_generate_tests(metafunc: Metafunc) -> None:
         node_id = metafunc.definition.nodeid
         try:
             data_loader_option = metafunc.config.stash[STASH_KEY_DATA_LOADER_OPTION]
-            test_data_path = resolve_relative_path(
-                data_loader_option.loader_dir_name,
-                data_loader_option.loader_root_dir,
-                load_attrs.relative_path,
-                load_attrs.search_from,
-                is_file=load_attrs.loader.is_file_loader,
-            )
+            if load_attrs.path.is_absolute():
+                test_data_path = load_attrs.path
+            else:
+                test_data_path = resolve_relative_path(
+                    data_loader_option.loader_dir_name,
+                    data_loader_option.loader_root_dir,
+                    load_attrs.path,
+                    load_attrs.search_from,
+                    is_file=load_attrs.loader.is_file_loader,
+                )
 
             data_loader = data_loader_factory(
                 test_data_path, load_attrs, strip_trailing_whitespace=data_loader_option.strip_trailing_whitespace
