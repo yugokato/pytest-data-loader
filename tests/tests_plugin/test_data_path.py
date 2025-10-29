@@ -38,7 +38,9 @@ def test_loader_with_valid_data_path(
 
 
 @pytest.mark.parametrize("collect_only", [True, False])
-@pytest.mark.parametrize("invalid_path", [".", "..", ROOT_DIR])
+@pytest.mark.parametrize(
+    "invalid_path", [".", "..", ROOT_DIR, Path(ROOT_DIR, "dir"), Path(ROOT_DIR, "dir", "test.txt")]
+)
 def test_loader_with_invalid_data_path(test_context: TestContext, invalid_path: str, collect_only: bool) -> None:
     """Test that invalid relative paths are handled properly"""
     result = run_pytest_with_context(test_context, path=invalid_path, collect_only=collect_only)
@@ -46,11 +48,14 @@ def test_loader_with_invalid_data_path(test_context: TestContext, invalid_path: 
 
 
 @pytest.mark.parametrize("collect_only", [True, False])
+@pytest.mark.parametrize("is_abs_path", [False, True])
 def test_loader_with_unmatched_data_path_type(
-    test_context: TestContext, loader: DataLoader, collect_only: bool
+    test_context: TestContext, loader: DataLoader, loader_dir_name: str, is_abs_path: bool, collect_only: bool
 ) -> None:
     """Test that relative path type that isn't allowed for each loader is handled properly"""
-    file_path = create_test_data_in_loader_dir(test_context.pytester, "some_dir", Path("other_dir", "foo.txt"))
+    file_path = create_test_data_in_loader_dir(
+        test_context.pytester, loader_dir_name, Path("other_dir", "foo.txt"), return_abs_path=is_abs_path
+    )
     if loader.is_file_loader:
         unmatched_path = file_path.parent
     else:
@@ -86,8 +91,17 @@ def _check_result_with_invalid_path(result: RunResult, loader: DataLoader, inval
     assert result.ret == ExitCode.INTERRUPTED
     stdout = str(result.stdout)
     result.assert_outcomes(errors=1)
-    if str(invalid_path) in (".", "..", ROOT_DIR):
-        assert f"Invalid path value: {str(invalid_path)!r}" in stdout
+    path = Path(invalid_path)
+    if str(path) in (".", "..", ROOT_DIR):
+        assert f"Invalid path value: '{path}'" in stdout
+    elif path.is_absolute():
+        if path.exists():
+            assert (
+                f"Invalid path: @{loader.__name__} loader must take a "
+                f"{'file' if loader.is_file_loader and path.is_dir() else 'directory'} path, not '{path}'"
+            ) in stdout
+        else:
+            assert f"The provided path does not exist: '{path}'" in stdout
     else:
         file_or_dir = "directory" if loader == parametrize_dir else "file"
-        assert f"Unable to locate the specified {file_or_dir} '{invalid_path}'" in stdout
+        assert f"Unable to locate the specified {file_or_dir} '{path}'" in stdout

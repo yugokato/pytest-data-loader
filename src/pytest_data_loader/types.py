@@ -222,11 +222,18 @@ class DataLoaderLoadAttrs:
 
         path = Path(orig_value)
         if path in (Path("."), Path(".."), Path(ROOT_DIR)):
-            raise ValueError(f"Invalid path value: {str(orig_value)!r}")
-        if path.is_absolute() and not path.exists():
-            raise ValueError(
-                f"The provided {'file' if path.is_file() else 'directory'} does not exist: {str(orig_value)!r}"
-            )
+            raise ValueError(f"Invalid path value: '{orig_value}'")
+        if path.is_absolute():
+            if not path.exists():
+                raise ValueError(f"The provided path does not exist: '{orig_value}'")
+            if path.is_dir() and self.loader.is_file_loader:
+                raise ValueError(
+                    f"Invalid path: @{self.loader.__name__} loader must take a file path, not '{orig_value}'"
+                )
+            if path.is_file() and not self.loader.is_file_loader:
+                raise ValueError(
+                    f"Invalid path: @{self.loader.__name__} loader must take a directory path, not '{orig_value}'"
+                )
 
         self._modify_value("path", path)
 
