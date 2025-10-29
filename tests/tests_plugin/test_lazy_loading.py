@@ -39,7 +39,7 @@ def test_lazy_loading(test_context: TestContext, lazy_loading: bool, collect_onl
                         f"Expected a {LazyLoadedPartData.__name__} instance, got {{type(v).__name__}}"
                     )
                     idx =  request.node.callspec.indices[request.fixturename]
-                    assert request.node.name.endswith(f"[{Path(test_context.relative_path).name}:part{{idx+1}}]")
+                    assert request.node.name.endswith(f"[{Path(test_context.path).name}:part{{idx+1}}]")
                 else:
                     assert isinstance(v, type(v))
                     assert request.node.name.endswith(f"[{{repr(v)}}]")
