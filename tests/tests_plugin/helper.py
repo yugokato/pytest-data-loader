@@ -28,7 +28,7 @@ class TestContext:
     strip_trailing_whitespace: bool = True
 
     @property
-    def num_expected_tests(self):
+    def num_expected_tests(self) -> int:
         if self.loader.is_file_loader:
             if self.loader.requires_parametrization:
                 if self.test_file_ext == ".json":
@@ -95,7 +95,7 @@ def create_test_data_in_loader_dir(
 
     if return_abs_path:
         return abs_file_path
-    return relative_file_path
+    return Path(relative_file_path)
 
 
 def create_test_context(
