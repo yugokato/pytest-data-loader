@@ -132,7 +132,7 @@ def test_file_reader_registration_in_non_conftest(pytester: Pytester) -> None:
     result = pytester.runpytest_subprocess()
     assert result.ret == ExitCode.INTERRUPTED
     result.assert_outcomes(errors=1)
-    assert "must be called from a conftest.py" in str(result.stdout)
+    assert "pytest_data_loader.register_reader() must be called from a conftest.py" in str(result.stdout)
 
 
 def _setup_data(pytester: Pytester, ext: str = ".txt") -> tuple[str, str]:
