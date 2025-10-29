@@ -117,7 +117,7 @@ def register_reader(
 
     if caller_file.name != "conftest.py":
         raise RuntimeError(
-            f"{__package__}.{register_reader.__name__}() must be called from a conftest.py, "
+            f"{__name__.split('.')[0]}.{register_reader.__name__}() must be called from a conftest.py, "
             f"not from {str(caller_file)!r}"
         )
     return FileReader.register(caller_file, ext, file_reader, **read_options)
