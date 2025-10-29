@@ -4,7 +4,7 @@ import pytest
 from pytest import FixtureRequest
 
 from pytest_data_loader.constants import DEFAULT_LOADER_DIR_NAME
-from pytest_data_loader.utils import resolve_relative_path
+from pytest_data_loader.loaders.impl import resolve_relative_path
 from tests.tests_loader.helper import (
     ABS_PATH_LOADER_DIR,
     PATH_JSON_FILE_OBJECT,

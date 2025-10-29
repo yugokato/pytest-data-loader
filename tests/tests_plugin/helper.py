@@ -1,4 +1,5 @@
 import inspect
+import json
 import os
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -9,6 +10,7 @@ from _pytest.pytester import Pytester
 from pytest import RunResult
 
 from pytest_data_loader import parametrize
+from pytest_data_loader.constants import DEFAULT_LOADER_DIR_NAME
 from pytest_data_loader.types import DataLoader, DataLoaderFunctionType
 from pytest_data_loader.utils import is_valid_fixture_name
 
@@ -20,10 +22,32 @@ class TestContext:
     pytester: Pytester
     loader: DataLoader
     loader_dir: Path | str
-    relative_path: Path | str
+    path: Path | str
     test_file_ext: str
     test_file_content: str | bytes
-    num_expected_tests: int
+    strip_trailing_whitespace: bool = True
+
+    @property
+    def num_expected_tests(self):
+        if self.loader.is_file_loader:
+            if self.loader.requires_parametrization:
+                if self.test_file_ext == ".json":
+                    num_expected_tests = len(json.loads(self.test_file_content).items())
+                elif self.test_file_ext == ".txt":
+                    assert isinstance(self.test_file_content, str)
+                    if self.strip_trailing_whitespace:
+                        num_expected_tests = len(self.test_file_content.rstrip().splitlines())
+                    else:
+                        num_expected_tests = len(self.test_file_content.rstrip("\r\n").splitlines())
+                elif self.test_file_ext == ".png":
+                    num_expected_tests = 1
+                else:
+                    raise NotImplementedError(f"Not supported for {self.test_file_ext} file")
+            else:
+                num_expected_tests = 1
+        else:
+            num_expected_tests = len(list(Path(self.loader_dir, self.path).resolve().iterdir()))
+        return num_expected_tests
 
 
 @dataclass
@@ -46,44 +70,98 @@ def get_num_func_args(loader_func: Callable[..., Any]) -> int:
     return len(parameters)
 
 
-def create_test_file_in_loader_dir(
+def create_test_data_in_loader_dir(
     pytester: Pytester,
     loader_dir: Path | str,
-    relative_file_or_dir_path: Path | str,
+    relative_file_path: Path | str,
     loader_root_dir: Path | None = None,
-    is_dir: bool = False,
-    file_name: str | None = None,
     data: str | bytes = "content",
+    return_abs_path: bool = False,
 ) -> Path:
-    relative_file_path: Path | str
-    if is_dir:
-        if not file_name:
-            raise ValueError("file_name is required if is_dir=True")
-        relative_file_path = Path(relative_file_or_dir_path) / file_name
-    else:
-        relative_file_path = relative_file_or_dir_path
-
     if loader_root_dir:
         loader_dir = loader_root_dir / loader_dir
     else:
         loader_dir = Path(loader_dir)
 
-    file_path = loader_dir / relative_file_path
-    name, ext = os.path.splitext(file_path)
+    abs_file_path = (loader_dir / relative_file_path).resolve()
+    if not abs_file_path.parent.exists():
+        abs_file_path.parent.mkdir(parents=True, exist_ok=True)
+    name, ext = os.path.splitext(abs_file_path)
     if ext == ".png":
-        if not file_path.parent.exists():
-            pytester.mkdir(file_path.parent)
-        file_path.write_bytes(data)  # type: ignore
+        abs_file_path.write_bytes(data)  # type: ignore
     else:
         pytester.makefile(ext, **{name: data})
-    return file_path.relative_to(loader_dir)
+    assert abs_file_path.exists()
+
+    if return_abs_path:
+        return abs_file_path
+    return relative_file_path
+
+
+def create_test_context(
+    pytester: Pytester,
+    loader: DataLoader,
+    /,
+    *,
+    file_extension: str = ".txt",
+    file_content: str | bytes = "foo\nbar",
+    parent_dirs: Path | str = "",  # dir(s) under the loader dir
+    loader_dir_name: str = DEFAULT_LOADER_DIR_NAME,
+    loader_root_dir: LoaderRootDir = LoaderRootDir(),
+    strip_trailing_whitespace: bool = True,
+    path_type: type[str | Path] = str,
+    is_abs_path: bool = False,
+) -> TestContext:
+    test_data_dir = pytester.mkdir(loader_dir_name)
+    if parent_dirs:
+        Path(test_data_dir, parent_dirs).mkdir(parents=True, exist_ok=True)
+    if loader.is_file_loader:
+        path = create_test_data_in_loader_dir(
+            pytester,
+            loader_dir_name,
+            Path(parent_dirs, f"file{file_extension}"),
+            loader_root_dir=loader_root_dir.resolved_path,
+            data=file_content,
+            return_abs_path=is_abs_path,
+        )
+    else:
+        path = Path(parent_dirs, "dir")
+        paths = {
+            create_test_data_in_loader_dir(
+                pytester,
+                loader_dir_name,
+                path / f"file{i}{file_extension}",
+                loader_root_dir=loader_root_dir.resolved_path,
+                data=file_content,
+                return_abs_path=is_abs_path,
+            ).parent
+            for i in range(2)
+        }
+        assert len(paths) == 1
+        if is_abs_path:
+            path = paths.pop().resolve()
+
+    if is_abs_path:
+        assert path.is_absolute()
+    else:
+        assert not path.is_absolute()
+
+    return TestContext(
+        pytester=pytester,
+        loader=loader,
+        loader_dir=test_data_dir,
+        path=path_type(path),
+        test_file_ext=file_extension,
+        test_file_content=file_content,
+        strip_trailing_whitespace=strip_trailing_whitespace,
+    )
 
 
 def run_pytest_with_context(
     test_context: TestContext,
     fixture_names: str | tuple[str, ...] = ("arg1", "arg2"),
     data_loader_root_dir: Path | None = None,
-    relative_data_path: Path | str | None = None,
+    path: Path | str | None = None,
     lazy_loading: bool | None = True,
     onload_func_def: str | None = None,
     parametrizer_func_def: str | None = None,
@@ -106,8 +184,8 @@ def run_pytest_with_context(
     pytester = test_context.pytester
     loader = test_context.loader
     loader_options = []
-    if relative_data_path:
-        test_context.relative_path = relative_data_path
+    if path:
+        test_context.path = path
     if lazy_loading is False:
         loader_options.append(f"lazy_loading={lazy_loading}")
     if onload_func_def:
@@ -131,10 +209,10 @@ def run_pytest_with_context(
     loader_options_str = ", " + ", ".join(loader_options) if loader_options else ""
 
     # Make sure to apply repr() on the string value to handle window's path correctly
-    if isinstance(test_context.relative_path, Path):
-        rel_path_str = f"Path({str(test_context.relative_path)!r})"
+    if isinstance(test_context.path, Path):
+        path_str = f"Path({str(test_context.path)!r})"
     else:
-        rel_path_str = f"{test_context.relative_path!r}"
+        path_str = f"{test_context.path!r}"
 
     if is_valid_fixture_names(fixture_names):
         if isinstance(fixture_names, str):
@@ -167,7 +245,7 @@ def run_pytest_with_context(
     from pytest_data_loader import {loader.__name__}
     from pytest_data_loader.utils import validate_loader_func_args_and_normalize
 
-    @{loader.__name__}({fixture_names!r}, {rel_path_str}{loader_options_str})
+    @{loader.__name__}({fixture_names!r}, {path_str}{loader_options_str})
     def test(request, {fixture_names_str}):
         '''Checks the most basic functionality of pytest-data-loader plugin'''
         data_loader_root_dir = {repr(str(data_loader_root_dir)) if data_loader_root_dir else None}

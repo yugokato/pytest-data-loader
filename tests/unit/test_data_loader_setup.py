@@ -13,9 +13,9 @@ pytestmark = pytest.mark.unittest
 @pytest.mark.parametrize("fixture_names", ["data", "file_path, data", ("file_path", "data")])
 def test_data_loader_setup(fixture_names: Any) -> None:
     """Test data loader setup on a test function"""
-    relative_path = "fake.txt"
+    path = "fake.txt"
 
-    @load(fixture_names, relative_path)
+    @load(fixture_names, path)
     def test_something(*args: Any) -> None: ...
 
     assert hasattr(test_something, PYTEST_DATA_LOADER_ATTR)
@@ -27,5 +27,5 @@ def test_data_loader_setup(fixture_names: Any) -> None:
         fixtures = fixture_names
     assert load_attr.loader is load
     assert load_attr.fixture_names == fixtures
-    assert load_attr.relative_path == Path(relative_path)
+    assert load_attr.path == Path(path)
     assert load_attr.requires_file_path == (len(fixtures) == 2)

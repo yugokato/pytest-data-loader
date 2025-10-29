@@ -64,6 +64,61 @@ def requires_loader(*loaders: Callable[..., Any]) -> Callable[[Callable[P, R]], 
     return decorator
 
 
+@lru_cache
+def resolve_relative_path(
+    data_loader_dir_name: str,
+    data_loader_root_dir: Path,
+    relative_path_to_search: Path,
+    search_from: Path,
+    /,
+    *,
+    is_file: bool,
+) -> Path:
+    """Locate the given relative file or directory path in the nearest data directory by searching upwards from the
+    current location
+
+    :param data_loader_dir_name: The data directory name
+    :param data_loader_root_dir: A root directory the path lookup should stop at
+    :param relative_path_to_search: A file or directory path relative from a data loader directory
+    :param search_from: A file or directory path to start searching from
+    :param is_file: Whether the relative path is file or directory
+    """
+    assert data_loader_root_dir.is_absolute()
+    assert data_loader_root_dir.exists()
+    assert not relative_path_to_search.is_absolute()
+    assert search_from.exists()
+    assert search_from.is_absolute()
+    if not search_from.is_relative_to(data_loader_root_dir):
+        raise ValueError(f"The test file location {search_from} is not in the subpath of {data_loader_root_dir}")
+
+    loader_dirs = []
+    if search_from.is_file():
+        search_from = search_from.parent
+    for dir_to_search in (search_from, *(search_from.parents)):
+        loader_dir = dir_to_search / data_loader_dir_name
+        if loader_dir.exists():
+            loader_dirs.append(loader_dir)
+            file_or_dir_path = loader_dir / relative_path_to_search
+            if file_or_dir_path.exists():
+                # Ignore if a directory with the same name as the required file (or vice versa) is found
+                if (file_or_dir_path.is_file() and is_file) or (file_or_dir_path.is_dir() and not is_file):
+                    return file_or_dir_path.resolve()
+
+        if dir_to_search == data_loader_root_dir:
+            break
+
+    if loader_dirs:
+        listed_loader_dirs = "\n".join(f"  - {x}" for x in loader_dirs)
+        err = (
+            f"Unable to locate the specified {'file' if is_file else 'directory'} '{relative_path_to_search}' under "
+            f"any of the following data directories:\n"
+            f"{listed_loader_dirs}"
+        )
+    else:
+        err = f"Unable to find any data directory '{data_loader_dir_name}'"
+    raise FileNotFoundError(err)
+
+
 class LoaderABC(ABC):
     def __init__(self, path: Path, load_attrs: DataLoaderLoadAttrs, strip_trailing_whitespace: bool):
         assert path.is_absolute()

@@ -163,7 +163,7 @@ class DataLoaderLoadAttrs:
     loader: DataLoader
     search_from: Path
     fixture_names: tuple[str, ...]
-    relative_path: Path
+    path: Path
     lazy_loading: bool = True
     file_reader: Callable[..., Iterable[Any] | object] | None = None
     file_reader_func: Callable[[Path], Callable[..., Iterable[Any] | object]] | None = None
@@ -180,7 +180,7 @@ class DataLoaderLoadAttrs:
         from pytest_data_loader.loaders.reader import FileReader
 
         self._validate_fixture_names()
-        self._validate_relative_path()
+        self._validate_path()
         self._validate_loader_func()
         FileReader.validate(self.file_reader, self.read_options)
 
@@ -215,17 +215,20 @@ class DataLoaderLoadAttrs:
 
         self._modify_value("fixture_names", normalized_names)
 
-    def _validate_relative_path(self) -> None:
-        orig_value = self.relative_path
+    def _validate_path(self) -> None:
+        orig_value = self.path
         if not isinstance(orig_value, Path | str):
-            raise TypeError(f"relative_path: Expected a string or pathlib.Path, but got {type(orig_value).__name__!r}")
+            raise TypeError(f"path: Expected a string or pathlib.Path, but got {type(orig_value).__name__!r}")
 
-        self._modify_value("relative_path", Path(orig_value))
-        err = "Invalid relative_path value"
-        if self.relative_path in (Path("."), Path(".."), ROOT_DIR):
-            raise ValueError(f"{err}: {orig_value!r}")
-        if self.relative_path.is_absolute():
-            raise ValueError(f"{err}: It can not be an absolute path: {orig_value!r}")
+        path = Path(orig_value)
+        if path in (Path("."), Path(".."), Path(ROOT_DIR)):
+            raise ValueError(f"Invalid path value: {str(orig_value)!r}")
+        if path.is_absolute() and not path.exists():
+            raise ValueError(
+                f"The provided {'file' if path.is_file() else 'directory'} does not exist: {str(orig_value)!r}"
+            )
+
+        self._modify_value("path", path)
 
     def _validate_loader_func(self) -> None:
         from pytest_data_loader import parametrize_dir

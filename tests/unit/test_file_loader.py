@@ -13,28 +13,28 @@ from tests.tests_loader.helper import ABS_PATH_LOADER_DIR, PATHS_BINARY_FILES, P
 pytestmark = pytest.mark.unittest
 
 
-@pytest.mark.parametrize("relative_path", [*PATHS_TEXT_FILES, *PATHS_BINARY_FILES])
+@pytest.mark.parametrize("path", [*PATHS_TEXT_FILES, *PATHS_BINARY_FILES])
 @pytest.mark.parametrize("lazy_loading", [True, False])
 @pytest.mark.parametrize("loader", [load, parametrize, parametrize_dir])
-def test_file_loader(loader: DataLoader, lazy_loading: bool, relative_path: Path) -> None:
+def test_file_loader(loader: DataLoader, lazy_loading: bool, path: Path) -> None:
     """Test file loader with various file types and with/without lazy loading"""
-    abs_file_path = ABS_PATH_LOADER_DIR / relative_path
+    abs_file_path = ABS_PATH_LOADER_DIR / path
     filename = abs_file_path.name
     marks = (pytest.mark.foo, pytest.mark.bar)
     load_attrs = DataLoaderLoadAttrs(
         loader=loader,
         search_from=Path(__file__),
         fixture_names=("file_path", "data"),
-        relative_path=relative_path,
+        path=path,
         lazy_loading=lazy_loading,
-        parametrizer_func=(lambda x: [x]) if relative_path in PATHS_BINARY_FILES else None,
+        parametrizer_func=(lambda x: [x]) if path in PATHS_BINARY_FILES else None,
         # for @parametrize loader with lazy loading
         id_func=lambda x: repr(x),
         marker_func=lambda x: marks,
     )
 
     file_loader = FileDataLoader(abs_file_path, load_attrs=load_attrs, strip_trailing_whitespace=True)
-    if relative_path.suffix == ".json":
+    if path.suffix == ".json":
         assert file_loader.file_reader is not None
     loaded_data = file_loader.load()
 
@@ -69,23 +69,23 @@ def test_file_loader(loader: DataLoader, lazy_loading: bool, relative_path: Path
             assert loaded_data.file_path == abs_file_path
 
 
-@pytest.mark.parametrize("relative_path", [*PATHS_TEXT_FILES, *PATHS_BINARY_FILES])
+@pytest.mark.parametrize("path", [*PATHS_TEXT_FILES, *PATHS_BINARY_FILES])
 @pytest.mark.parametrize("loader", [load, parametrize, parametrize_dir])
-def test_file_loader_cached_file_loaders(loader: DataLoader, relative_path: Path) -> None:
+def test_file_loader_cached_file_loaders(loader: DataLoader, path: Path) -> None:
     """Test the file loader's three different cache logic used for the @parametrize loader with lazy loading.
     Also make sure that other loaders do not use cache
     """
-    abs_file_path = ABS_PATH_LOADER_DIR / relative_path
+    abs_file_path = ABS_PATH_LOADER_DIR / path
     load_attrs = DataLoaderLoadAttrs(
         loader=loader,
         search_from=Path(__file__),
         fixture_names=("file_path", "data"),
-        relative_path=relative_path,
+        path=path,
         lazy_loading=True,
-        parametrizer_func=(lambda x: [x]) if relative_path in PATHS_BINARY_FILES else None,
+        parametrizer_func=(lambda x: [x]) if path in PATHS_BINARY_FILES else None,
     )
     file_loader = FileDataLoader(abs_file_path, load_attrs=load_attrs, strip_trailing_whitespace=True)
-    if relative_path.suffix == ".json":
+    if path.suffix == ".json":
         assert file_loader.file_reader is not None
 
     lazy_loaded_data = file_loader._load_lazily()
