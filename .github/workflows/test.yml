@@ -62,7 +62,7 @@ jobs:
 
   test:
     needs: [package]
-    if: ${{ needs.changes.outputs.src == 'true' || needs.changes.outputs.tests == 'true' }}
+    if: ${{ needs.changes.outputs.has-changes == 'true' }}
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
