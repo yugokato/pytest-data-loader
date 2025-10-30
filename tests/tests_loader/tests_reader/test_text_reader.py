@@ -11,7 +11,7 @@ pytestmark = pytest.mark.readers
 
 
 # NOTE: These tests don't make much sense in reality since open() already handles the same things.
-#       These tests just make sures that the file_reader option works as low level
+#       These tests just make sure that the file_reader option works as low level
 
 
 @load(
