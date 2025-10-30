@@ -75,7 +75,7 @@ def test_parametrize_csv_file_with_reader(request: FixtureRequest, file_path: Pa
 
 
 @parametrize(("file_path", "data"), PATH_CSV_FILE, file_reader=csv.DictReader, **read_options)
-def test_parametrize_csv_file_with_dict_reader(request: FixtureRequest, file_path: Path, data: Any) -> None:
+def test_parametrize_csv_file_with_dict_reader(request: FixtureRequest, file_path: Path, data: dict[str, str]) -> None:
     """Test @parametrize loader with CSV DictReader reader"""
     assert isinstance(data, dict)
     expected_data = get_expected_data(file_path, read_options)
