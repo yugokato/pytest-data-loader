@@ -48,12 +48,15 @@ loading test data. Each loader takes two positional arguments:
           test file's directory toward the Pytest root directory to find the nearest data directory containing the 
           target file.
 
-Additionally, each loader supports different optional keyword arguments to customize how the data is loaded. See 
-[Loader Options](#loader-options) section for details.
+> [!TIP]
+> - By default, the plugin looks for a directory named `data` when resolving relative paths. This default name can be 
+> customized using an INI option. See the [INI Options](#ini-options) section for details
+> - Each data loader supports different optional keyword arguments to customize how the data is loaded. See the 
+> [Loader Options](#loader-options) section for details
 
 
 
-## Examples:
+## Examples
 
 Given you have the following project structure:
 ```
@@ -72,7 +75,6 @@ Given you have the following project structure:
 │   └── test_something_else.py
 └── test_something.py
 ```
-The plugin searches for a data directory (default name: `data`) that contains the specified file or directory.
 
 ### 1. Load file data — `@load`
 `@load` is a file loader that loads the file content and passes it to the test function.
