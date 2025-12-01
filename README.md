@@ -69,11 +69,12 @@ Given you have the following project structure:
 │       ├── image.jpg
 │       └── image.png
 ├── tests1/
-│   ├── data/
-│   │   ├── data1.txt
-│   │   └── data2.txt
-│   └── test_something_else.py
-└── test_something.py
+│   └── test_something.py
+└── tests2/
+    ├── data/
+    │   ├── data1.txt
+    │   └── data2.txt
+    └── test_something_else.py
 ```
 
 ### 1. Load file data — `@load`
@@ -103,22 +104,22 @@ def test_something2(file_path, data):
 ```
 
 ```shell
-$ pytest test_something.py -v
+$ pytest tests1/test_something.py -v
 ================================ test session starts =================================
 <snip>
 collected 2 items                                                                              
 
-tests/test_something.py::test_something1[data1.json] PASSED                     [ 50%]
-tests/test_something.py::test_something2[data2.txt] PASSED                      [100%]
+tests1/test_something.py::test_something1[data1.json] PASSED                    [ 50%]
+tests1/test_something.py::test_something2[data2.txt] PASSED                     [100%]
 
 ================================= 2 passed in 0.01s ==================================
 ```
 
 > [!NOTE]
-> If both `./test_something.py` and `./tests1/test_something_else.py` happen to have the above same loader definitions, 
-> the first test function will load `./data/data1.json` for both test files, and the second test function will load 
-> `data2.txt` from each test file's **nearest** `data` directory. This ensures that each test file loads data from its 
-> nearest data directory.  
+> If both `./tests1/test_something.py` and `./tests2/test_something_else.py` happen to have the above same loader 
+> definitions, the first test function will load `./data/data1.json` for both test files, and the second test function 
+> will load `data2.txt` from each test file's **nearest** `data` directory. This ensures that each test file loads data 
+> from its nearest data directory.  
 > This behavior applies to all loaders.
 
 
@@ -150,16 +151,16 @@ def test_something2(file_path, data):
 ```
 
 ```shell
-$ pytest test_something.py -v
+$ pytest tests1/test_something.py -v
 ================================ test session starts =================================
 <snip>
 collected 5 items                                                                              
 
-tests/test_something.py::test_something1[data1.json:part1] PASSED               [ 20%]
-tests/test_something.py::test_something1[data1.json:part2] PASSED               [ 40%]
-tests/test_something.py::test_something2[data2.txt:part1] PASSED                [ 60%]
-tests/test_something.py::test_something2[data2.txt:part2] PASSED                [ 80%]
-tests/test_something.py::test_something2[data2.txt:part3] PASSED                [100%]
+tests1/test_something.py::test_something1[data1.json:part1] PASSED              [ 20%]
+tests1/test_something.py::test_something1[data1.json:part2] PASSED              [ 40%]
+tests1/test_something.py::test_something2[data2.txt:part1] PASSED               [ 60%]
+tests1/test_something.py::test_something2[data2.txt:part2] PASSED               [ 80%]
+tests1/test_something.py::test_something2[data2.txt:part3] PASSED               [100%]
 
 ================================= 5 passed in 0.01s ==================================
 ```
@@ -196,14 +197,14 @@ def test_something(data):
 ```
 
 ```shell
-$ pytest test_something.py -v
+$ pytest tests1/test_something.py -v
 ================================ test session starts =================================
 <snip>
 collected 3 items                                                                              
 
-tests/test_something.py::test_something[image.gif] PASSED                       [ 33%]
-tests/test_something.py::test_something[image.jpg] PASSED                       [ 66%]
-tests/test_something.py::test_something[image.png] PASSED                       [100%]
+tests1/test_something.py::test_something[image.gif] PASSED                      [ 33%]
+tests1/test_something.py::test_something[image.jpg] PASSED                      [ 66%]
+tests1/test_something.py::test_something[image.png] PASSED                      [100%]
 
 ================================= 3 passed in 0.01s ==================================
 ```

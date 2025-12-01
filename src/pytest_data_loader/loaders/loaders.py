@@ -153,7 +153,7 @@ def parametrize(
                                     - object: each key-value pair as a tuple
                                     - scalar: the whole value as a single parameter
                               - Any other files with text data (.txt, .csv, .log, etc.): each line
-                              - Binary files: Not supported without a cusom logic. An error will be raised.
+                              - Binary files: Not supported without a custom logic. An error will be raised.
     :param filter_func: A function to filter the split data parts. Only matching parts are included as the test
                         parameters.
     :param process_func: A function to adjust the shape of each split data before passing it to the test function.
