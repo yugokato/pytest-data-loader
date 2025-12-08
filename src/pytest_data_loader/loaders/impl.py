@@ -194,7 +194,7 @@ class FileDataLoader(LoaderABC):
 
         @wraps(f)
         def _parametrizer_func(*args: Any, **kwargs: Any) -> Iterable[Any]:
-            parametrized_data = f(*args, **kwargs)
+            parametrized_data: Any = f(*args, **kwargs)
             if not isinstance(parametrized_data, Iterable) or isinstance(parametrized_data, str | bytes):
                 t = parametrized_data if isinstance(parametrized_data, type) else type(parametrized_data)
                 raise ValueError(f"Parametrized data must be an iterable container, not {t.__name__!r}")
