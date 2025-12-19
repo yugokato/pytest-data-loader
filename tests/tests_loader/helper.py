@@ -6,6 +6,7 @@ from pytest_data_loader.constants import DEFAULT_LOADER_DIR_NAME
 
 ABS_PATH_LOADER_DIR = Path(__file__).resolve().parent.parent / DEFAULT_LOADER_DIR_NAME
 PATH_SOME_DIR = "dir"
+PATH_SOME_DIR_INNER = "dir_inner"
 PATH_FILES_DIR = "files"
 PATH_EMPTY_DIR = "empty"
 PATH_IMAGE_DIR = "images"

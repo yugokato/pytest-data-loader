@@ -201,6 +201,7 @@ def parametrize_dir(
     /,
     *,
     lazy_loading: bool = True,
+    recursive: bool = False,
     file_reader_func: Callable[[Path], Callable[..., Iterable[Any] | object]] | None = None,
     filter_func: Callable[[Path], bool] | None = None,
     process_func: Callable[..., Any] | None = None,
@@ -219,6 +220,7 @@ def parametrize_dir(
                  directory containing a matching directory and loads files from there.
     :param lazy_loading: If True, the plugin will defer the timing of file loading to the test setup phase. If False,
                          the data will be loaded during the test collection phase, which could cause a performance issue
+    :param recursive: Recursively load files from all subdirectories of the given directory. Defaults to False
     :param file_reader_func: A function to specify file readers to matching file paths.
     :param filter_func: A function to filter file paths. Only the contents of matching file paths are included as the
                         test parameters.
@@ -250,6 +252,7 @@ def parametrize_dir(
         fixture_names,
         path,
         lazy_loading=lazy_loading,
+        recursive=recursive,
         file_reader_func=file_reader_func,
         filter_func=filter_func,
         process_func=process_func,
@@ -265,6 +268,7 @@ def _setup_data_loader(
     /,
     *,
     lazy_loading: bool = True,
+    recursive: bool = False,
     file_reader: Callable[..., Iterable[Any] | object] | None = None,
     file_reader_func: Callable[..., Callable[..., Iterable[Any] | object]] | None = None,
     onload_func: Callable[..., Any] | None = None,
@@ -283,6 +287,8 @@ def _setup_data_loader(
             f"Invalid usage: parametrizer_func, filter_func, and process_func are not supported for "
             f"{loader.__name__} loader"
         )
+    if recursive and not loader == parametrize_dir:
+        raise ValueError(f"recursive option is not available for {loader.__name__} loader")
 
     def wrapper(test_func: TestFunc) -> TestFunc:
         """Add attributes to the test function"""
@@ -296,6 +302,7 @@ def _setup_data_loader(
                 fixture_names=cast(tuple[str, ...], fixture_names),
                 path=cast(Path, path),
                 lazy_loading=lazy_loading,
+                recursive=recursive,
                 file_reader=file_reader,
                 file_reader_func=file_reader_func,
                 onload_func=onload_func,

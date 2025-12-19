@@ -143,6 +143,8 @@ class FileDataLoader(LoaderABC):
     @wraps(LoaderABC.__init__)  # type: ignore[misc]
     def __init__(self, *args: Any, **kwargs: Any):
         super().__init__(*args, **kwargs)
+        if not self.path.is_file():
+            raise ValueError(f"path must be a file path: {self.path}")
         self.file_reader = self.load_attrs.file_reader
         self.read_options = self.load_attrs.read_options
         if not self.file_reader:
@@ -478,31 +480,40 @@ class DirectoryDataLoader(LoaderABC):
     @wraps(LoaderABC.__init__)  # type: ignore[misc]
     def __init__(self, *args: Any, **kwargs: Any):
         super().__init__(*args, **kwargs)
+        if not self.path.is_dir():
+            raise ValueError(f"path must be a directory path: {self.path}")
         if self.loader.is_file_loader:
             raise NotImplementedError(f"Unsupported loader for {DirectoryDataLoader.__name__}: {self.loader}")
 
     def load(self) -> Iterable[LoadedData | LazyLoadedData]:  # type: ignore[override]
         """Load multiple files from a directory"""
-        loaded_files = []
-        for p in sorted(self.path.iterdir()):
-            if p.is_file() and not p.name.startswith("."):
-                file_path = self.path / p.name
-                if not self.load_attrs.filter_func or self.load_attrs.filter_func(file_path):
-                    file_loader = FileDataLoader(
-                        file_path, self.load_attrs, strip_trailing_whitespace=self.strip_trailing_whitespace
-                    )
-                    file_reader = read_options = None
-                    if self.load_attrs.read_option_func:
-                        read_options = self.load_attrs.read_option_func(file_path)
-                    if self.load_attrs.file_reader_func:
-                        file_reader = self.load_attrs.file_reader_func(file_path)
-                    if file_reader or read_options:
-                        FileReader.validate(file_reader, read_options)
-                        if file_reader:
-                            file_loader.file_reader = file_reader
-                        if read_options:
-                            file_loader.read_options = HashableDict(read_options)
-                    loaded_data = file_loader.load()
-                    assert isinstance(loaded_data, LoadedData | LazyLoadedData), type(loaded_data)
-                    loaded_files.append(loaded_data)
+
+        def load_files(dir_path: Path) -> None:
+            for p in sorted(dir_path.iterdir()):
+                if p.is_dir():
+                    if self.load_attrs.recursive:
+                        load_files(p)
+                elif not p.name.startswith("."):
+                    file_path = dir_path / p.name
+                    if not self.load_attrs.filter_func or self.load_attrs.filter_func(file_path):
+                        file_loader = FileDataLoader(
+                            file_path, self.load_attrs, strip_trailing_whitespace=self.strip_trailing_whitespace
+                        )
+                        file_reader = read_options = None
+                        if self.load_attrs.read_option_func:
+                            read_options = self.load_attrs.read_option_func(file_path)
+                        if self.load_attrs.file_reader_func:
+                            file_reader = self.load_attrs.file_reader_func(file_path)
+                        if file_reader or read_options:
+                            FileReader.validate(file_reader, read_options)
+                            if file_reader:
+                                file_loader.file_reader = file_reader
+                            if read_options:
+                                file_loader.read_options = HashableDict(read_options)
+                        loaded_data = file_loader.load()
+                        assert isinstance(loaded_data, LoadedData | LazyLoadedData), type(loaded_data)
+                        loaded_files.append(loaded_data)
+
+        loaded_files: list[LoadedData | LazyLoadedData] = []
+        load_files(self.path)
         return loaded_files
