@@ -165,6 +165,7 @@ class DataLoaderLoadAttrs:
     fixture_names: tuple[str, ...]
     path: Path
     lazy_loading: bool = True
+    recursive: bool = False
     file_reader: Callable[..., Iterable[Any] | object] | None = None
     file_reader_func: Callable[[Path], Callable[..., Iterable[Any] | object]] | None = None
     onload_func: Callable[..., Any] | None = None

@@ -210,8 +210,9 @@ tests1/test_something.py::test_something[image.png] PASSED                      
 ```
 
 > [!NOTE]
-> File names starting with a dot (.) are considered hidden files regardless of your platform. 
-> These files are automatically excluded from the parametrization.  
+> - File names starting with a dot (.) are considered hidden files regardless of your platform. 
+> These files are automatically excluded from the parametrization.
+> - Specify `recursive=True` to include files in subdirectories
 
 
 
@@ -372,6 +373,7 @@ the data is the reader object itself.
 
 ### @parametrize_dir
 - `lazy_loading`: Enable or disable lazy loading
+- `recursive`: Recursively load files from all subdirectories of the given directory. Defaults to `False`
 - `file_reader_func`: A function to specify file readers to matching file paths
 - `filter_func`: A function to filter file paths. Only the contents of matching file paths are included as the test 
 parameters

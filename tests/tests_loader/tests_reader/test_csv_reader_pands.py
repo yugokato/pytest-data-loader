@@ -1,4 +1,3 @@
-from collections.abc import Hashable
 from pathlib import Path
 
 import pandas
@@ -28,7 +27,7 @@ def test_load_csv_file_with_pandas(file_path: Path, df: pandas.DataFrame) -> Non
     ("file_path", "idx_and_row"), PATH_CSV_FILE, file_reader=pandas.read_csv, parametrizer_func=lambda df: df.iterrows()
 )
 def test_parametrize_csv_file_with_pandas(
-    request: FixtureRequest, file_path: Path, idx_and_row: tuple[Hashable, pandas.Series]
+    request: FixtureRequest, file_path: Path, idx_and_row: tuple[int, pandas.Series]
 ) -> None:
     """Test @parametrize loader with the CSV reader from pands"""
     assert isinstance(idx_and_row, tuple)
