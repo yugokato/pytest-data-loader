@@ -61,10 +61,10 @@ def pytest_generate_tests(metafunc: Metafunc) -> None:
         try:
             data_loader_option = metafunc.config.stash[STASH_KEY_DATA_LOADER_OPTION]
             if load_attrs.path.is_absolute():
-                load_from = None
+                data_dir_path = None
                 test_data_path = load_attrs.path
             else:
-                load_from, test_data_path = resolve_relative_path(
+                data_dir_path, test_data_path = resolve_relative_path(
                     data_loader_option.loader_dir_name,
                     data_loader_option.loader_root_dir,
                     load_attrs.path,
@@ -75,7 +75,7 @@ def pytest_generate_tests(metafunc: Metafunc) -> None:
             data_loader = data_loader_factory(
                 test_data_path,
                 load_attrs,
-                load_from=load_from,
+                load_from=data_dir_path,
                 strip_trailing_whitespace=data_loader_option.strip_trailing_whitespace,
             )
             if load_attrs.loader == parametrize and isinstance(data_loader, FileDataLoader):

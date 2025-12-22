@@ -101,28 +101,28 @@ def resolve_relative_path(
     if not search_from.is_relative_to(data_loader_root_dir):
         raise ValueError(f"The test file location {search_from} is not in the subpath of {data_loader_root_dir}")
 
-    data_loader_dirs = []
+    data_dirs = []
     if search_from.is_file():
         search_from = search_from.parent
     for dir_to_search in (search_from, *(search_from.parents)):
-        loader_dir = dir_to_search / data_loader_dir_name
-        if loader_dir.exists():
-            data_loader_dirs.append(loader_dir)
-            file_or_dir_path = loader_dir / relative_path_to_search
+        data_dir = dir_to_search / data_loader_dir_name
+        if data_dir.exists():
+            data_dirs.append(data_dir)
+            file_or_dir_path = data_dir / relative_path_to_search
             if file_or_dir_path.exists():
                 # Ignore if a directory with the same name as the required file (or vice versa) is found
                 if (file_or_dir_path.is_file() and is_file) or (file_or_dir_path.is_dir() and not is_file):
-                    return loader_dir, file_or_dir_path.resolve()
+                    return data_dir, file_or_dir_path.resolve()
 
         if dir_to_search == data_loader_root_dir:
             break
 
-    if data_loader_dirs:
-        listed_loader_dirs = "\n".join(f"  - {x}" for x in data_loader_dirs)
+    if data_dirs:
+        listed_data_dirs = "\n".join(f"  - {x}" for x in data_dirs)
         err = (
             f"Unable to locate the specified {'file' if is_file else 'directory'} '{relative_path_to_search}' under "
             f"any of the following data directories:\n"
-            f"{listed_loader_dirs}"
+            f"{listed_data_dirs}"
         )
     else:
         err = f"Unable to find any data directory '{data_loader_dir_name}'"

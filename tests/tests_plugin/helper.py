@@ -21,7 +21,7 @@ class TestContext:
 
     pytester: Pytester
     loader: DataLoader
-    loader_dir: Path | str
+    data_dir: Path | str
     path: Path | str
     test_file_ext: str
     test_file_content: str | bytes
@@ -46,7 +46,7 @@ class TestContext:
             else:
                 num_expected_tests = 1
         else:
-            num_expected_tests = len(list(Path(self.loader_dir, self.path).resolve().iterdir()))
+            num_expected_tests = len(list(Path(self.data_dir, self.path).resolve().iterdir()))
         return num_expected_tests
 
 
@@ -70,20 +70,20 @@ def get_num_func_args(loader_func: Callable[..., Any]) -> int:
     return len(parameters)
 
 
-def create_test_data_in_loader_dir(
+def create_test_data_in_data_dir(
     pytester: Pytester,
-    loader_dir: Path | str,
+    data_dir: Path | str,
     relative_file_path: Path | str,
     loader_root_dir: Path | None = None,
     data: str | bytes = "content",
     return_abs_path: bool = False,
 ) -> Path:
     if loader_root_dir:
-        loader_dir = loader_root_dir / loader_dir
+        data_dir = loader_root_dir / data_dir
     else:
-        loader_dir = Path(loader_dir)
+        data_dir = Path(data_dir)
 
-    abs_file_path = (loader_dir / relative_file_path).resolve()
+    abs_file_path = (data_dir / relative_file_path).resolve()
     if not abs_file_path.parent.exists():
         abs_file_path.parent.mkdir(parents=True, exist_ok=True)
     name, ext = os.path.splitext(abs_file_path)
@@ -106,19 +106,19 @@ def create_test_context(
     file_extension: str = ".txt",
     file_content: str | bytes = "foo\nbar",
     parent_dirs: Path | str = "",  # dir(s) under the loader dir
-    loader_dir_name: str = DEFAULT_LOADER_DIR_NAME,
+    data_dir_name: str = DEFAULT_LOADER_DIR_NAME,
     loader_root_dir: LoaderRootDir = LoaderRootDir(),
     strip_trailing_whitespace: bool = True,
     path_type: type[str | Path] = str,
     is_abs_path: bool = False,
 ) -> TestContext:
-    test_data_dir = pytester.mkdir(loader_dir_name)
+    test_data_dir = pytester.mkdir(data_dir_name)
     if parent_dirs:
         Path(test_data_dir, parent_dirs).mkdir(parents=True, exist_ok=True)
     if loader.is_file_loader:
-        path = create_test_data_in_loader_dir(
+        path = create_test_data_in_data_dir(
             pytester,
-            loader_dir_name,
+            data_dir_name,
             Path(parent_dirs, f"file{file_extension}"),
             loader_root_dir=loader_root_dir.resolved_path,
             data=file_content,
@@ -127,9 +127,9 @@ def create_test_context(
     else:
         path = Path(parent_dirs, "dir")
         paths = {
-            create_test_data_in_loader_dir(
+            create_test_data_in_data_dir(
                 pytester,
-                loader_dir_name,
+                data_dir_name,
                 path / f"file{i}{file_extension}",
                 loader_root_dir=loader_root_dir.resolved_path,
                 data=file_content,
@@ -149,7 +149,7 @@ def create_test_context(
     return TestContext(
         pytester=pytester,
         loader=loader,
-        loader_dir=test_data_dir,
+        data_dir=test_data_dir,
         path=path_type(path),
         test_file_ext=file_extension,
         test_file_content=file_content,
@@ -247,7 +247,7 @@ def run_pytest_with_context(
     from pytest_data_loader import {loader.__name__}
     from pytest_data_loader.utils import validate_loader_func_args_and_normalize
 
-    data_loader_dir = Path({str(test_context.loader_dir)!r})
+    data_dir = Path({str(test_context.data_dir)!r})
 
     @{loader.__name__}({fixture_names!r}, {path_str}{loader_options_str})
     def test(request, {fixture_names_str}):
@@ -298,7 +298,7 @@ def run_pytest_with_context(
                 if is_abs_path:
                     assert node_id.endswith(f"[{{file_path}}]")
                 else:
-                    assert node_id.endswith(f"[{{file_path.relative_to(data_loader_dir)}}]")
+                    assert node_id.endswith(f"[{{file_path.relative_to(data_dir)}}]")
         elif {loader.__name__}.__name__ == 'parametrize':
             if has_id_func:
                 id_func = eval({id_func_def!r})
@@ -310,14 +310,14 @@ def run_pytest_with_context(
                     if is_abs_path:
                         assert node_id.endswith(f"[{{file_path}}:part{{idx+1}}]")
                     else:
-                        assert node_id.endswith(f"[{{file_path.relative_to(data_loader_dir)}}:part{{idx+1}}]")
+                        assert node_id.endswith(f"[{{file_path.relative_to(data_dir)}}:part{{idx+1}}]")
                 else:
                     assert node_id.endswith(f"[{{data!r}}]")
         else:
             if is_abs_path:
                 assert node_id.endswith(f"[{{file_path}}]")
             else:
-                assert node_id.endswith(f"[{{file_path.relative_to(data_loader_dir)}}]")
+                assert node_id.endswith(f"[{{file_path.relative_to(data_dir)}}]")
 
     """
     pytester.makepyfile(test_code)

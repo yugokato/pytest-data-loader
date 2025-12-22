@@ -34,8 +34,8 @@ def loader(request: SubRequest) -> DataLoader:
 
 
 @pytest.fixture
-def loader_dir_name(request: SubRequest) -> str:
-    """Loader dir name. Supports indirect parametrization to override the default value"""
+def data_dir_name(request: SubRequest) -> str:
+    """Data dir name. Supports indirect parametrization to override the default value"""
     if getattr(request, "param", None):
         return request.param
     return DEFAULT_LOADER_DIR_NAME
@@ -141,7 +141,7 @@ def is_abs_path(request: SubRequest) -> bool:
 def test_context(
     pytester: Pytester,
     loader: DataLoader,
-    loader_dir_name: str,
+    data_dir_name: str,
     file_extension: str,
     file_content: str | bytes,
     loader_root_dir: LoaderRootDir,
@@ -154,7 +154,7 @@ def test_context(
         loader,
         file_extension=file_extension,
         file_content=file_content,
-        loader_dir_name=loader_dir_name,
+        data_dir_name=data_dir_name,
         loader_root_dir=loader_root_dir,
         strip_trailing_whitespace=strip_trailing_whitespace,
         is_abs_path=is_abs_path,
