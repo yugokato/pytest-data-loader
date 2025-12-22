@@ -96,13 +96,12 @@ def generate_parameterset(
 
     def generate_param_id() -> Any:
         if load_attrs.id_func is None:
-            if load_attrs.lazy_loading:
+            if load_attrs.lazy_loading or not (
+                load_attrs.loader.is_file_loader and load_attrs.loader.requires_parametrization
+            ):
                 return repr(loaded_data)
             else:
-                if load_attrs.loader.is_file_loader and load_attrs.loader.requires_parametrization:
-                    return repr(loaded_data.data)
-                else:
-                    return loaded_data.file_name
+                return repr(loaded_data.data)
         else:
             if isinstance(loaded_data, LazyLoadedPartData):
                 # When id_func is provided for the @parametrize loader, parameter ID is generated when

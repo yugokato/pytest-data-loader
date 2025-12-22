@@ -28,21 +28,31 @@ logger = logging.getLogger(__name__)
 
 
 def data_loader_factory(
-    abs_data_path: Path, load_attrs: DataLoaderLoadAttrs, /, *, strip_trailing_whitespace: bool
+    abs_data_path: Path,
+    load_attrs: DataLoaderLoadAttrs,
+    /,
+    *,
+    load_from: Path | None = None,
+    strip_trailing_whitespace: bool,
 ) -> FileDataLoader | DirectoryDataLoader:
     """Data loader factory that creates either FileDataLoader or DirectoryDataLoader depending on the specified path
 
     :param abs_data_path: File or directory's absolute path
     :param load_attrs: Data loader attributes
+    :param load_from: Data directory to load from
     :param strip_trailing_whitespace: Whether to strip trailing whitespace from loaded data
     """
     if not abs_data_path.is_absolute():
         raise ValueError("abs_data_path must be an absolute path")
 
     if abs_data_path.is_file():
-        return FileDataLoader(abs_data_path, load_attrs, strip_trailing_whitespace=strip_trailing_whitespace)
+        return FileDataLoader(
+            abs_data_path, load_attrs, load_from=load_from, strip_trailing_whitespace=strip_trailing_whitespace
+        )
     else:
-        return DirectoryDataLoader(abs_data_path, load_attrs, strip_trailing_whitespace=strip_trailing_whitespace)
+        return DirectoryDataLoader(
+            abs_data_path, load_attrs, load_from=load_from, strip_trailing_whitespace=strip_trailing_whitespace
+        )
 
 
 def requires_loader(*loaders: Callable[..., Any]) -> Callable[[Callable[P, R]], Callable[P, R]]:
@@ -73,7 +83,7 @@ def resolve_relative_path(
     /,
     *,
     is_file: bool,
-) -> Path:
+) -> tuple[Path, Path]:
     """Locate the given relative file or directory path in the nearest data directory by searching upwards from the
     current location
 
@@ -91,28 +101,28 @@ def resolve_relative_path(
     if not search_from.is_relative_to(data_loader_root_dir):
         raise ValueError(f"The test file location {search_from} is not in the subpath of {data_loader_root_dir}")
 
-    loader_dirs = []
+    data_dirs = []
     if search_from.is_file():
         search_from = search_from.parent
     for dir_to_search in (search_from, *(search_from.parents)):
-        loader_dir = dir_to_search / data_loader_dir_name
-        if loader_dir.exists():
-            loader_dirs.append(loader_dir)
-            file_or_dir_path = loader_dir / relative_path_to_search
+        data_dir = dir_to_search / data_loader_dir_name
+        if data_dir.exists():
+            data_dirs.append(data_dir)
+            file_or_dir_path = data_dir / relative_path_to_search
             if file_or_dir_path.exists():
                 # Ignore if a directory with the same name as the required file (or vice versa) is found
                 if (file_or_dir_path.is_file() and is_file) or (file_or_dir_path.is_dir() and not is_file):
-                    return file_or_dir_path.resolve()
+                    return data_dir, file_or_dir_path.resolve()
 
         if dir_to_search == data_loader_root_dir:
             break
 
-    if loader_dirs:
-        listed_loader_dirs = "\n".join(f"  - {x}" for x in loader_dirs)
+    if data_dirs:
+        listed_data_dirs = "\n".join(f"  - {x}" for x in data_dirs)
         err = (
             f"Unable to locate the specified {'file' if is_file else 'directory'} '{relative_path_to_search}' under "
             f"any of the following data directories:\n"
-            f"{listed_loader_dirs}"
+            f"{listed_data_dirs}"
         )
     else:
         err = f"Unable to find any data directory '{data_loader_dir_name}'"
@@ -120,10 +130,21 @@ def resolve_relative_path(
 
 
 class LoaderABC(ABC):
-    def __init__(self, path: Path, load_attrs: DataLoaderLoadAttrs, strip_trailing_whitespace: bool):
+    def __init__(
+        self,
+        path: Path,
+        load_attrs: DataLoaderLoadAttrs,
+        /,
+        *,
+        load_from: Path | None = None,
+        strip_trailing_whitespace: bool = False,
+    ):
         assert path.is_absolute()
+        if not load_attrs.path.is_absolute() and not load_from:
+            raise ValueError("load_from is required when the user specified path is a relative path")
         self.path = path
         self.load_attrs = load_attrs
+        self.load_from = load_from
         self.strip_trailing_whitespace = strip_trailing_whitespace
 
     @abstractmethod
@@ -292,11 +313,11 @@ class FileDataLoader(LoaderABC):
                 data = (x for x in data if self.load_attrs.filter_func(self.path, x))
             if self.load_attrs.process_func:
                 data = (self.load_attrs.process_func(self.path, x) for x in data)
-            return [LoadedData(file_path=self.path, data=x) for x in data]
+            return [LoadedData(file_path=self.path, loaded_from=self.load_from, data=x) for x in data]
         else:
             if self.load_attrs.process_func:
                 data = self.load_attrs.process_func(self.path, data)
-            return LoadedData(file_path=self.path, data=data)
+            return LoadedData(file_path=self.path, loaded_from=self.load_from, data=data)
 
     @requires_loader(parametrize)
     def _load_part_data_now(self, pos: int, /, *, close: bool = True) -> LoadedData:
@@ -318,7 +339,7 @@ class FileDataLoader(LoaderABC):
                 part_data = f.readline().rstrip("\r\n")
             if self.load_attrs.process_func:
                 part_data = self.load_attrs.process_func(self.path, part_data)
-            return LoadedData(file_path=self.path, data=part_data)
+            return LoadedData(file_path=self.path, loaded_from=self.load_from, data=part_data)
         finally:
             has_cache = (self.path, self.read_options) in self._cached_file_objects
             if close:
@@ -341,6 +362,7 @@ class FileDataLoader(LoaderABC):
                 return [
                     LazyLoadedPartData(
                         file_path=self.path,
+                        loaded_from=self.load_from,
                         file_loader=partial(self._load_part_data_now, pos, close=False),
                         idx=i,
                         pos=pos,
@@ -360,6 +382,7 @@ class FileDataLoader(LoaderABC):
                 return [
                     LazyLoadedPartData(
                         file_path=self.path,
+                        loaded_from=self.load_from,
                         file_loader=file_loader,
                         idx=i,
                         meta=dict(
@@ -374,7 +397,7 @@ class FileDataLoader(LoaderABC):
                     for i, data in enumerate(loaded_data)
                 ]
         else:
-            return LazyLoadedData(file_path=self.path, file_loader=self._load_now)
+            return LazyLoadedData(file_path=self.path, loaded_from=self.load_from, file_loader=self._load_now)
 
     def _get_file_obj(self) -> TextIOWrapper:
         """Get file object from cache or open a new one"""
@@ -497,7 +520,10 @@ class DirectoryDataLoader(LoaderABC):
                     file_path = dir_path / p.name
                     if not self.load_attrs.filter_func or self.load_attrs.filter_func(file_path):
                         file_loader = FileDataLoader(
-                            file_path, self.load_attrs, strip_trailing_whitespace=self.strip_trailing_whitespace
+                            file_path,
+                            self.load_attrs,
+                            load_from=self.load_from,
+                            strip_trailing_whitespace=self.strip_trailing_whitespace,
                         )
                         file_reader = read_options = None
                         if self.load_attrs.read_option_func:

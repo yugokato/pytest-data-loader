@@ -13,13 +13,21 @@ from tests.tests_loader.helper import ABS_PATH_LOADER_DIR, PATHS_BINARY_FILES, P
 pytestmark = pytest.mark.unittest
 
 
+@pytest.mark.parametrize("is_abs_path", [False, True])
 @pytest.mark.parametrize("path", [*PATHS_TEXT_FILES, *PATHS_BINARY_FILES])
 @pytest.mark.parametrize("lazy_loading", [True, False])
 @pytest.mark.parametrize("loader", [load, parametrize, parametrize_dir])
-def test_file_loader(loader: DataLoader, lazy_loading: bool, path: Path) -> None:
+def test_file_loader(loader: DataLoader, lazy_loading: bool, path: Path, is_abs_path: bool) -> None:
     """Test file loader with various file types and with/without lazy loading"""
     abs_file_path = ABS_PATH_LOADER_DIR / path
-    filename = abs_file_path.name
+    if is_abs_path:
+        path = abs_file_path
+        load_from = None
+    else:
+        load_from = ABS_PATH_LOADER_DIR
+    if loader == parametrize_dir:
+        path = path.parent
+    is_binary = abs_file_path.relative_to(ABS_PATH_LOADER_DIR) in PATHS_BINARY_FILES
     marks = (pytest.mark.foo, pytest.mark.bar)
     load_attrs = DataLoaderLoadAttrs(
         loader=loader,
@@ -27,13 +35,13 @@ def test_file_loader(loader: DataLoader, lazy_loading: bool, path: Path) -> None
         fixture_names=("file_path", "data"),
         path=path,
         lazy_loading=lazy_loading,
-        parametrizer_func=(lambda x: [x]) if path in PATHS_BINARY_FILES else None,
+        parametrizer_func=(lambda x: [x]) if is_binary else None,
         # for @parametrize loader with lazy loading
         id_func=lambda x: repr(x),
         marker_func=lambda x: marks,
     )
 
-    file_loader = FileDataLoader(abs_file_path, load_attrs=load_attrs, strip_trailing_whitespace=True)
+    file_loader = FileDataLoader(abs_file_path, load_attrs, load_from=load_from, strip_trailing_whitespace=True)
     if path.suffix == ".json":
         assert file_loader.file_reader is not None
     loaded_data = file_loader.load()
@@ -50,14 +58,27 @@ def test_file_loader(loader: DataLoader, lazy_loading: bool, path: Path) -> None
                     assert lazy_loaded_part.pos >= 0
                 else:
                     assert lazy_loaded_part.pos is None
-                assert repr(lazy_loaded_part) == f"{filename}:part{lazy_loaded_part.idx + 1}"
+                if is_abs_path:
+                    assert lazy_loaded_part.file_path_relative is None
+                    assert repr(lazy_loaded_part) == f"{abs_file_path}:part{lazy_loaded_part.idx + 1}"
+                else:
+                    assert lazy_loaded_part.file_path_relative == abs_file_path.relative_to(ABS_PATH_LOADER_DIR)
+                    assert (
+                        repr(lazy_loaded_part)
+                        == f"{lazy_loaded_part.file_path_relative}:part{lazy_loaded_part.idx + 1}"
+                    )
                 assert set(lazy_loaded_part.meta.keys()) == {"marks", "id"}
                 assert lazy_loaded_part.meta["id"] > ""
                 assert lazy_loaded_part.meta["marks"] == marks
         else:
             assert isinstance(loaded_data, LazyLoadedData)
             assert loaded_data.file_path == abs_file_path
-            assert repr(loaded_data) == f"{filename}"
+            if is_abs_path:
+                assert loaded_data.file_path_relative is None
+                assert repr(loaded_data) == str(abs_file_path)
+            else:
+                assert loaded_data.file_path_relative == loaded_data.file_path.relative_to(ABS_PATH_LOADER_DIR)
+                assert repr(loaded_data) == str(loaded_data.file_path_relative)
     else:
         if loader == parametrize:
             assert isinstance(loaded_data, list)
@@ -84,7 +105,9 @@ def test_file_loader_cached_file_loaders(loader: DataLoader, path: Path) -> None
         lazy_loading=True,
         parametrizer_func=(lambda x: [x]) if path in PATHS_BINARY_FILES else None,
     )
-    file_loader = FileDataLoader(abs_file_path, load_attrs=load_attrs, strip_trailing_whitespace=True)
+    file_loader = FileDataLoader(
+        abs_file_path, load_attrs, load_from=ABS_PATH_LOADER_DIR, strip_trailing_whitespace=True
+    )
     if path.suffix == ".json":
         assert file_loader.file_reader is not None
 

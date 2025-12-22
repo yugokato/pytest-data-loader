@@ -68,7 +68,7 @@ def load(
                         NOTE: The test function will receive the reader object as is
     :param onload_func: A function to transform or preprocess loaded data before passing it to the test function.
                         NOTE: .json files will always be automatically parsed during the plugin-managed onload process
-    :param id: Explicitly specify the parameter ID for the loaded data. Defaults to the file name.
+    :param id: Explicitly specify the parameter ID for the loaded data. Defaults to the relative or absolute file path
     :param read_options: File read options the plugin passes to `open()` when reading the file. Supports only mode,
                          encoding, errors, and newline options.
 
@@ -158,8 +158,9 @@ def parametrize(
                         parameters.
     :param process_func: A function to adjust the shape of each split data before passing it to the test function.
     :param marker_func: A function to apply Pytest markers to mathing part data
-    :param id_func: A function to generate a parameter ID for each part data. Defaults to "<file_name>:part<number>"
-                    when lazy loading, otherwise the part data itself is used.
+    :param id_func: A function to generate a parameter ID for each part data.
+                    Defaults to "<relative/absolute file path>:part<number>" when lazy loading, otherwise the part
+                    data itself is used.
     :param read_options: File read options the plugin passes to `open()` when reading the file. Supports only mode,
                          encoding, errors, and newline options.
 
@@ -235,7 +236,7 @@ def parametrize_dir(
     NOTE:
         - file_reader_func, filter_func, marker_func, and read_option_func must take only one argument (file path)
         - process_func loader function must take either one (data) or two (file path, data) arguments
-        - The plugin automatically asigns each file name to the parameter ID
+        - The plugin automatically asigns each file path (relative or absolute) to the parameter ID
 
     Examples:
     >>> @parametrize_dir("data", "data_dir")

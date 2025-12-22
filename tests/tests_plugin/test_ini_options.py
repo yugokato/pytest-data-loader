@@ -10,7 +10,7 @@ from pytest_data_loader.types import DataLoader, DataLoaderIniOption
 from tests.tests_plugin.helper import (
     LoaderRootDir,
     TestContext,
-    create_test_data_in_loader_dir,
+    create_test_data_in_data_dir,
     run_pytest_with_context,
 )
 
@@ -24,12 +24,12 @@ else:
 
 
 @pytest.mark.parametrize("collect_only", [True, False])
-@pytest.mark.parametrize("loader_dir_name", [DEFAULT_LOADER_DIR_NAME, "new_dir", ".test"], indirect=True)
-def test_ini_option_data_loader_dir_name(test_context: TestContext, collect_only: bool, loader_dir_name: str) -> None:
+@pytest.mark.parametrize("data_dir_name", [DEFAULT_LOADER_DIR_NAME, "new_dir", ".test"], indirect=True)
+def test_ini_option_data_loader_dir_name(test_context: TestContext, collect_only: bool, data_dir_name: str) -> None:
     """Test data_loader_dir_name INI option with valid names"""
     test_context.pytester.makeini(f"""
     [pytest]
-    {DataLoaderIniOption.DATA_LOADER_DIR_NAME} = {loader_dir_name}
+    {DataLoaderIniOption.DATA_LOADER_DIR_NAME} = {data_dir_name}
     """)
     result = run_pytest_with_context(test_context, collect_only=collect_only)
     assert result.ret == ExitCode.OK
@@ -60,7 +60,7 @@ def test_ini_option_data_loader_root_dir(
 
     # Create test data in the resolved loader root dir
     relative_data_path = f"{test_ini_option_data_loader_root_dir.__name__}.txt"
-    create_test_data_in_loader_dir(
+    create_test_data_in_data_dir(
         test_context.pytester,
         DEFAULT_LOADER_DIR_NAME,
         relative_data_path,

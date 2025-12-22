@@ -24,10 +24,10 @@ def test_path_resolver_should_find_from_upper_dir(request: FixtureRequest) -> No
     """
     assert (ABS_PATH_LOADER_DIR / PATH_JSON_FILE_OBJECT).exists()
     assert not (LOCAL_LOADER_DIR / PATH_JSON_FILE_OBJECT).exists()
-    resolved_path = resolve_relative_path(
+    data_dir_path, resolved_path = resolve_relative_path(
         DEFAULT_LOADER_DIR_NAME, request.config.rootpath, Path(PATH_JSON_FILE_OBJECT), Path(__file__), is_file=True
     )
-    assert resolved_path.parent.parent.parent == ABS_PATH_LOADER_DIR
+    assert data_dir_path == resolved_path.parent.parent.parent == ABS_PATH_LOADER_DIR
 
 
 def test_path_resolver_should_find_nearest_file(request: FixtureRequest) -> None:
@@ -36,10 +36,10 @@ def test_path_resolver_should_find_nearest_file(request: FixtureRequest) -> None
     """
     assert (ABS_PATH_LOADER_DIR / PATH_TEXT_FILE).exists()
     assert (LOCAL_LOADER_DIR / PATH_TEXT_FILE).exists()
-    resolved_path = resolve_relative_path(
+    data_dir_path, resolved_path = resolve_relative_path(
         DEFAULT_LOADER_DIR_NAME, request.config.rootpath, Path(PATH_TEXT_FILE), Path(__file__), is_file=True
     )
-    assert resolved_path.parent.parent == LOCAL_LOADER_DIR
+    assert data_dir_path == resolved_path.parent.parent == LOCAL_LOADER_DIR
 
 
 @pytest.mark.parametrize("is_file", [True, False])
@@ -50,25 +50,27 @@ def test_path_resolver_should_ignore_unmatched_path_type(request: FixtureRequest
     assert (LOCAL_LOADER_DIR / PATH_SOME_DIR).exists()
     assert (LOCAL_LOADER_DIR / PATH_SOME_DIR).is_file()
 
-    resolved_path = resolve_relative_path(
+    data_dir_path, resolved_path = resolve_relative_path(
         DEFAULT_LOADER_DIR_NAME, request.config.rootpath, Path(PATH_SOME_DIR), Path(__file__), is_file=is_file
     )
     if is_file:
-        assert resolved_path.parent == LOCAL_LOADER_DIR
+        assert data_dir_path == resolved_path.parent == LOCAL_LOADER_DIR
     else:
-        assert resolved_path.parent == ABS_PATH_LOADER_DIR
+        assert data_dir_path == resolved_path.parent == ABS_PATH_LOADER_DIR
 
 
 @pytest.mark.parametrize("is_file", [True, False])
-@pytest.mark.parametrize("valid_loader_dir", [True, False])
+@pytest.mark.parametrize("is_valid_data_dir", [True, False])
 def test_path_resolver_should_raise_error_if_not_found(
-    request: FixtureRequest, valid_loader_dir: bool, is_file: bool
+    request: FixtureRequest, is_valid_data_dir: bool, is_file: bool
 ) -> None:
     """Test that non-existing path should be handled as FileNotFoundError error"""
     non_existing_path = Path("foo")
     if is_file:
         non_existing_path /= "bar.txt"
 
-    loader_dir = DEFAULT_LOADER_DIR_NAME if valid_loader_dir else "invalid_dir"
+    data_dir_path = DEFAULT_LOADER_DIR_NAME if is_valid_data_dir else "invalid_dir"
     with pytest.raises(FileNotFoundError):
-        resolve_relative_path(loader_dir, request.config.rootpath, non_existing_path, Path(__file__), is_file=is_file)
+        resolve_relative_path(
+            data_dir_path, request.config.rootpath, non_existing_path, Path(__file__), is_file=is_file
+        )
