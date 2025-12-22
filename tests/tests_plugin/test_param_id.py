@@ -8,20 +8,27 @@ from tests.tests_plugin.helper import TestContext, run_pytest_with_context
 pytestmark = pytest.mark.plugin
 
 
+@pytest.mark.parametrize("is_abs_path", [False, True], indirect=True)
 @pytest.mark.parametrize("id", [None, "foo"])
 @pytest.mark.parametrize("loader", [load])
-def test_id_for_load_loader(loader: DataLoader, test_context: TestContext, id: str | None) -> None:
+def test_id_for_load_loader(loader: DataLoader, test_context: TestContext, id: str | None, is_abs_path: bool) -> None:
     """Check test ID generation for load loader"""
     result = run_pytest_with_context(test_context, id_=id, check_test_id=True)
     assert result.ret == ExitCode.OK
 
 
+@pytest.mark.parametrize("is_abs_path", [False, True], indirect=True)
 @pytest.mark.parametrize("lazy_loading", [False, True])
 @pytest.mark.parametrize("with_id_func", [False, True])
 @pytest.mark.parametrize("file_extension", [".txt", ".json"])
 @pytest.mark.parametrize("loader", [parametrize])
 def test_id_for_parametrize_loader(
-    loader: DataLoader, test_context: TestContext, lazy_loading: bool, with_id_func: bool, file_extension: str
+    loader: DataLoader,
+    test_context: TestContext,
+    lazy_loading: bool,
+    with_id_func: bool,
+    file_extension: str,
+    is_abs_path: bool,
 ) -> None:
     """Check test ID generation for load parametrize loader
 
@@ -35,8 +42,9 @@ def test_id_for_parametrize_loader(
     assert result.ret == ExitCode.OK
 
 
+@pytest.mark.parametrize("is_abs_path", [False, True], indirect=True)
 @pytest.mark.parametrize("loader", [parametrize_dir])
-def test_id_for_parametrize_dir_loader(loader: DataLoader, test_context: TestContext) -> None:
+def test_id_for_parametrize_dir_loader(loader: DataLoader, test_context: TestContext, is_abs_path: bool) -> None:
     """Check test ID generation for load parametrize_dir"""
     result = run_pytest_with_context(test_context, check_test_id=True)
     assert result.ret == ExitCode.OK

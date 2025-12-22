@@ -86,29 +86,34 @@ class DataLoaderFunctionType(StrEnum):
     READ_OPTION_FUNC = auto()
 
 
-@dataclass(frozen=True, kw_only=True, slots=True)
+@dataclass(frozen=True, kw_only=True, slots=True, repr=False)
 class LoadedDataABC(ABC):
     file_path: Path
+    loaded_from: Path | None = None
+
+    def __repr__(self) -> str:
+        return str(self.file_path_relative or self.file_path)
 
     @property
     def file_name(self) -> str:
         return self.file_path.name
 
+    @property
+    def file_path_relative(self) -> Path | None:
+        if self.loaded_from:
+            return self.file_path.relative_to(self.loaded_from)
+        return None
 
-@dataclass(frozen=True, kw_only=True, slots=True)
+
+@dataclass(frozen=True, kw_only=True, slots=True, repr=False)
 class LoadedData(LoadedDataABC):
     data: LoadedDataType
 
 
-@dataclass(frozen=True, kw_only=True, slots=True)
+@dataclass(frozen=True, kw_only=True, slots=True, repr=False)
 class LazyLoadedDataABC(LoadedDataABC):
     file_loader: Callable[[], LoadedData | Iterable[LoadedData]]
     post_load_hook: Callable[[], None] | None = None
-
-    @abstractmethod
-    def __repr__(self) -> str:
-        """Used for generating default ID"""
-        raise NotImplementedError
 
     @property
     def data(self: T) -> T:
@@ -119,11 +124,8 @@ class LazyLoadedDataABC(LoadedDataABC):
         raise NotImplementedError
 
 
-@dataclass(frozen=True, kw_only=True, slots=True)
+@dataclass(frozen=True, kw_only=True, slots=True, repr=False)
 class LazyLoadedData(LazyLoadedDataABC):
-    def __repr__(self) -> str:
-        return self.file_name
-
     def resolve(self) -> LoadedDataType:
         loaded_data = self.file_loader()
         if self.post_load_hook:
@@ -132,7 +134,7 @@ class LazyLoadedData(LazyLoadedDataABC):
         return loaded_data.data
 
 
-@dataclass(frozen=True, kw_only=True, slots=True)
+@dataclass(frozen=True, kw_only=True, slots=True, repr=False)
 class LazyLoadedPartData(LazyLoadedDataABC):
     idx: int
     pos: int | None = None
@@ -140,7 +142,8 @@ class LazyLoadedPartData(LazyLoadedDataABC):
     meta: dict[str, Any]
 
     def __repr__(self) -> str:
-        return f"{self.file_name}:part{self.idx + 1}"
+        parent_dir = (self.file_path_relative or self.file_path).parent
+        return str(parent_dir / f"{self.file_name}:part{self.idx + 1}")
 
     def resolve(self) -> LoadedDataType:
         loaded_data = self.file_loader()

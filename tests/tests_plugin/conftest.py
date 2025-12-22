@@ -130,6 +130,14 @@ def png_file_content() -> bytes:
 
 
 @pytest.fixture
+def is_abs_path(request: SubRequest) -> bool:
+    """Specify abs path or not. Supports indirect parametrization to override the default value"""
+    if getattr(request, "param", None):
+        return bool(request.param)
+    return False
+
+
+@pytest.fixture
 def test_context(
     pytester: Pytester,
     loader: DataLoader,
@@ -138,6 +146,7 @@ def test_context(
     file_content: str | bytes,
     loader_root_dir: LoaderRootDir,
     strip_trailing_whitespace: bool,
+    is_abs_path: bool,
 ) -> TestContext:
     """Test context fixture that sets up minimum data for various conditions passed via the dependent fixtures"""
     return create_test_context(
@@ -148,4 +157,5 @@ def test_context(
         loader_dir_name=loader_dir_name,
         loader_root_dir=loader_root_dir,
         strip_trailing_whitespace=strip_trailing_whitespace,
+        is_abs_path=is_abs_path,
     )

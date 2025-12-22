@@ -208,6 +208,8 @@ def run_pytest_with_context(
         loader_options.append(f"{DataLoaderFunctionType.READ_OPTION_FUNC}={read_option_func_def}")
     loader_options_str = ", " + ", ".join(loader_options) if loader_options else ""
 
+    is_abs_path = Path(test_context.path).is_absolute()
+
     # Make sure to apply repr() on the string value to handle window's path correctly
     if isinstance(test_context.path, Path):
         path_str = f"Path({str(test_context.path)!r})"
@@ -244,6 +246,8 @@ def run_pytest_with_context(
     import pytest
     from pytest_data_loader import {loader.__name__}
     from pytest_data_loader.utils import validate_loader_func_args_and_normalize
+
+    data_loader_dir = Path({str(test_context.loader_dir)!r})
 
     @{loader.__name__}({fixture_names!r}, {path_str}{loader_options_str})
     def test(request, {fixture_names_str}):
@@ -285,24 +289,35 @@ def run_pytest_with_context(
         has_id = {bool(id_)}
         has_id_func = {bool(id_func_def)}
         is_lazy_loading = {bool(lazy_loading)}
+        is_abs_path = {bool(is_abs_path)}
+        node_id = request.node.nodeid.encode("utf-8").decode("unicode_escape")  # normalized for windows
         if {loader.__name__}.__name__ == 'load':
             if has_id:
-                assert request.node.name.endswith("[{id_}]")
+                assert node_id.endswith("[{id_}]")
             else:
-                assert request.node.name.endswith(f"[{{file_path.name}}]")
+                if is_abs_path:
+                    assert node_id.endswith(f"[{{file_path}}]")
+                else:
+                    assert node_id.endswith(f"[{{file_path.relative_to(data_loader_dir)}}]")
         elif {loader.__name__}.__name__ == 'parametrize':
             if has_id_func:
                 id_func = eval({id_func_def!r})
                 expected_id = validate_loader_func_args_and_normalize(id_func)(file_path, data)
-                assert request.node.name.endswith(f"[{{expected_id}}]")
+                assert node_id.endswith(f"[{{expected_id}}]")
             else:
                 if is_lazy_loading:
                     idx = request.node.callspec.indices['{fixtures[-1]}']
-                    assert request.node.name.endswith(f"[{{file_path.name}}:part{{idx+1}}]")
+                    if is_abs_path:
+                        assert node_id.endswith(f"[{{file_path}}:part{{idx+1}}]")
+                    else:
+                        assert node_id.endswith(f"[{{file_path.relative_to(data_loader_dir)}}:part{{idx+1}}]")
                 else:
-                    assert request.node.name.endswith(f"[{{data!r}}]")
+                    assert node_id.endswith(f"[{{data!r}}]")
         else:
-            assert request.node.name.endswith(f"[{{file_path.name}}]")
+            if is_abs_path:
+                assert node_id.endswith(f"[{{file_path}}]")
+            else:
+                assert node_id.endswith(f"[{{file_path.relative_to(data_loader_dir)}}]")
 
     """
     pytester.makepyfile(test_code)

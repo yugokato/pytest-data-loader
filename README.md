@@ -202,9 +202,9 @@ $ pytest tests1/test_something.py -v
 <snip>
 collected 3 items                                                                              
 
-tests1/test_something.py::test_something[image.gif] PASSED                      [ 33%]
-tests1/test_something.py::test_something[image.jpg] PASSED                      [ 66%]
-tests1/test_something.py::test_something[image.png] PASSED                      [100%]
+tests1/test_something.py::test_something[images/image.gif] PASSED               [ 33%]
+tests1/test_something.py::test_something[images/image.jpg] PASSED               [ 66%]
+tests1/test_something.py::test_something[images/image.png] PASSED               [100%]
 
 ================================= 3 passed in 0.01s ==================================
 ```
@@ -345,7 +345,7 @@ Each loader supports different optional parameters you can use to change how you
 - `lazy_loading`: Enable or disable lazy loading
 - `file_reader`: A file reader the plugin should use to read the file data
 - `onload_func`: A function to transform or preprocess loaded data before passing it to the test function
-- `id`: The parameter ID for the loaded data. The file name is used if not specified
+- `id`: The parameter ID for the loaded data. If not specified, the relative or absolute file path is used
 - `**read_options`: File read options the plugin passes to `open()`. Supports only `mode`, `encoding`, `errors`, and 
 `newline` options
 
