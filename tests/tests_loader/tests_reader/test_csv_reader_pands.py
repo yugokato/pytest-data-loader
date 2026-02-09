@@ -40,7 +40,7 @@ def test_parametrize_csv_file_with_pandas(
 @parametrize_dir(
     ("file_path", "df"),
     PATH_CSV_FILE_DIR,
-    file_reader_func=lambda p: (lambda f: pandas.read_csv(f, delimiter=DELIMITER[p.stem])),
+    file_reader_func=lambda p: lambda f: pandas.read_csv(f, delimiter=DELIMITER[p.stem]),
 )
 def test_parametrize_dir_with_pandas(file_path: Path, df: pandas.DataFrame) -> None:
     """Test @parametrize_dir loader with the CSV reader from pands"""
