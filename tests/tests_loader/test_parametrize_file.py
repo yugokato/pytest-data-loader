@@ -163,7 +163,7 @@ def test_parametrize_json_with_id_func(request: FixtureRequest, data: tuple[str,
 
 
 # Binary files
-@parametrize("data", PATH_JPEG_FILE, parametrizer_func=lambda d: _split_jpeg(d))
+@parametrize("data", PATH_JPEG_FILE, parametrizer_func=lambda d: _split_jpeg(d))  # noqa: PLW0108
 def test_parametrize_binary_file_with_parametrizer_func(request: FixtureRequest, data: bytes) -> None:
     """Test @parametrize loader with the parametrizer_func using binary file"""
     assert isinstance(data, bytes)

@@ -162,14 +162,14 @@ def validate_loader_func_args_and_normalize(
     err = None
     if not 0 < len_func_args < max_allowed_args + 1:
         err = f"It must take up to {max_allowed_args} arguments. Got {len_func_args}"
-    elif not all(p.kind == Parameter.POSITIONAL_OR_KEYWORD for p in parameters.values()):
+    elif not all(p.kind in (Parameter.POSITIONAL_ONLY, Parameter.POSITIONAL_OR_KEYWORD) for p in parameters.values()):
         err = "Only positional arguments are allowed"
     if err:
         f_type = f"{func_type} " if func_type else ""
         raise TypeError(f"Detected invalid {f_type}loader function definition. {err}")
 
     if len_func_args == 2:
-        return wraps(loader_func)(lambda file_path, data: loader_func(file_path, data))
+        return wraps(loader_func)(lambda file_path, data: loader_func(file_path, data))  # noqa: PLW0108
     elif with_file_path_only:
         return wraps(loader_func)(lambda file_path, *_: loader_func(file_path))
     else:

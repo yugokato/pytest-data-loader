@@ -37,8 +37,8 @@ def test_file_loader(loader: DataLoader, lazy_loading: bool, path: Path, is_abs_
         lazy_loading=lazy_loading,
         parametrizer_func=(lambda x: [x]) if is_binary else None,
         # for @parametrize loader with lazy loading
-        id_func=lambda x: repr(x),
-        marker_func=lambda x: marks,
+        id_func=repr,
+        marker_func=lambda _: marks,
     )
 
     file_loader = FileDataLoader(abs_file_path, load_attrs, load_from=load_from, strip_trailing_whitespace=True)
