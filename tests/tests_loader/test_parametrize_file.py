@@ -25,7 +25,7 @@ pytestmark = pytest.mark.loaders
 # Text file
 @parametrize("data", PATH_TEXT_FILE)
 def test_parametrize_text_file_with_no_options(request: FixtureRequest, data: str) -> None:
-    """Test @parametrize loder with no options using text file"""
+    """Test @parametrize loader with no options using text file"""
     assert isinstance(data, str)
     idx = get_parametrized_test_idx(request, "data")
     assert data == f"line{idx}"
@@ -33,7 +33,7 @@ def test_parametrize_text_file_with_no_options(request: FixtureRequest, data: st
 
 @parametrize("data", PATH_TEXT_FILE, onload_func=lambda d: "# " + d)
 def test_parametrize_text_file_with_onload_func(request: FixtureRequest, data: str) -> None:
-    """Test @parametrize loder with the onload_func option using text file"""
+    """Test @parametrize loader with the onload_func option using text file"""
     assert isinstance(data, str)
     idx = get_parametrized_test_idx(request, "data")
     if idx == 0:
@@ -44,14 +44,14 @@ def test_parametrize_text_file_with_onload_func(request: FixtureRequest, data: s
 
 @parametrize("data", PATH_TEXT_FILE, parametrizer_func=lambda d: ((d[i : i + 3]).ljust(3) for i in range(0, len(d), 3)))
 def test_parametrize_text_file_with_parametrizer_func(data: str) -> None:
-    """Test @parametrize loder with the parametrizer_func option using text file"""
+    """Test @parametrize loader with the parametrizer_func option using text file"""
     assert isinstance(data, str)
     assert len(data) == 3
 
 
 @parametrize("data", PATH_TEXT_FILE, filter_func=lambda d: d.endswith("1"))
 def test_parametrize_text_file_with_filter_func(request: FixtureRequest, data: str) -> None:
-    """Test @parametrize loder with the filter_func option using text file"""
+    """Test @parametrize loader with the filter_func option using text file"""
     assert isinstance(data, str)
     idx = get_parametrized_test_idx(request, "data")
     assert idx == 0
@@ -60,7 +60,7 @@ def test_parametrize_text_file_with_filter_func(request: FixtureRequest, data: s
 
 @parametrize("data", PATH_TEXT_FILE, process_func=lambda d: "# " + d)
 def test_parametrize_text_file_with_process_func(request: FixtureRequest, data: str) -> None:
-    """Test @parametrize loder with the process_func option using text file"""
+    """Test @parametrize loader with the process_func option using text file"""
     assert isinstance(data, str)
     idx = get_parametrized_test_idx(request, "data")
     assert data == f"# line{idx}"
@@ -68,7 +68,7 @@ def test_parametrize_text_file_with_process_func(request: FixtureRequest, data: 
 
 @parametrize("data", PATH_TEXT_FILE, marker_func=lambda d: pytest.mark.foo if d.endswith("0") else None)
 def test_parametrize_text_file_with_marker_func(request: FixtureRequest, data: str) -> None:
-    """Test @parametrize loder with the marker_func option using text file"""
+    """Test @parametrize loader with the marker_func option using text file"""
     assert isinstance(data, str)
     idx = get_parametrized_test_idx(request, "data")
     marker = request.node.get_closest_marker("foo")
@@ -80,7 +80,7 @@ def test_parametrize_text_file_with_marker_func(request: FixtureRequest, data: s
 
 @parametrize("data", PATH_TEXT_FILE, id_func=lambda d: repr("#" + d))
 def test_parametrize_text_file_with_id_func(request: FixtureRequest, data: str) -> None:
-    """Test @parametrize loder with the id_func option using text file"""
+    """Test @parametrize loader with the id_func option using text file"""
     assert isinstance(data, str)
     idx = get_parametrized_test_idx(request, "data")
     assert request.node.name.endswith(f"['#line{idx}']")
@@ -89,7 +89,7 @@ def test_parametrize_text_file_with_id_func(request: FixtureRequest, data: str) 
 # JSON file
 @parametrize("data", PATH_JSON_FILE_SCALAR)
 def test_parametrize_json_file_scalar(request: FixtureRequest, data: str) -> None:
-    """Test @parametrize loder with no options using JSON file (object)"""
+    """Test @parametrize loader with no options using JSON file (object)"""
     assert isinstance(data, str)
     idx = get_parametrized_test_idx(request, "data")
     assert idx == 0
@@ -98,7 +98,7 @@ def test_parametrize_json_file_scalar(request: FixtureRequest, data: str) -> Non
 
 @parametrize("data", PATH_JSON_FILE_ARRAY)
 def test_parametrize_json_file_array(request: FixtureRequest, data: str) -> None:
-    """Test @parametrize loder with no options using JSON file (array)"""
+    """Test @parametrize loader with no options using JSON file (array)"""
     assert isinstance(data, str)
     idx = get_parametrized_test_idx(request, "data")
     assert data == f"item{idx}"
@@ -106,7 +106,7 @@ def test_parametrize_json_file_array(request: FixtureRequest, data: str) -> None
 
 @parametrize("data", PATH_JSON_FILE_OBJECT)
 def test_parametrize_json_object(request: FixtureRequest, data: tuple[str, str]) -> None:
-    """Test @parametrize loder with no options using JSON file (object)"""
+    """Test @parametrize loader with no options using JSON file (object)"""
     assert isinstance(data, tuple)
     idx = get_parametrized_test_idx(request, "data")
     assert data == (f"key{idx}", f"value{idx}")
@@ -114,7 +114,7 @@ def test_parametrize_json_object(request: FixtureRequest, data: tuple[str, str])
 
 @parametrize("data", PATH_JSON_FILE_NESTED_OBJECT, onload_func=lambda d: d["dev"])
 def test_parametrize_json_with_onload_func(request: FixtureRequest, data: tuple[str, str]) -> None:
-    """Test @parametrize loder with the onload_func using JSON file"""
+    """Test @parametrize loader with the onload_func using JSON file"""
     assert isinstance(data, tuple)
     idx = get_parametrized_test_idx(request, "data")
     assert data == (f"key{idx}", f"dev_value{idx}")
@@ -122,7 +122,7 @@ def test_parametrize_json_with_onload_func(request: FixtureRequest, data: tuple[
 
 @parametrize("data", PATH_JSON_FILE_OBJECT, parametrizer_func=lambda d: d.keys())
 def test_parametrize_json_with_parametrizer_func(request: FixtureRequest, data: str) -> None:
-    """Test @parametrize loder with the parametrizer_func using JSON file"""
+    """Test @parametrize loader with the parametrizer_func using JSON file"""
     assert isinstance(data, str)
     idx = get_parametrized_test_idx(request, "data")
     assert data == f"key{idx}"
@@ -130,14 +130,14 @@ def test_parametrize_json_with_parametrizer_func(request: FixtureRequest, data: 
 
 @parametrize("data", PATH_JSON_FILE_ARRAY, filter_func=lambda d: d.endswith("1"))
 def test_parametrize_json_with_filter_func(data: str) -> None:
-    """Test @parametrize loder with the filter_func using JSON file"""
+    """Test @parametrize loader with the filter_func using JSON file"""
     assert isinstance(data, str)
     assert data == "item1"
 
 
 @parametrize("data", PATH_JSON_FILE_OBJECT, process_func=lambda d: d[0])
 def test_parametrize_json_with_process_func(request: FixtureRequest, data: str) -> None:
-    """Test @parametrize loder with the process_func using JSON file"""
+    """Test @parametrize loader with the process_func using JSON file"""
     assert isinstance(data, str)
     idx = get_parametrized_test_idx(request, "data")
     assert data == f"key{idx}"
@@ -145,7 +145,7 @@ def test_parametrize_json_with_process_func(request: FixtureRequest, data: str) 
 
 @parametrize("data", PATH_JSON_FILE_OBJECT, marker_func=lambda d: pytest.mark.foo if d[0].endswith("0") else None)
 def test_parametrize_json_with_marker_func(request: FixtureRequest, data: tuple[str, str]) -> None:
-    """Test @parametrize loder with the marker_func option using JSON file"""
+    """Test @parametrize loader with the marker_func option using JSON file"""
     assert isinstance(data, tuple)
     idx = get_parametrized_test_idx(request, "data")
     marker = request.node.get_closest_marker("foo")
@@ -157,7 +157,7 @@ def test_parametrize_json_with_marker_func(request: FixtureRequest, data: tuple[
 
 @parametrize("data", PATH_JSON_FILE_OBJECT, id_func=lambda d: repr(d[0]))
 def test_parametrize_json_with_id_func(request: FixtureRequest, data: tuple[str, str]) -> None:
-    """Test @parametrize loder with the id_func using JSON file"""
+    """Test @parametrize loader with the id_func using JSON file"""
     assert isinstance(data, tuple)
     assert request.node.name.endswith(f"[{data[0]!r}]")
 
@@ -165,7 +165,7 @@ def test_parametrize_json_with_id_func(request: FixtureRequest, data: tuple[str,
 # Binary files
 @parametrize("data", PATH_JPEG_FILE, parametrizer_func=lambda d: _split_jpeg(d))
 def test_parametrize_binary_file_with_parametrizer_func(request: FixtureRequest, data: bytes) -> None:
-    """Test @parametrize loder with the parametrizer_func using binary file"""
+    """Test @parametrize loader with the parametrizer_func using binary file"""
     assert isinstance(data, bytes)
     idx = get_parametrized_test_idx(request, "data")
     assert idx in range(3)
@@ -187,7 +187,7 @@ def test_parametrize_binary_file_with_parametrizer_func(request: FixtureRequest,
     id_func=lambda d: repr(d[:5]),
 )
 def test_parametrize_binary_file_with_id_func(request: FixtureRequest, data: bytes) -> None:
-    """Test @parametrize loder with the id_func using binary file"""
+    """Test @parametrize loader with the id_func using binary file"""
     assert data == (ABS_PATH_LOADER_DIR / PATH_JPEG_FILE).read_bytes()
     # Pytest internally applies repr() for the ID, which double escapes the ID value the plugin specifies for bytes.
     # For testing purpose, we adjust the nodeid value pytest holds to match with what we specified
@@ -201,7 +201,7 @@ def test_parametrize_binary_file_with_id_func(request: FixtureRequest, data: byt
     marker_func=lambda _: pytest.mark.foo,
 )
 def test_parametrize_binary_file_with_marker_func(request: FixtureRequest, data: bytes) -> None:
-    """Test @parametrize loder with the marker_func using binary file"""
+    """Test @parametrize loader with the marker_func using binary file"""
     assert request.node.get_closest_marker("foo")
 
 

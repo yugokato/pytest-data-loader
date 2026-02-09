@@ -281,7 +281,7 @@ def _setup_data_loader(
     read_option_func: Callable[[Path], dict[str, Any]] | None = None,
     **read_options: Unpack[FileReadOptions],
 ) -> Callable[[TestFunc], TestFunc]:
-    """Set up a test function and inject loder attributes that are used by pytest_generate_tests hook"""
+    """Set up a test function and inject loader attributes that are used by pytest_generate_tests hook"""
 
     if not loader.requires_parametrization and any([parametrizer_func, filter_func, process_func]):
         raise ValueError(

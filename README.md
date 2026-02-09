@@ -314,7 +314,7 @@ def test_something2(data):
 > [!NOTE]
 > If only read options are specified without a `file_reader` in a loader, the plugin will search for an existing file 
 > reader registered in `conftest.py` if there is any, and applies it with the new read options for the test. But if 
-> only a `file_reader` is specified with no read options in a loder, no read options will be applied.
+> only a `file_reader` is specified with no read options in a loader, no read options will be applied.
 
 > [!TIP]
 > - A file reader must take one argument (a file-like object returned by `open()`)
