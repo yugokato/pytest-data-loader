@@ -32,7 +32,7 @@ class FileReader:
 
         :param conftest_path: Path to conftest.py the registration is done from
         :param ext: File extension
-        :param file_reader: A file reader to register
+        :param reader: A file reader to register
         :param read_options: Options to pass to open() when reading the file
         """
         if not ext.startswith("."):
