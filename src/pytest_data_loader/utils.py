@@ -1,3 +1,4 @@
+import errno
 import inspect
 import keyword
 import os
@@ -174,3 +175,24 @@ def validate_loader_func_args_and_normalize(
         return wraps(loader_func)(lambda file_path, *_: loader_func(file_path))
     else:
         return wraps(loader_func)(lambda _, data: loader_func(data))
+
+
+def check_circular_symlink(path: Path) -> None:
+    """Detect a circular symlink
+
+    :param path: The path to check
+    """
+    if path.is_symlink():
+        try:
+            path.resolve(strict=True)
+        except (OSError, RuntimeError) as e:
+            if (
+                # Python < 3.13
+                (isinstance(e, RuntimeError) and "symlink loop" in str(e).lower())
+                # Unix
+                or (isinstance(e, OSError) and e.errno == errno.ELOOP)
+                # Windows (ERROR_CANT_RESOLVE_FILENAME)
+                or (isinstance(e, OSError) and getattr(e, "winerror", None) == 1921)
+            ):
+                raise RuntimeError(f"Detected a circular symlink: {path}")
+            raise

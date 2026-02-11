@@ -7,6 +7,7 @@ from pytest import ExitCode, Pytester, RunResult
 from pytest_data_loader import parametrize_dir
 from pytest_data_loader.constants import ROOT_DIR
 from pytest_data_loader.types import DataLoader
+from tests.tests_loader.helper import ABS_PATH_LOADER_DIR
 from tests.tests_plugin.helper import (
     TestContext,
     create_test_context,
@@ -85,6 +86,39 @@ def test_parametrize_dir_loader_with_no_file(test_context: TestContext, loader: 
             assert "NOTSET" in str(result.stdout)
     else:
         result.assert_outcomes(skipped=1)
+
+
+@pytest.mark.parametrize("collect_only", [True, False])
+@pytest.mark.parametrize("is_abs_path", [False, True])
+@pytest.mark.parametrize("is_circular", [False, True])
+def test_symlink(test_context: TestContext, is_circular: bool, is_abs_path: bool, collect_only: bool) -> None:
+    """Test that symlinks are handled properly, including circular symlinks"""
+    symlink_data_dir_name = "symlinks"
+    src_symlink_data_dir = ABS_PATH_LOADER_DIR / symlink_data_dir_name
+    dst = Path(test_context.data_dir) / symlink_data_dir_name
+    if is_circular:
+        src_symlink_data_dir /= "circular"
+        dst.mkdir(exist_ok=True, parents=True)
+        dst /= "circular"
+
+    dst.symlink_to(src_symlink_data_dir, target_is_directory=True)
+
+    if test_context.loader.is_file_loader:
+        dir_or_filename = "symlink.txt"
+    else:
+        dir_or_filename = "symlink"
+
+    if is_abs_path:
+        path = dst / dir_or_filename
+    else:
+        path = dst.relative_to(test_context.data_dir) / dir_or_filename
+
+    result = run_pytest_with_context(test_context, path=path, collect_only=collect_only)
+    if is_circular:
+        assert result.ret == ExitCode.INTERRUPTED
+        assert "Detected a circular symlink" in str(result.stdout)
+    else:
+        assert result.ret == ExitCode.OK
 
 
 def _check_result_with_invalid_path(result: RunResult, loader: DataLoader, invalid_path: Path | str) -> None:
