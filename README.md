@@ -233,23 +233,26 @@ If you need to disable this behavior for a specific test, pass `lazy_loading=Fal
 
 ## File Reader
 
-You can specify a file reader the plugin should use when reading the file data, with/without file read options that 
-will be passed to `open()`. This can be done either as a `conftest.py` level registration or as a test-level 
-configuration. If both are done, the test level configuration takes precedence over `conftest.py` level registration.  
+You can specify **any file reader** that accepts a file-like object returned by `open()`. This includes built-in 
+readers, third-party library readers, and your own custom readers. File read options (e.g., `mode`, `encoding`, etc.) 
+can also be provided and will be passed to `open()`. This can be done either as a `conftest.py` level 
+registration or as a test-level configuration. If both are done, the test level configuration takes precedence over 
+`conftest.py` level registration.  
 If multiple `conftest.py` files register a reader for the same file extension, the closest one from the current test 
 becomes effective.  
 
-As examples, here are some of the common readers you could use:
+Below are some common examples of file readers you might use:  
 
-| File type | Reader                                            | Notes                                             |
-|-----------|---------------------------------------------------|---------------------------------------------------|
-| .json     | `json.load`                                       | The plugin automatically uses this by default     |
-| .csv      | `csv.reader`, `csv.DictReader`, `pandas.csv_read` | `pandas.csv_read` requires `pandas`               |
-| .yml      | `yaml.safe_load`, `yaml.safe_load_all`            | Requires `PyYAML`                                 |
-| .xml      | `xml.etree.ElementTree.parse`                     |                                                   |
-| .toml     | `tomllib.load`                                    | `tomli.load` for Python <3.11  (Requires `tomli`) |
-| .ini      | `configparser.ConfigParser().read_file`           |                                                   |
-| .pdf      | `pypdf.PdfReader`                                 | Requires `pypdf`                                  |
+| File type | Examples                                          | Notes                                            |
+|-----------|---------------------------------------------------|--------------------------------------------------|
+| .json     | `json.load`                                       | The plugin automatically uses this by default    |
+| .csv      | `csv.reader`, `csv.DictReader`, `pandas.read_csv` | `pandas.read_csv` requires `pandas`              |
+| .yml      | `yaml.safe_load`, `yaml.safe_load_all`            | Requires `PyYAML`                                |
+| .xml      | `xml.etree.ElementTree.parse`                     |                                                  |
+| .toml     | `tomllib.load`                                    | `tomli.load` for Python <3.11 (Requires `tomli`) |
+| .ini      | `configparser.ConfigParser().read_file`           |                                                  |
+| .pdf      | `pypdf.PdfReader`                                 | Requires `pypdf`                                 |
+
 
 Here are some examples of loading a CSV file using the built-in CSV readers with file read options:
 
