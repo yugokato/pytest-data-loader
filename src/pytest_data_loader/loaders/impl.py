@@ -19,7 +19,7 @@ from pytest_data_loader.types import (
     LazyLoadedPartData,
     LoadedData,
 )
-from pytest_data_loader.utils import validate_loader_func_args_and_normalize
+from pytest_data_loader.utils import check_circular_symlink, validate_loader_func_args_and_normalize
 
 P = ParamSpec("P")
 R = TypeVar("R")
@@ -109,10 +109,12 @@ def resolve_relative_path(
         if data_dir.exists():
             data_dirs.append(data_dir)
             file_or_dir_path = data_dir / relative_path_to_search
+            if file_or_dir_path.is_symlink():
+                check_circular_symlink(file_or_dir_path)
             if file_or_dir_path.exists():
                 # Ignore if a directory with the same name as the required file (or vice versa) is found
                 if (file_or_dir_path.is_file() and is_file) or (file_or_dir_path.is_dir() and not is_file):
-                    return data_dir, file_or_dir_path.resolve()
+                    return data_dir, file_or_dir_path
 
         if dir_to_search == data_loader_root_dir:
             break
@@ -140,8 +142,11 @@ class LoaderABC(ABC):
         strip_trailing_whitespace: bool = False,
     ):
         assert path.is_absolute()
+        if path.is_symlink():
+            check_circular_symlink(path)
         if not load_attrs.path.is_absolute() and not load_from:
             raise ValueError("load_from is required when the user specified path is a relative path")
+
         self.path = path
         self.load_attrs = load_attrs
         self.load_from = load_from

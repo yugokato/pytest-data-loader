@@ -228,6 +228,10 @@ class DataLoaderLoadAttrs:
         if path in (Path("."), Path(".."), Path(ROOT_DIR)):
             raise ValueError(f"Invalid path value: '{orig_value}'")
         if path.is_absolute():
+            if path.is_symlink():
+                from pytest_data_loader.utils import check_circular_symlink
+
+                check_circular_symlink(path)
             if not path.exists():
                 raise ValueError(f"The provided path does not exist: '{orig_value}'")
             if path.is_dir() and self.loader.is_file_loader:
