@@ -8,7 +8,8 @@ if sys.version_info < (3, 11):
     from typing_extensions import Unpack
 
     class StrEnum(str, Enum):
-        def _generate_next_value_(name: str, start: int, count: int, last_values: list[Any]) -> str:  # type: ignore[override]
+        @staticmethod
+        def _generate_next_value_(name: str, start: int, count: int, last_values: list[Any]) -> str:
             return name.lower()
 
         def __str__(self) -> str:

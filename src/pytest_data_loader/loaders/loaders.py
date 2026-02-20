@@ -1,7 +1,7 @@
 import inspect
 from collections.abc import Callable, Collection, Iterable
 from pathlib import Path
-from typing import Any, TypeVar, cast
+from typing import Any, cast
 
 from pytest import Mark, MarkDecorator
 
@@ -12,23 +12,21 @@ from pytest_data_loader.types import (
     DataLoaderLoadAttrs,
     DataLoaderType,
     FileReadOptions,
+    Func,
     HashableDict,
-    TestFunc,
 )
-
-T = TypeVar("T", bound=Callable[..., Any])
 
 __all__ = ["load", "parametrize", "parametrize_dir"]
 
 
-def loader(loader_type: DataLoaderType, /, *, parametrize: bool = False) -> Callable[[T], T]:
+def loader(loader_type: DataLoaderType, /, *, parametrize: bool = False) -> Callable[[Func], Func]:
     """Decorator to register a decorated function as a data loader
 
     :param loader_type: A type of the loader. file or directory
     :param parametrize: Whether the loader needs to perform parametrization or not
     """
 
-    def wrapper(loader_func: T) -> T:
+    def wrapper(loader_func: Func) -> Func:
         loader_func.is_file_loader = DataLoaderType(loader_type) == DataLoaderType.FILE  # type: ignore[attr-defined]
         loader_func.requires_parametrization = parametrize is True  # type: ignore[attr-defined]
         loader_func.should_split_data = bool(loader_func.is_file_loader and loader_func.requires_parametrization)  # type: ignore[attr-defined]
@@ -48,7 +46,7 @@ def load(
     onload_func: Callable[..., Any] | None = None,
     id: str | None = None,
     **read_options: Unpack[FileReadOptions],
-) -> Callable[[TestFunc], TestFunc]:
+) -> Callable[[Func], Func]:
     """A file loader that loads the file content and passes it to the test function.
 
     :param fixture_names: Name(s) of the fixture(s) that will be made available to the test function. If a single
@@ -113,7 +111,7 @@ def parametrize(
     marker_func: Callable[..., MarkDecorator | Collection[MarkDecorator | Mark] | None] | None = None,
     id_func: Callable[..., Any] | None = None,
     **read_options: Unpack[FileReadOptions],
-) -> Callable[[TestFunc], TestFunc]:
+) -> Callable[[Func], Func]:
     """A file loader that dynamically parametrizes the decorated test function by splitting the loaded file content
     into logical parts.
 
@@ -208,7 +206,7 @@ def parametrize_dir(
     process_func: Callable[..., Any] | None = None,
     marker_func: Callable[[Path], MarkDecorator | Collection[MarkDecorator | Mark] | None] | None = None,
     read_option_func: Callable[[Path], dict[str, Any]] | None = None,
-) -> Callable[[TestFunc], TestFunc]:
+) -> Callable[[Func], Func]:
     """A file loader that dynamically parametrizes the decorated test function with the content of files stored in the
     specified directory.
 
@@ -280,7 +278,7 @@ def _setup_data_loader(
     marker_func: Callable[..., MarkDecorator | Collection[MarkDecorator | Mark] | None] | None = None,
     read_option_func: Callable[[Path], dict[str, Any]] | None = None,
     **read_options: Unpack[FileReadOptions],
-) -> Callable[[TestFunc], TestFunc]:
+) -> Callable[[Func], Func]:
     """Set up a test function and inject loader attributes that are used by pytest_generate_tests hook"""
 
     if not loader.requires_parametrization and any([parametrizer_func, filter_func, process_func]):
@@ -291,7 +289,7 @@ def _setup_data_loader(
     if recursive and not loader == parametrize_dir:
         raise ValueError(f"recursive option is not available for {loader.__name__} loader")
 
-    def wrapper(test_func: TestFunc) -> TestFunc:
+    def wrapper(test_func: Func) -> Func:
         """Add attributes to the test function"""
         setattr(
             test_func,
