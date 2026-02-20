@@ -14,7 +14,7 @@ from pytest_data_loader.constants import ROOT_DIR
 
 T = TypeVar("T")
 P = ParamSpec("P")
-TestFunc = TypeVar("TestFunc", bound=Callable[..., Any])
+Func = TypeVar("Func", bound=Callable[..., Any])
 JsonType: TypeAlias = str | int | float | bool | None | list["JsonType"] | dict[str, "JsonType"]
 LoadedDataType: TypeAlias = JsonType | bytes | tuple[str, JsonType] | object | Iterable["LoadedDataType"]
 

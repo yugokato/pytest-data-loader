@@ -148,7 +148,7 @@ def validate_loader_func_args_and_normalize(
     the original function it with the right argument(s)
 
     :param loader_func: Loader function
-    :parma func_type: Loader function type
+    :param func_type: Loader function type
     :param with_file_path_only: The loader function must take only file path
     """
     try:

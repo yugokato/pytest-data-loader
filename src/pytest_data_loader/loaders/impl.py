@@ -7,7 +7,7 @@ from collections.abc import Callable, Generator, Iterable, Iterator, Mapping
 from functools import cached_property, lru_cache, partial, wraps
 from io import StringIO, TextIOWrapper
 from pathlib import Path
-from typing import Any, ClassVar, ParamSpec, TypeVar
+from typing import Any, ClassVar, Concatenate, ParamSpec, TypeVar
 
 from pytest_data_loader import parametrize
 from pytest_data_loader.loaders.reader import FileReader
@@ -23,6 +23,7 @@ from pytest_data_loader.utils import check_circular_symlink, validate_loader_fun
 
 P = ParamSpec("P")
 R = TypeVar("R")
+T = TypeVar("T", bound="FileDataLoader")
 
 logger = logging.getLogger(__name__)
 
@@ -55,19 +56,19 @@ def data_loader_factory(
         )
 
 
-def requires_loader(*loaders: Callable[..., Any]) -> Callable[[Callable[P, R]], Callable[P, R]]:
+def requires_loader(
+    *loaders: Callable[..., Any],
+) -> Callable[[Callable[Concatenate[T, P], R]], Callable[Concatenate[T, P], R]]:
     """Limit the function usage to the explicitly specified loaders so that it won't be accidentally used for
     unintended flows
     """
 
-    def decorator(f: Callable[P, R]) -> Callable[P, R]:
+    def decorator(f: Callable[Concatenate[T, P], R]) -> Callable[Concatenate[T, P], R]:
         @wraps(f)
-        def wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
-            assert args and isinstance(args[0], FileDataLoader)
-            self: FileDataLoader = args[0]
+        def wrapper(self: T, *args: P.args, **kwargs: P.kwargs) -> R:
             if self.loader not in loaders:
                 raise NotImplementedError(f"{f.__name__}() is not supported for @{self.loader.__name__} loader")
-            return f(*args, **kwargs)
+            return f(self, *args, **kwargs)
 
         return wrapper
 
@@ -104,7 +105,7 @@ def resolve_relative_path(
     data_dirs = []
     if search_from.is_file():
         search_from = search_from.parent
-    for dir_to_search in (search_from, *(search_from.parents)):
+    for dir_to_search in (search_from, *search_from.parents):
         data_dir = dir_to_search / data_loader_dir_name
         if data_dir.exists():
             data_dirs.append(data_dir)
@@ -474,7 +475,7 @@ class FileDataLoader(LoaderABC):
         data: str | bytes
         if self.read_mode == "auto":
             try:
-                # Without specifying encoding, this logic fails for binary data on windows
+                # Without specifying encoding, this logic fails for binary data on Windows
                 with open(self.path, encoding="utf-8", **self.read_options) as f:
                     data = f.read()
             except UnicodeDecodeError:
