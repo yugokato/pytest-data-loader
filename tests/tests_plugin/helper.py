@@ -174,6 +174,7 @@ def run_pytest_with_context(
     read_option_func_def: str | None = None,
     collect_only: bool = False,
     check_test_id: bool = False,
+    **other_loader_options: Any,
 ) -> RunResult:
     """Common test logic that runs pytest via pytester with various test context and checks the basic functionality
     of pytest-data-loader plugin
@@ -206,6 +207,8 @@ def run_pytest_with_context(
         loader_options.append(f"{DataLoaderFunctionType.FILE_READER_FUNC}={file_reader_func_def}")
     if read_option_func_def:
         loader_options.append(f"{DataLoaderFunctionType.READ_OPTION_FUNC}={read_option_func_def}")
+    if other_loader_options:
+        loader_options.extend(f"{k}={v!r}" for k, v in other_loader_options.items())
     loader_options_str = ", " + ", ".join(loader_options) if loader_options else ""
 
     is_abs_path = Path(test_context.path).is_absolute()

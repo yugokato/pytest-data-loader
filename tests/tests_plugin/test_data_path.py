@@ -92,28 +92,27 @@ def test_parametrize_dir_loader_with_no_file(test_context: TestContext, loader: 
 @pytest.mark.parametrize("is_abs_path", [False, True])
 @pytest.mark.parametrize("is_circular", [False, True])
 def test_symlink(test_context: TestContext, is_circular: bool, is_abs_path: bool, collect_only: bool) -> None:
-    """Test that symlinks are handled properly, including circular symlinks"""
-    symlink_data_dir_name = "symlinks"
-    src_symlink_data_dir = ABS_PATH_LOADER_DIR / symlink_data_dir_name
-    dst = Path(test_context.data_dir) / symlink_data_dir_name
-    if is_circular:
-        src_symlink_data_dir /= "circular"
-        dst.mkdir(exist_ok=True, parents=True)
-        dst /= "circular"
-
+    """Test that symlinks are handled properly, including circular symlinks (ELOOP and directory traversal cycles)"""
+    src_symlink_data_dir = ABS_PATH_LOADER_DIR / "symlinks"
+    dst = Path(test_context.data_dir) / src_symlink_data_dir.name
     dst.symlink_to(src_symlink_data_dir, target_is_directory=True)
 
+    kwargs = {}
     if test_context.loader.is_file_loader:
-        dir_or_filename = "symlink.txt"
+        dir_or_file = Path("symlink.txt")
     else:
-        dir_or_filename = "symlink"
+        dir_or_file = Path("dir", "symlink")
+        kwargs.update(recursive=True)
+
+    if is_circular:
+        dir_or_file = Path("circular", dir_or_file)
 
     if is_abs_path:
-        path = dst / dir_or_filename
+        path = dst / dir_or_file
     else:
-        path = dst.relative_to(test_context.data_dir) / dir_or_filename
+        path = dst.relative_to(test_context.data_dir) / dir_or_file
 
-    result = run_pytest_with_context(test_context, path=path, collect_only=collect_only)
+    result = run_pytest_with_context(test_context, path=path, collect_only=collect_only, **kwargs)
     if is_circular:
         assert result.ret == ExitCode.INTERRUPTED
         assert "Detected a circular symlink" in str(result.stdout)
