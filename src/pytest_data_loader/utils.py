@@ -178,7 +178,7 @@ def validate_loader_func_args_and_normalize(
 
 
 def check_circular_symlink(path: Path) -> None:
-    """Detect a circular symlink
+    """Detect a circular symlink resolution loops (ELOOP)
 
     :param path: The path to check
     """

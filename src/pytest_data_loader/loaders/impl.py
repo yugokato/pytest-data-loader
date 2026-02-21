@@ -518,6 +518,14 @@ class DirectoryDataLoader(LoaderABC):
         """Load multiple files from a directory"""
 
         def load_files(dir_path: Path) -> None:
+            if self.load_attrs.recursive:
+                # Detect directory traversal cycles by tracking visited inodes
+                stat = dir_path.stat()
+                inode = (stat.st_dev, stat.st_ino)
+                if inode in visited_dirs:
+                    raise RuntimeError(f"Detected a circular symlink: {dir_path}")
+                visited_dirs.add(inode)
+
             for p in sorted(dir_path.iterdir()):
                 if p.is_dir():
                     if self.load_attrs.recursive:
@@ -546,6 +554,7 @@ class DirectoryDataLoader(LoaderABC):
                         assert isinstance(loaded_data, LoadedData | LazyLoadedData), type(loaded_data)
                         loaded_files.append(loaded_data)
 
+        visited_dirs: set[tuple[int, int]] = set()
         loaded_files: list[LoadedData | LazyLoadedData] = []
         load_files(self.path)
         return loaded_files
