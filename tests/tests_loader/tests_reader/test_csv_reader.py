@@ -17,7 +17,7 @@ from tests.tests_loader.helper import (
 pytestmark = pytest.mark.readers
 
 read_options = dict(encoding="utf-8-sig", newline="")
-DELIMITER = {"comma": ",", "semicolon": ","}
+DELIMITER = {"comma": ",", "semicolon": ";"}
 
 
 @load(("file_path", "data"), PATH_CSV_FILE, file_reader=csv.reader, **read_options)

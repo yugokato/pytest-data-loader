@@ -254,7 +254,7 @@ def test_process_func_validation(
 )
 @pytest.mark.parametrize("lazy_loading", [True, False])
 @pytest.mark.parametrize("loader", SUPPORTED_LOADERS[DataLoaderFunctionType.MARKER_FUNC])
-def test_marker_func_test_marker_func_validation(
+def test_marker_func_validation(
     test_context: TestContext,
     loader: DataLoader,
     loader_func_def: str,

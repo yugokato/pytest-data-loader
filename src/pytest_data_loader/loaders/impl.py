@@ -5,9 +5,9 @@ import weakref
 from abc import ABC, abstractmethod
 from collections.abc import Callable, Generator, Iterable, Iterator, Mapping
 from functools import cached_property, lru_cache, partial, wraps
-from io import StringIO, TextIOWrapper
+from io import StringIO
 from pathlib import Path
-from typing import Any, ClassVar, Concatenate, ParamSpec, TypeVar
+from typing import IO, Any, ClassVar, Concatenate, ParamSpec, TypeVar
 
 from pytest_data_loader import parametrize
 from pytest_data_loader.loaders.reader import FileReader
@@ -191,7 +191,7 @@ class FileDataLoader(LoaderABC):
         )
         # caches used by the @parametrize loader.
         # NOTE: In Pytest, these cache data will be cleared as a module teardown managed by the plugin
-        self._cached_file_objects: dict[tuple[Path, HashableDict], TextIOWrapper] = {}
+        self._cached_file_objects: dict[tuple[Path, HashableDict], IO[Any]] = {}
         self._cached_file_loaders: set[Callable[..., Any]] = set()
         if self.loader == parametrize:
             weakref.finalize(self, self.clear_cache)
@@ -212,7 +212,7 @@ class FileDataLoader(LoaderABC):
 
     @property
     def is_streamable(self) -> bool:
-        """Whether the file content can be read line by line as stream without loading the entier file"""
+        """Whether the file content can be read line by line as stream without loading the entire file"""
         return self._is_streamable
 
     @cached_property
@@ -287,7 +287,7 @@ class FileDataLoader(LoaderABC):
                 return iter([data])
 
     def _onload_func(self, data: Any) -> Any:
-        """Plugin-managed onload function that will allways be applied to the original data that has been loaded.
+        """Plugin-managed onload function that will always be applied to the original data that has been loaded.
 
         :param data: Loaded data or file reader
         """
@@ -405,7 +405,7 @@ class FileDataLoader(LoaderABC):
         else:
             return LazyLoadedData(file_path=self.path, loaded_from=self.load_from, file_loader=self._load_now)
 
-    def _get_file_obj(self) -> TextIOWrapper:
+    def _get_file_obj(self) -> IO[Any]:
         """Get file object from cache or open a new one"""
         f = self._cached_file_objects.get((self.path, self.read_options))
         is_closed = f and f.closed
@@ -491,7 +491,7 @@ class FileDataLoader(LoaderABC):
 
     @lru_cache(maxsize=1)
     @requires_loader(parametrize)
-    def _read_reader_and_split(self, file_reader: Callable[..., Iterable[Any] | object], f: TextIOWrapper) -> list[Any]:
+    def _read_reader_and_split(self, file_reader: Callable[..., Iterable[Any] | object], f: IO[Any]) -> list[Any]:
         """Read full data from the file reader and split into parts
 
         :param file_reader: A file reader to read data from

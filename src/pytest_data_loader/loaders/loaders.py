@@ -155,7 +155,7 @@ def parametrize(
     :param filter_func: A function to filter the split data parts. Only matching parts are included as the test
                         parameters.
     :param process_func: A function to adjust the shape of each split data before passing it to the test function.
-    :param marker_func: A function to apply Pytest markers to mathing part data
+    :param marker_func: A function to apply Pytest markers to matching part data
     :param id_func: A function to generate a parameter ID for each part data.
                     Defaults to "<relative/absolute file path>:part<number>" when lazy loading, otherwise the part
                     data itself is used.
@@ -174,7 +174,7 @@ def parametrize(
     >>> @parametrize(("file_path", "data"), "data.json")
     >>> def test_example2(file_path: Path, data: list[tuple[str, str]]):
     >>>     assert file_path.name == "data.json"
-    >>>     assert data in [("key1": "value1"), ("key2": "value2")]
+    >>>     assert data in [("key1", "value1"), ("key2", "value2")]
     >>>
     """
     return _setup_data_loader(
@@ -226,7 +226,7 @@ def parametrize_dir(
     :param process_func: A function to adjust the shape of each loaded file's data before passing it to the test
                          function.
                          NOTE: .json files will always be automatically parsed during the plugin-managed onload process
-    :param marker_func: A function to apply Pytest markers to mathing file paths
+    :param marker_func: A function to apply Pytest markers to matching file paths
     :param read_option_func: A function to specify file read options the plugin passes to `open()` to matching file
                              paths. Supports only mode, encoding, errors, and newline options. It must return these
                              options as a dictionary.
@@ -234,7 +234,7 @@ def parametrize_dir(
     NOTE:
         - file_reader_func, filter_func, marker_func, and read_option_func must take only one argument (file path)
         - process_func loader function must take either one (data) or two (file path, data) arguments
-        - The plugin automatically asigns each file path (relative or absolute) to the parameter ID
+        - The plugin automatically assigns each file path (relative or absolute) to the parameter ID
 
     Examples:
     >>> @parametrize_dir("data", "data_dir")
