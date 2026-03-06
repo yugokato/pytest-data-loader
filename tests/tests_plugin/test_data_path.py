@@ -1,5 +1,6 @@
 import os
 from pathlib import Path
+from typing import Any
 
 import pytest
 from pytest import ExitCode, Pytester, RunResult
@@ -97,7 +98,7 @@ def test_symlink(test_context: TestContext, is_circular: bool, is_abs_path: bool
     dst = Path(test_context.data_dir) / src_symlink_data_dir.name
     dst.symlink_to(src_symlink_data_dir, target_is_directory=True)
 
-    kwargs = {}
+    kwargs: dict[str, Any] = {}
     if test_context.loader.is_file_loader:
         dir_or_file = Path("symlink.txt")
     else:

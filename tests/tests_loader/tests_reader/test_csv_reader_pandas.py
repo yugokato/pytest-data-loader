@@ -10,7 +10,7 @@ from tests.tests_loader.helper import PATH_CSV_FILE, PATH_CSV_FILE_DIR, get_para
 pytestmark = pytest.mark.readers
 
 
-DELIMITER = {"comma": ",", "semicolon": ","}
+DELIMITER = {"comma": ",", "semicolon": ";"}
 
 
 @load(("file_path", "df"), PATH_CSV_FILE, file_reader=pandas.read_csv)
@@ -29,7 +29,7 @@ def test_load_csv_file_with_pandas(file_path: Path, df: pandas.DataFrame) -> Non
 def test_parametrize_csv_file_with_pandas(
     request: FixtureRequest, file_path: Path, idx_and_row: tuple[int, pandas.Series]
 ) -> None:
-    """Test @parametrize loader with the CSV reader from pands"""
+    """Test @parametrize loader with the CSV reader from pandas"""
     assert isinstance(idx_and_row, tuple)
     i, row = idx_and_row
     expected_data = get_expected_data(file_path)
@@ -43,7 +43,7 @@ def test_parametrize_csv_file_with_pandas(
     file_reader_func=lambda p: lambda f: pandas.read_csv(f, delimiter=DELIMITER[p.stem]),
 )
 def test_parametrize_dir_with_pandas(file_path: Path, df: pandas.DataFrame) -> None:
-    """Test @parametrize_dir loader with the CSV reader from pands"""
+    """Test @parametrize_dir loader with the CSV reader from pandas"""
     assert isinstance(df, pandas.DataFrame)
     expected_data = get_expected_data(file_path)
     rows: list[pandas.Series] = []
