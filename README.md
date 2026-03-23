@@ -19,7 +19,6 @@ pip install pytest-data-loader
 ```
 
 
-
 ## Quick Start
 
 ```python
@@ -41,19 +40,17 @@ def test_example(data):
 The plugin provides three data loaders — `@load`, `@parametrize`, and `@parametrize_dir` — available as decorators for 
 loading test data. Each loader takes two positional arguments: 
 
-- `fixture_names`: Name(s) of the fixture(s) that will be made available to the test function. It supports either one
-                   (receiving file data) or two (receiving file path and file data) fixture names
-- `path`: Path to the file or directory to load data from. It can be either an absolute path or a path relative to one
-          of the project's data directories. When a relative path is provided, the plugin searches upward from the 
-          test file's directory toward the Pytest root directory to find the nearest data directory containing the 
-          target file.
+- `fixture_names`: Name(s) of the fixture(s) injected into the test function. Pass a single name to receive file data,
+                   or two names to receive both the file path and file data.
+- `path`: Path to the file or directory to load. Accepts an absolute path or a path relative to a `data` directory.
+          When a relative path is given, the plugin searches upward from the test file toward the pytest root to find
+          the nearest `data` directory containing the target file or directory.
 
 > [!TIP]
 > - By default, the plugin looks for a directory named `data` when resolving relative paths. This default name can be 
 > customized using an INI option. See the [INI Options](#ini-options) section for details
 > - Each data loader supports different optional keyword arguments to customize how the data is loaded. See the 
 > [Loader Options](#loader-options) section for details
-
 
 
 ## Examples
@@ -124,8 +121,8 @@ tests1/test_something.py::test_something2[data2.txt] PASSED                     
 
 
 ### 2. Parametrize file data — `@parametrize`
-`@parametrize` is a file loader that dynamically parametrizes the decorated test function by splitting the loaded file 
-content into logical parts. The test function will then receive the part data as loaded data for the current test.
+`@parametrize` is a file loader that dynamically parametrizes the decorated test function by splitting the loaded file
+content into logical parts. Each part is passed to the test function as a separate parameter.
 
 ```python
 # test_something.py
@@ -167,20 +164,20 @@ tests1/test_something.py::test_something2[data2.txt:part3] PASSED               
 
 > [!TIP]
 > - You can apply your own logic by specifying the `parametrizer_func` loader option
-> - By default, the plugin will apply the following logic for splitting file content: 
+> - By default, the plugin will apply the following logic for splitting file content:
 >   - Text file: Each line in the file
 >   - JSON file:
 >     - object: Each key–value pair in the object
 >     - array: Each item in the array
 >     - other types (string, number, boolean, null): The whole content as single data
->   - Binary file: Unsupported. Requires specifying a custom split logic as the `parametrizer_func` loader option 
+>   - JSONL file: Each line (parsed as JSON)
+>   - Binary file: Unsupported. Requires specifying a custom split logic as the `parametrizer_func` loader option
 
 
 ### 3. Parametrize files in a directory — `@parametrize_dir`
 
-`@parametrize_dir` is a directory loader that dynamically parametrizes the decorated test function with the 
-contents of the files stored in the specified directory. The test function will then receive the content of each file as loaded data 
-for the current test.
+`@parametrize_dir` is a directory loader that dynamically parametrizes the decorated test function with the contents
+of files in the specified directory. Each file's content is passed to the test function as a separate parameter.
 
 ```python
 # test_something.py
@@ -215,37 +212,39 @@ tests1/test_something.py::test_something[images/image.png] PASSED               
 > - Specify `recursive=True` to include files in subdirectories
 
 
-
 ## Lazy Loading
 
-Lazy loading is enabled by default for all data loaders to improve efficiency, especially with large datasets.  During 
+Lazy loading is enabled by default for all data loaders to improve efficiency, especially with large datasets. During 
 test collection, pytest receives a lazy object as a test parameter instead of the actual data. The data is resolved 
-only when it is needed during test setup.    
+only when it is needed during test setup.  
 If you need to disable this behavior for a specific test, pass `lazy_loading=False` to the data loader.
 
 > [!NOTE]
 > Lazy loading for the `@parametrize` loader works slightly differently from other loaders. Since Pytest needs to know 
 > the total number of parameters in advance, the plugin still needs to inspect the file data and split it once during 
-> test collection phase. But once it's done, those part data will not be kept as parameter values and will be loaded 
+> test collection phase. But once it's done, the split data will not be kept as parameter values and will be loaded 
 > lazily later.
-
 
 
 ## File Reader
 
-You can specify **any file reader** that accepts a file-like object returned by `open()`. This includes built-in 
-readers, third-party library readers, and your own custom readers. File read options (e.g., `mode`, `encoding`, etc.) 
-can also be provided and will be passed to `open()`. This can be done either as a `conftest.py` level 
-registration or as a test-level configuration. If both are done, the test level configuration takes precedence over 
-`conftest.py` level registration.  
-If multiple `conftest.py` files register a reader for the same file extension, the closest one from the current test 
-becomes effective.  
+### Built-in defaults
 
-Below are some common examples of file readers you might use:  
+By default, the plugin reads and parses file content on loading as follows:
+- `.json` — Parsed with `json.load`
+- `.jsonl` — Each line is parsed as JSON
+- All other file types — Loads as raw text or binary content
+
+### Customizing defaults
+
+The above default behavior can be customized by specifying any file reader that accepts a file-like object returned by 
+`open()`. This includes built-in readers, third-party library readers, and your own custom readers. File read 
+options (e.g., `mode`, `encoding`, etc.) can also be provided and will be passed to `open()`.
+
+Below are some common examples of file readers you might use:
 
 | File type | Examples                                          | Notes                                            |
 |-----------|---------------------------------------------------|--------------------------------------------------|
-| .json     | `json.load`                                       | The plugin automatically uses this by default    |
 | .csv      | `csv.reader`, `csv.DictReader`, `pandas.read_csv` | `pandas.read_csv` requires `pandas`              |
 | .yml      | `yaml.safe_load`, `yaml.safe_load_all`            | Requires `PyYAML`                                |
 | .xml      | `xml.etree.ElementTree.parse`                     |                                                  |
@@ -253,6 +252,10 @@ Below are some common examples of file readers you might use:
 | .ini      | `configparser.ConfigParser().read_file`           |                                                  |
 | .pdf      | `pypdf.PdfReader`                                 | Requires `pypdf`                                 |
 
+This can be done either as a `conftest.py` level registration or as a test-level configuration. If both are done, the
+test level configuration takes precedence over `conftest.py` level registration.
+If multiple `conftest.py` files register a reader for the same file extension, the closest one from the current test
+becomes effective.
 
 Here are some examples of loading a CSV file using the built-in CSV readers with file read options:
 
@@ -315,9 +318,8 @@ def test_something2(data):
 ```
 
 > [!NOTE]
-> If only read options are specified without a `file_reader` in a loader, the plugin will search for an existing file 
-> reader registered in `conftest.py` if there is any, and applies it with the new read options for the test. But if 
-> only a `file_reader` is specified with no read options in a loader, no read options will be applied.
+> If read options are specified without a `file_reader`, the plugin uses the `conftest.py`-registered reader (if any)
+> with those options. If a `file_reader` is specified without read options, no read options are applied.
 
 > [!TIP]
 > - A file reader must take one argument (a file-like object returned by `open()`)
@@ -339,7 +341,6 @@ def test_something2(data):
 >  ```
 
 
-
 ## Loader Options
 
 Each loader supports different optional parameters you can use to change how your data is loaded.
@@ -353,8 +354,8 @@ Each loader supports different optional parameters you can use to change how you
 `newline` options
 
 > [!NOTE]
-> `onload_func` must take either one (data) or two (file path, data) arguments. When `file_reader` is provided, the data 
-is the reader object itself.
+> `onload_func` must take either one (data) or two (file path, data) arguments. When `file_reader` is provided, the 
+data is the reader object itself.
 
 
 ### @parametrize
@@ -382,13 +383,12 @@ the data is the reader object itself.
 parameters
 - `process_func`: A function to adjust the shape of each loaded file's data before passing it to the test function
 - `marker_func`: A function to apply Pytest marks to matching file paths
-- `read_option_func`: A function to specify file read options the plugin passes to `open()` to matching file paths. 
-Supports only `mode`, `encoding`, `errors`, and `newline` options. It must return these options as a dictionary
+- `read_option_func`: A function that returns file read options (as a dict) for matching file paths. The returned dict 
+may contain only `mode`, `encoding`, `errors`, and `newline` keys, which are passed to `open()`
 
 > [!NOTE]
 > - `process_func` must take either one (data) or two (file path, data) arguments
 > - `file_reader_func`, `filter_func`, `marker_func`, and `read_option_func` must take only one argument (file path)
-
 
 
 ## INI Options
@@ -402,7 +402,7 @@ Plugin default: `data`
 Absolute or relative path to the project's root directory. By default, the search is limited to 
 within pytest's rootdir, which may differ from the project's top-level directory. Setting this option allows data 
 directories located outside pytest's rootdir to be found. 
-Environment variables are supported using the `${VAR}` or `$VAR` (or `%VAR%` for windows) syntax.  
+Environment variables are supported using the `${VAR}` or `$VAR` (or `%VAR%` on Windows) syntax.
 Plugin default: Pytest rootdir (`config.rootpath`)
 
 ### `data_loader_strip_trailing_whitespace`

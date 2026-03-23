@@ -33,6 +33,9 @@ class TestContext:
             if self.loader.requires_parametrization:
                 if self.test_file_ext == ".json":
                     num_expected_tests = len(json.loads(self.test_file_content).items())
+                elif self.test_file_ext == ".jsonl":
+                    assert isinstance(self.test_file_content, str)
+                    num_expected_tests = sum(1 for line in self.test_file_content.splitlines() if line.strip())
                 elif self.test_file_ext == ".txt":
                     assert isinstance(self.test_file_content, str)
                     if self.strip_trailing_whitespace:
@@ -236,15 +239,23 @@ def run_pytest_with_context(
             data_type = "tuple"
         else:
             data_type = "dict"
+    elif test_context.test_file_ext == ".jsonl":
+        if loader == parametrize:
+            data_type = "dict"
+        else:
+            data_type = "Iterator"
     elif test_context.test_file_ext == ".png":
         data_type = "bytes"
     else:
         raise NotImplementedError(f"Unsupported file type: {test_context.test_file_ext}")
 
+    iterator_import = "from collections.abc import Iterator" if data_type == "Iterator" else ""
+
     test_code = f"""
     import os
     import json
     from pathlib import Path
+    {iterator_import}
 
     import pytest
     from pytest_data_loader import {loader.__name__}

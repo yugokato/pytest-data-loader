@@ -107,9 +107,15 @@ def file_extension(request: SubRequest) -> str:
 @pytest.fixture
 def file_content(request: SubRequest, file_extension: str) -> str | bytes:
     """File content for the file extension requested for the current test"""
+    jsonl_lines = [
+        json.dumps({"key": "val1"}),
+        json.dumps({"key": "val2"}),
+        json.dumps({"key": "val3"}),
+    ]
     ext_content_map: dict[str, str | bytes] = {
         ".txt": f"line1{NEW_LINE}line2{NEW_LINE}line3{TRAILING_WHITESPACE}{NEW_LINE}",
         ".json": json.dumps({"key1": "val1", "key2": "val2", "key3": "val3"}) + NEW_LINE,
+        ".jsonl": NEW_LINE.join(jsonl_lines) + NEW_LINE,
         ".png": b"",  # will be filled when requested
     }
     if file_extension not in ext_content_map:
