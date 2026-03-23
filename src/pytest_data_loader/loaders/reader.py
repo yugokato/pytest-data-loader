@@ -3,10 +3,10 @@ from __future__ import annotations
 import inspect
 import json
 from collections import defaultdict
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Generator, Iterable
 from pathlib import Path
 from threading import RLock
-from typing import Any, ClassVar
+from typing import IO, Any, ClassVar
 
 from pytest_data_loader.compat import Unpack
 from pytest_data_loader.types import FileReadOptions, HashableDict
@@ -123,4 +123,18 @@ def register_reader(
     return FileReader.register(caller_file, ext, file_reader, **read_options)
 
 
-_DEFAULT_READERS = {".json": FileReader(reader=json.load)}
+def _jsonl_reader(f: IO[str]) -> Generator[Any]:
+    """Read a JSON Lines file, yielding one parsed JSON object per non-empty line.
+
+    :param f: File object to read from
+    """
+    for line in f:
+        stripped = line.strip()
+        if stripped:
+            yield json.loads(stripped)
+
+
+_DEFAULT_READERS = {
+    ".json": FileReader(reader=json.load),
+    ".jsonl": FileReader(reader=_jsonl_reader),
+}

@@ -173,7 +173,8 @@ tests1/test_something.py::test_something2[data2.txt:part3] PASSED               
 >     - object: Each key–value pair in the object
 >     - array: Each item in the array
 >     - other types (string, number, boolean, null): The whole content as single data
->   - Binary file: Unsupported. Requires specifying a custom split logic as the `parametrizer_func` loader option 
+>   - JSONL file: Each line (parsed as JSON)
+>   - Binary file: Unsupported. Requires specifying a custom split logic as the `parametrizer_func` loader option
 
 
 ### 3. Parametrize files in a directory — `@parametrize_dir`
@@ -233,19 +234,23 @@ If you need to disable this behavior for a specific test, pass `lazy_loading=Fal
 
 ## File Reader
 
-You can specify **any file reader** that accepts a file-like object returned by `open()`. This includes built-in 
-readers, third-party library readers, and your own custom readers. File read options (e.g., `mode`, `encoding`, etc.) 
-can also be provided and will be passed to `open()`. This can be done either as a `conftest.py` level 
-registration or as a test-level configuration. If both are done, the test level configuration takes precedence over 
-`conftest.py` level registration.  
-If multiple `conftest.py` files register a reader for the same file extension, the closest one from the current test 
-becomes effective.  
+### Built-in defaults
 
-Below are some common examples of file readers you might use:  
+By default, the plugin reads and parses file content on loading as follows:
+- `.json` — Parsed with `json.load`
+- `.jsonl` — Each line is parsed as JSON
+- All other file types — Loads as raw text or binary content
+
+### Customizing defaults
+
+The above default behavior can be customized by specifying **any file reader** that accepts a file-like object returned by `open()`. This includes built-in
+readers, third-party library readers, and your own custom readers. File read options (e.g., `mode`, `encoding`, etc.)
+can also be provided and will be passed to `open()`.
+
+Below are some common examples of file readers you might use:
 
 | File type | Examples                                          | Notes                                            |
 |-----------|---------------------------------------------------|--------------------------------------------------|
-| .json     | `json.load`                                       | The plugin automatically uses this by default    |
 | .csv      | `csv.reader`, `csv.DictReader`, `pandas.read_csv` | `pandas.read_csv` requires `pandas`              |
 | .yml      | `yaml.safe_load`, `yaml.safe_load_all`            | Requires `PyYAML`                                |
 | .xml      | `xml.etree.ElementTree.parse`                     |                                                  |
@@ -253,6 +258,10 @@ Below are some common examples of file readers you might use:
 | .ini      | `configparser.ConfigParser().read_file`           |                                                  |
 | .pdf      | `pypdf.PdfReader`                                 | Requires `pypdf`                                 |
 
+This can be done either as a `conftest.py` level registration or as a test-level configuration. If both are done, the
+test level configuration takes precedence over `conftest.py` level registration.
+If multiple `conftest.py` files register a reader for the same file extension, the closest one from the current test
+becomes effective.
 
 Here are some examples of loading a CSV file using the built-in CSV readers with file read options:
 

@@ -12,7 +12,7 @@ pytestmark = pytest.mark.plugin
 
 
 @pytest.mark.parametrize("collect_only", [True, False])
-@pytest.mark.parametrize("file_extension", [".txt", ".json", ".png"], indirect=True)
+@pytest.mark.parametrize("file_extension", [".txt", ".json", ".jsonl", ".png"], indirect=True)
 @pytest.mark.parametrize("lazy_loading", [False, True])
 def test_lazy_loading(test_context: TestContext, lazy_loading: bool, collect_only: bool, file_extension: str) -> None:
     """Test that data is always loaded lazily when lazy loading is enabled. When lazy loading is enabled, the fixture
@@ -70,7 +70,7 @@ def test_lazy_loading(test_context: TestContext, lazy_loading: bool, collect_onl
 
 
 @pytest.mark.parametrize("lazy_loading", [True, False])
-@pytest.mark.parametrize("file_extension", [".txt", ".json"], indirect=True)
+@pytest.mark.parametrize("file_extension", [".txt", ".json", ".jsonl"], indirect=True)
 def test_lazy_loading_io_timing(test_context: TestContext, lazy_loading: bool, file_extension: str) -> None:
     """Test that file I/O actually occurs at the expected phase (collection vs setup).
 
@@ -151,7 +151,7 @@ def pytest_terminal_summary():
 
 
 @pytest.mark.parametrize("lazy_loading", [True, False])
-@pytest.mark.parametrize("file_extension", [".txt", ".json"], indirect=True)
+@pytest.mark.parametrize("file_extension", [".txt", ".json", ".jsonl"], indirect=True)
 def test_lazy_loading_memory_usage(
     pytester: Pytester, loader: DataLoader, lazy_loading: bool, file_extension: str
 ) -> None:
@@ -160,12 +160,22 @@ def test_lazy_loading_memory_usage(
     With eager loading, pytest stores the full loaded data in callspec.params for the entire session.
     With lazy loading, it stores lightweight lazy objects that hold only a callable reference and metadata.
     """
+    # Generator-based readers (like .jsonl) always store a tiny generator object when used with @load or
+    # @parametrize_dir, regardless of lazy_loading — the memory distinction doesn't apply in those cases.
+    # Only @parametrize expands the data into a list of dicts during eager loading.
+    if file_extension == ".jsonl" and loader != parametrize:
+        pytest.skip("Memory assertion not applicable: .jsonl reader returns a generator for non-@parametrize loaders")
+
     # Generate large test data (~100KB) to make the memory difference measurable
+    num_chars = 2048
+    num_lines = 50
     if file_extension == ".txt":
-        line = "x" * 2048  # ~2KB per line
-        file_content = "\n".join(line for _ in range(50))
+        line = "x" * num_chars  # ~2KB per line
+        file_content = "\n".join(line for _ in range(num_lines))
+    elif file_extension == ".jsonl":
+        file_content = "\n".join(json.dumps({"key": "x" * num_chars}) for _ in range(num_lines))
     else:  # .json
-        entries = {f"key{i:02d}": "x" * 2048 for i in range(50)}
+        entries = {f"key{i:02d}": "x" * num_chars for i in range(num_lines)}
         file_content = json.dumps(entries)
 
     test_context = create_test_context(pytester, loader, file_extension=file_extension, file_content=file_content)
