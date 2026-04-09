@@ -59,43 +59,51 @@ def pytest_generate_tests(metafunc: Metafunc) -> None:
         node_id = metafunc.definition.nodeid
         try:
             data_loader_option = metafunc.config.stash[STASH_KEY_DATA_LOADER_OPTION]
-            if load_attrs.path.is_absolute():
-                data_dir_path = None
-                test_data_path = load_attrs.path
-            else:
-                data_dir_path, test_data_path = resolve_relative_path(
-                    data_loader_option.loader_dir_name,
-                    data_loader_option.loader_root_dir,
-                    load_attrs.path,
-                    load_attrs.search_from,
-                    is_file=load_attrs.loader.is_file_loader,
+
+            paths = load_attrs.path if isinstance(load_attrs.path, tuple) else (load_attrs.path,)
+            loaded_data: list[LoadedData | LazyLoadedData | LazyLoadedPartData] = []
+
+            for path in paths:
+                if path.is_absolute():
+                    data_dir_path = None
+                    test_data_path = path
+                else:
+                    data_dir_path, test_data_path = resolve_relative_path(
+                        data_loader_option.loader_dir_name,
+                        data_loader_option.loader_root_dir,
+                        path,
+                        load_attrs.search_from,
+                        is_file=load_attrs.loader.is_file_loader,
+                    )
+
+                data_loader = data_loader_factory(
+                    test_data_path,
+                    load_attrs,
+                    load_from=data_dir_path,
+                    strip_trailing_whitespace=data_loader_option.strip_trailing_whitespace,
                 )
 
-            data_loader = data_loader_factory(
-                test_data_path,
-                load_attrs,
-                load_from=data_dir_path,
-                strip_trailing_whitespace=data_loader_option.strip_trailing_whitespace,
-            )
-            if load_attrs.loader == parametrize and isinstance(data_loader, FileDataLoader):
-                # Keep file loaders per module for clean up
-                data_loader_cache: set[FileDataLoader] | None
-                if data_loader_cache := getattr(metafunc.module, PYTEST_DATA_LOADER_ATTR, None):
-                    data_loader_cache.add(data_loader)
-                else:
-                    setattr(metafunc.module, PYTEST_DATA_LOADER_ATTR, {data_loader})
+                if load_attrs.loader == parametrize and isinstance(data_loader, FileDataLoader):
+                    # Keep file loaders per module for clean up
+                    data_loader_cache: set[FileDataLoader] | None
+                    if data_loader_cache := getattr(metafunc.module, PYTEST_DATA_LOADER_ATTR, None):
+                        data_loader_cache.add(data_loader)
+                    else:
+                        setattr(metafunc.module, PYTEST_DATA_LOADER_ATTR, {data_loader})
 
-            loaded_data = data_loader.load()
+                loaded = data_loader.load()
+                if isinstance(loaded, LoadedData | LazyLoadedData):
+                    loaded_data.append(loaded)
+                elif loaded:
+                    loaded_data.extend(loaded)
+
+            values: Iterable[
+                LoadedDataType
+                | LazyLoadedData
+                | LazyLoadedPartData
+                | tuple[Path, LoadedDataType | LazyLoadedData | LazyLoadedPartData]
+            ]
             if loaded_data:
-                if isinstance(loaded_data, LoadedData | LazyLoadedData):
-                    loaded_data = [loaded_data]
-
-                values: Iterable[
-                    LoadedDataType
-                    | LazyLoadedData
-                    | LazyLoadedPartData
-                    | tuple[Path, LoadedDataType | LazyLoadedData | LazyLoadedPartData]
-                ]
                 values = (generate_parameterset(load_attrs, x) for x in loaded_data)
             else:
                 values = []
@@ -127,3 +135,4 @@ def _pytest_data_loader_cleanup(request: SubRequest) -> Generator[None]:
     if file_data_loaders := getattr(request.module, PYTEST_DATA_LOADER_ATTR, None):
         for file_data_loader in file_data_loaders:
             file_data_loader.clear_cache()
+        file_data_loaders.clear()

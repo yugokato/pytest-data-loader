@@ -46,6 +46,10 @@ loading test data. Each loader takes two positional arguments:
           When a relative path is given, the plugin searches upward from the test file toward the pytest root to find
           the nearest `data` directory containing the target file or directory.
 
+> [!NOTE]
+> For `@parametrize` and `@parametrize_dir`, `path` can be a list of paths — the plugin loads from each path 
+> independently and concatenates the parametrized data into a single parameter list.
+
 > [!TIP]
 > - By default, the plugin looks for a directory named `data` when resolving relative paths. This default name can be 
 > customized using an INI option. See the [INI Options](#ini-options) section for details
@@ -58,7 +62,7 @@ loading test data. Each loader takes two positional arguments:
 Given you have the following project structure:
 ```
 .(pytest rootdir)
-├── data/
+├── data/               # outer data directory
 │   ├── data1.json
 │   ├── data2.txt
 │   └── images/
@@ -68,9 +72,12 @@ Given you have the following project structure:
 ├── tests1/
 │   └── test_something.py
 └── tests2/
-    ├── data/
+    ├── data/           # inner data directory
     │   ├── data1.txt
-    │   └── data2.txt
+    │   ├── data2.txt
+    │   └── logos/
+    │       ├── logo.jpg
+    │       └── logo.png
     └── test_something_else.py
 ```
 
@@ -174,6 +181,41 @@ tests1/test_something.py::test_something2[data2.txt:part3] PASSED               
 >   - Binary file: Unsupported. Requires specifying a custom split logic as the `parametrizer_func` loader option
 
 
+#### Parametrize from multiple files
+
+You can pass a list of file paths to `@parametrize` to load and concatenate data from multiple files into a single
+parameter list:
+
+```python
+# test_something_else.py
+
+from pytest_data_loader import parametrize
+
+
+@parametrize("data", ["data1.txt", "data2.txt"])
+def test_something(data):
+    """
+    data1.txt: "line1\nline2"
+    data2.txt: "line3\nline4"
+    """
+    assert data in ["line1", "line2", "line3", "line4"]
+```
+
+```shell
+$ pytest tests2/test_something_else.py -v
+================================ test session starts =================================
+<snip>
+collected 4 items
+
+tests2/test_something_else.py::test_something[data1.txt:part1] PASSED           [ 25%]
+tests2/test_something_else.py::test_something[data1.txt:part2] PASSED           [ 50%]
+tests2/test_something_else.py::test_something[data2.txt:part1] PASSED           [ 75%]
+tests2/test_something_else.py::test_something[data2.txt:part2] PASSED           [100%]
+
+================================= 4 passed in 0.01s ==================================
+```
+
+
 ### 3. Parametrize files in a directory — `@parametrize_dir`
 
 `@parametrize_dir` is a directory loader that dynamically parametrizes the decorated test function with the contents
@@ -207,9 +249,45 @@ tests1/test_something.py::test_something[images/image.png] PASSED               
 ```
 
 > [!NOTE]
-> - File names starting with a dot (.) are considered hidden files regardless of your platform. 
+> - File names starting with a dot (.) are considered hidden files regardless of your platform.
 > These files are automatically excluded from the parametrization.
 > - Specify `recursive=True` to include files in subdirectories
+
+
+#### Parametrize files from multiple directories
+
+You can pass a list of directory paths to `@parametrize_dir` to collect and concatenate files from multiple
+directories into a single parameter list:
+
+```python
+# test_something_else.py
+
+from pytest_data_loader import parametrize_dir
+
+
+@parametrize_dir("data", ["images", "logos"])
+def test_something(data):
+    """
+    images dir: contains 3 image files
+    logos dir: contains 2 logo files
+    """
+    assert isinstance(data, bytes)
+```
+
+```shell
+$ pytest tests2/test_something_else.py -v
+================================ test session starts =================================
+<snip>
+collected 5 items
+
+tests2/test_something_else.py::test_something[images/image.gif] PASSED          [ 20%]
+tests2/test_something_else.py::test_something[images/image.jpg] PASSED          [ 40%]
+tests2/test_something_else.py::test_something[images/image.png] PASSED          [ 60%]
+tests2/test_something_else.py::test_something[logos/logo.jpg] PASSED            [ 80%]
+tests2/test_something_else.py::test_something[logos/logo.png] PASSED            [100%]
+
+================================= 5 passed in 0.01s ==================================
+```
 
 
 ## Lazy Loading

@@ -162,6 +162,15 @@ def test_parametrize_json_with_id_func(request: FixtureRequest, data: tuple[str,
     assert request.node.name.endswith(f"[{data[0]!r}]")
 
 
+@parametrize("data", [PATH_TEXT_FILE, PATH_JSON_FILE_ARRAY])
+def test_parametrize_multi_files(request: FixtureRequest, data: str) -> None:
+    """Test @parametrize loader with a list of file paths concatenates all parametrized data"""
+    assert isinstance(data, str)
+    idx = get_parametrized_test_idx(request, "data")
+    all_expected = ["line0", "line1", "line2", "item0", "item1", "item2"]
+    assert data == all_expected[idx]
+
+
 # Binary files
 @parametrize("data", PATH_JPEG_FILE, parametrizer_func=lambda d: _split_jpeg(d))  # noqa: PLW0108
 def test_parametrize_binary_file_with_parametrizer_func(request: FixtureRequest, data: bytes) -> None:

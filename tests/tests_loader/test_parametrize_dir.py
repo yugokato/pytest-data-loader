@@ -10,6 +10,7 @@ from tests.tests_loader.helper import (
     PATH_IMAGE_DIR,
     PATH_SOME_DIR,
     PATH_SOME_DIR_INNER,
+    PATH_TEXT_FILE_DIR,
     get_parametrized_test_idx,
 )
 
@@ -81,3 +82,21 @@ def test_parametrize_dir_recursive(request: FixtureRequest, file_path: Path, dat
 def test_parametrize_dir_recursive_and_filter_func(file_path: Path, _: LoadedDataType) -> None:
     """Test @parametrize_dir loader with recursive and filter_func option"""
     assert int(file_path.stem) % 2 == 1
+
+
+@parametrize_dir("data", [PATH_SOME_DIR, PATH_TEXT_FILE_DIR])
+def test_parametrize_dir_multi_dirs(request: FixtureRequest, data: str) -> None:
+    """Test @parametrize_dir loader with a list of dir paths concatenates all parametrized data"""
+    assert isinstance(data, str)
+    idx = get_parametrized_test_idx(request, "data")
+    all_expected = ["data0", "data1", "data2", "line0\nline1\nline2"]
+    assert data == all_expected[idx]
+
+
+@parametrize_dir("data", [PATH_SOME_DIR, PATH_TEXT_FILE_DIR], recursive=True)
+def test_parametrize_dir_multi_dirs_recursive(request: FixtureRequest, data: str) -> None:
+    """Test @parametrize_dir loader with recursive option with a list of dir paths concatenates all parametrized data"""
+    assert isinstance(data, str)
+    idx = get_parametrized_test_idx(request, "data")
+    all_expected = ["data0", "data1", "data2", "data3", "data4", "data5", "line0\nline1\nline2"]
+    assert data == all_expected[idx]
