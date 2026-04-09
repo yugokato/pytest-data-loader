@@ -3,11 +3,12 @@ import inspect
 import keyword
 import os
 import re
+import sys
 from collections.abc import Callable, Collection
 from functools import lru_cache, wraps
 from inspect import Parameter
 from pathlib import Path
-from typing import Any
+from typing import Any, ParamSpec, TypeVar
 
 import pytest
 from _pytest.mark import ParameterSet
@@ -21,6 +22,9 @@ from pytest_data_loader.types import (
     LazyLoadedPartData,
     LoadedData,
 )
+
+R = TypeVar("R")
+P = ParamSpec("P")
 
 
 @lru_cache
@@ -151,6 +155,24 @@ def validate_loader_func_args_and_normalize(
     :param func_type: Loader function type
     :param with_file_path_only: The loader function must take only file path
     """
+
+    def inject_error_context(file_path: Path) -> Callable[[Callable[P, R]], Callable[P, R]]:
+        """Inject error context to a loader function call"""
+
+        def decorator(f: Callable[P, R]) -> Callable[P, R]:
+            @wraps(f)
+            def wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
+                try:
+                    return f(*args, **kwargs)
+                except Exception as e:
+                    err = f"Error while processing {func_type} for '{file_path.name}' ({file_path})"
+                    add_error_note(e, err)
+                    raise
+
+            return wrapper
+
+        return decorator
+
     try:
         sig = inspect.signature(loader_func)
     except ValueError as e:
@@ -170,11 +192,11 @@ def validate_loader_func_args_and_normalize(
         raise TypeError(f"Detected invalid {f_type}loader function definition. {err}")
 
     if len_func_args == 2:
-        return wraps(loader_func)(lambda file_path, data: loader_func(file_path, data))  # noqa: PLW0108
+        return wraps(loader_func)(lambda file_path, data: inject_error_context(file_path)(loader_func)(file_path, data))
     elif with_file_path_only:
-        return wraps(loader_func)(lambda file_path, *_: loader_func(file_path))
+        return wraps(loader_func)(lambda file_path, *_: inject_error_context(file_path)(loader_func)(file_path))
     else:
-        return wraps(loader_func)(lambda _, data: loader_func(data))
+        return wraps(loader_func)(lambda file_path, data: inject_error_context(file_path)(loader_func)(data))
 
 
 def check_circular_symlink(path: Path) -> None:
@@ -196,3 +218,18 @@ def check_circular_symlink(path: Path) -> None:
             ):
                 raise RuntimeError(f"Detected a circular symlink: {path}")
             raise
+
+
+def add_error_note(exc: Exception, note: str) -> None:
+    """Add a contextual note to an exception.
+
+    On Python 3.11+, uses the built-in ``add_note()`` method.
+    On Python 3.10, appends the note to the exception's args when possible.
+
+    :param exc: The exception to annotate
+    :param note: The note to add
+    """
+    if sys.version_info >= (3, 11):
+        exc.add_note(note)
+    elif len(exc.args) == 1 and isinstance(exc.args[0], str):
+        exc.args = (f"{exc.args[0]}\n{note}",)

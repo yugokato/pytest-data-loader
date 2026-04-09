@@ -1,4 +1,3 @@
-import sys
 from collections.abc import Generator, Iterable
 from pathlib import Path
 
@@ -18,7 +17,7 @@ from pytest_data_loader.types import (
     LoadedData,
     LoadedDataType,
 )
-from pytest_data_loader.utils import generate_parameterset
+from pytest_data_loader.utils import add_error_note, generate_parameterset
 
 STASH_KEY_DATA_LOADER_OPTION = StashKey[DataLoaderOption]()
 
@@ -108,16 +107,8 @@ def pytest_generate_tests(metafunc: Metafunc) -> None:
             metafunc.parametrize(args, values)
         except Exception as e:
             # Add nodeid to the exception message so that a user can tell which test caused the error
-            note = f"(nodeid: {node_id})"
-            if sys.version_info >= (3, 11):
-                e.add_note(note)
-                raise e
-            else:
-                if len(e.args) == 1 and isinstance(e.args[0], str):
-                    e.args = (f"{e}\n{note}",)
-                    raise e
-                else:
-                    raise type(e)(f"{e}\n{note}").with_traceback(e.__traceback__) from e
+            add_error_note(e, f"nodeid: {node_id}")
+            raise
 
 
 @pytest.hookimpl(tryfirst=True)
