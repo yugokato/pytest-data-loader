@@ -39,7 +39,7 @@ def test_path_resolver_should_find_nearest_file(request: FixtureRequest) -> None
     data_dir_path, resolved_path = resolve_relative_path(
         DEFAULT_LOADER_DIR_NAME, request.config.rootpath, Path(PATH_TEXT_FILE), Path(__file__), is_file=True
     )
-    assert data_dir_path == resolved_path.parent.parent == LOCAL_LOADER_DIR
+    assert data_dir_path == resolved_path.parent.parent.parent == LOCAL_LOADER_DIR
 
 
 @pytest.mark.parametrize("is_file", [True, False])

@@ -1,5 +1,5 @@
 import inspect
-from collections.abc import Callable, Collection, Iterable
+from collections.abc import Callable, Collection, Iterable, Sequence
 from pathlib import Path
 from typing import Any, cast
 
@@ -99,7 +99,7 @@ def load(
 @loader(DataLoaderType.FILE, parametrize=True)
 def parametrize(
     fixture_names: str | tuple[str, str],
-    path: Path | str,
+    path: Path | str | Sequence[Path | str],
     /,
     *,
     lazy_loading: bool = True,
@@ -119,9 +119,11 @@ def parametrize(
                           name is provided, the loaded part data will be passed to that fixture. If two names are
                           provided either as a tuple or as a comma-separated string, the first fixture will receive the
                           file path, and the second will receive the loaded part data.
-    :param path: Path to the file to load. It can be either an absolute path or a path relative to one of the base data
-                 directories. When a relative path is provided, the loader searches for the nearest data directory
-                 containing a matching file and loads the data from there.
+    :param path: Path to the file to load, or a list of file paths to concatenate. It can be either an absolute path
+                 or a path relative to one of the base data directories. When a relative path is provided, the loader
+                 searches for the nearest data directory containing a matching file and loads the data from there.
+                 When a list of paths is provided, the plugin loads and splits each file independently, then
+                 concatenates all parametrized data into a single parameter list.
     :param lazy_loading: If True, the plugin will defer the timing of file loading to the test setup phase. Note that
                          unlike other loaders, the plugin still needs to inspect the file data during the collection
                          phase to determine the total number of parametrized tests. The inspection is done in one of
@@ -196,7 +198,7 @@ def parametrize(
 @loader(DataLoaderType.DIRECTORY, parametrize=True)
 def parametrize_dir(
     fixture_names: str | tuple[str, str],
-    path: Path | str,
+    path: Path | str | Sequence[Path | str],
     /,
     *,
     lazy_loading: bool = True,
@@ -214,9 +216,11 @@ def parametrize_dir(
                           name is provided, the loaded data will be passed to that fixture. If two names are provided
                           either as a tuple or as a comma-separated string, the first fixture will receive the file
                           path, and the second will receive the loaded data.
-    :param path: Path to the directory to load files from. It can be either an absolute path or a path relative to one
-                 of the data directories. When a relative path is provided, the loader searches for the nearest data
-                 directory containing a matching directory and loads files from there.
+    :param path: Path to the directory (or list of directories) to load files from. It can be either an absolute path
+                 or a path relative to one of the data directories. When a relative path is provided, the loader
+                 searches for the nearest data directory containing a matching directory and loads files from there.
+                 When a list of paths is provided, the loader concatenates files from all directories in the order
+                 provided.
     :param lazy_loading: If True, the plugin will defer the timing of file loading to the test setup phase. If False,
                          the data will be loaded during the test collection phase, which could cause a performance issue
     :param recursive: Recursively load files from all subdirectories of the given directory. Defaults to False
@@ -263,7 +267,7 @@ def parametrize_dir(
 def _setup_data_loader(
     loader: DataLoader,
     fixture_names: str | tuple[str, str],
-    path: Path | str,
+    path: Path | str | Sequence[Path | str],
     /,
     *,
     lazy_loading: bool = True,
@@ -299,7 +303,7 @@ def _setup_data_loader(
                 search_from=Path(inspect.getabsfile(test_func)),
                 # fixture_names and path will be validated and normalized in __post_init__()
                 fixture_names=cast(tuple[str, ...], fixture_names),
-                path=cast(Path, path),
+                path=cast(Path | tuple[Path, ...], path),
                 lazy_loading=lazy_loading,
                 recursive=recursive,
                 file_reader=file_reader,

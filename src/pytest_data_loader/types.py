@@ -166,7 +166,7 @@ class DataLoaderLoadAttrs:
     loader: DataLoader
     search_from: Path
     fixture_names: tuple[str, ...]
-    path: Path
+    path: Path | tuple[Path, ...]
     lazy_loading: bool = True
     recursive: bool = False
     file_reader: Callable[..., Iterable[Any] | object] | None = None
@@ -220,30 +220,55 @@ class DataLoaderLoadAttrs:
         self._modify_value("fixture_names", normalized_names)
 
     def _validate_path(self) -> None:
-        orig_value = self.path
-        if not isinstance(orig_value, Path | str):
-            raise TypeError(f"path: Expected a string or pathlib.Path, but got {type(orig_value).__name__!r}")
+        from pytest_data_loader import parametrize, parametrize_dir
 
-        path = Path(orig_value)
+        orig_value = self.path
+        _multi_path_loaders = (parametrize, parametrize_dir)
+
+        # Multi-path case: list or tuple of path-like values (only supported by @parametrize and @parametrize_dir)
+        if isinstance(orig_value, list | tuple):
+            if self.loader not in _multi_path_loaders:
+                raise ValueError(f"Multi-path is not supported for @{self.loader.__name__} loader")
+            if len(orig_value) == 0:
+                raise ValueError("path: Multi-path list must not be empty")
+            if not all(isinstance(p, Path | str) for p in orig_value):
+                raise TypeError(
+                    f"path: Expected a list of strings or pathlib.Path objects, "
+                    f"but got element types {[type(p).__name__ for p in orig_value]}"
+                )
+            paths = tuple(Path(p) for p in orig_value)
+            for p in paths:
+                self._validate_single_path(p)
+            self._modify_value("path", paths)
+        else:
+            # Single path case
+            if not isinstance(orig_value, Path | str):
+                raise TypeError(f"path: Expected a string or pathlib.Path, but got {type(orig_value).__name__!r}")
+
+            path = Path(orig_value)
+            self._validate_single_path(path)
+            self._modify_value("path", path)
+
+    def _validate_single_path(self, path: Path) -> None:
+        """Validate a single path value.
+
+        :param path: The path to validate
+        """
         if path in (Path("."), Path(".."), Path(ROOT_DIR)):
-            raise ValueError(f"Invalid path value: '{orig_value}'")
+            raise ValueError(f"Invalid path value: '{path}'")
         if path.is_absolute():
             if path.is_symlink():
                 from pytest_data_loader.utils import check_circular_symlink
 
                 check_circular_symlink(path)
             if not path.exists():
-                raise ValueError(f"The provided path does not exist: '{orig_value}'")
+                raise ValueError(f"The provided path does not exist: '{path}'")
             if path.is_dir() and self.loader.is_file_loader:
-                raise ValueError(
-                    f"Invalid path: @{self.loader.__name__} loader must take a file path, not '{orig_value}'"
-                )
+                raise ValueError(f"Invalid path: @{self.loader.__name__} loader must take a file path, not '{path}'")
             if path.is_file() and not self.loader.is_file_loader:
                 raise ValueError(
-                    f"Invalid path: @{self.loader.__name__} loader must take a directory path, not '{orig_value}'"
+                    f"Invalid path: @{self.loader.__name__} loader must take a directory path, not '{path}'"
                 )
-
-        self._modify_value("path", path)
 
     def _validate_loader_func(self) -> None:
         from pytest_data_loader import parametrize_dir

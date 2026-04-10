@@ -145,7 +145,7 @@ class LoaderABC(ABC):
         assert path.is_absolute()
         if path.is_symlink():
             check_circular_symlink(path)
-        if not load_attrs.path.is_absolute() and not load_from:
+        if isinstance(load_attrs.path, Path) and not load_attrs.path.is_absolute() and not load_from:
             raise ValueError("load_from is required when the user specified path is a relative path")
 
         self.path = path
