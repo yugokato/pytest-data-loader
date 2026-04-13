@@ -207,6 +207,7 @@ def parametrize_dir(
     filter_func: Callable[[Path], bool] | None = None,
     process_func: Callable[..., Any] | None = None,
     marker_func: Callable[[Path], MarkDecorator | Collection[MarkDecorator | Mark] | None] | None = None,
+    id_func: Callable[[Path], Any] | None = None,
     read_option_func: Callable[[Path], dict[str, Any]] | None = None,
 ) -> Callable[[Func], Func]:
     """A file loader that dynamically parametrizes the decorated test function with the content of files stored in the
@@ -231,14 +232,17 @@ def parametrize_dir(
                          function.
                          NOTE: .json files will always be automatically parsed during the plugin-managed onload process
     :param marker_func: A function to apply Pytest markers to matching file paths
+    :param id_func: A function to generate custom test parameter IDs from each file path
     :param read_option_func: A function to specify file read options the plugin passes to `open()` to matching file
                              paths. Supports only mode, encoding, errors, and newline options. It must return these
                              options as a dictionary.
 
     NOTE:
-        - file_reader_func, filter_func, marker_func, and read_option_func must take only one argument (file path)
+        - file_reader_func, filter_func, marker_func, id_func, and read_option_func must take only one argument
+          (file path)
         - process_func loader function must take either one (data) or two (file path, data) arguments
-        - The plugin automatically assigns each file path (relative or absolute) to the parameter ID
+        - The plugin automatically assigns each file path (relative or absolute) to the parameter ID when id_func
+          is not provided
 
     Examples:
     >>> @parametrize_dir("data", "data_dir")
@@ -260,6 +264,7 @@ def parametrize_dir(
         filter_func=filter_func,
         process_func=process_func,
         marker_func=marker_func,
+        id_func=id_func,
         read_option_func=read_option_func,
     )
 

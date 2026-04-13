@@ -291,6 +291,7 @@ class DataLoaderLoadAttrs:
                     DataLoaderFunctionType.FILE_READER_FUNC,
                     DataLoaderFunctionType.FILTER_FUNC,
                     DataLoaderFunctionType.MARKER_FUNC,
+                    DataLoaderFunctionType.ID_FUNC,
                     DataLoaderFunctionType.READ_OPTION_FUNC,
                 )
                 self._modify_value(

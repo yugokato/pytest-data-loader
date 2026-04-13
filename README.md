@@ -461,12 +461,13 @@ the data is the reader object itself.
 parameters
 - `process_func`: A function to adjust the shape of each loaded file's data before passing it to the test function
 - `marker_func`: A function to apply Pytest marks to matching file paths
+- `id_func`: A function to generate a parameter ID from each file path
 - `read_option_func`: A function that returns file read options (as a dict) for matching file paths. The returned dict 
 may contain only `mode`, `encoding`, `errors`, and `newline` keys, which are passed to `open()`
 
 > [!NOTE]
 > - `process_func` must take either one (data) or two (file path, data) arguments
-> - `file_reader_func`, `filter_func`, `marker_func`, and `read_option_func` must take only one argument (file path)
+> - `file_reader_func`, `filter_func`, `marker_func`, `id_func`, and `read_option_func` must take only one argument (file path)
 
 
 ## INI Options
