@@ -43,8 +43,15 @@ def test_id_for_parametrize_loader(
 
 
 @pytest.mark.parametrize("is_abs_path", [False, True], indirect=True)
+@pytest.mark.parametrize("lazy_loading", [False, True])
+@pytest.mark.parametrize("with_id_func", [False, True])
 @pytest.mark.parametrize("loader", [parametrize_dir])
-def test_id_for_parametrize_dir_loader(loader: DataLoader, test_context: TestContext, is_abs_path: bool) -> None:
-    """Check test ID generation for load parametrize_dir"""
-    result = run_pytest_with_context(test_context, check_test_id=True)
+def test_id_for_parametrize_dir_loader(
+    loader: DataLoader, test_context: TestContext, is_abs_path: bool, lazy_loading: bool, with_id_func: bool
+) -> None:
+    """Check test ID generation for parametrize_dir loader with and without id_func"""
+    id_func_def = "lambda x: f'id_{x.stem}'" if with_id_func else None
+    result = run_pytest_with_context(
+        test_context, lazy_loading=lazy_loading, id_func_def=id_func_def, check_test_id=True
+    )
     assert result.ret == ExitCode.OK

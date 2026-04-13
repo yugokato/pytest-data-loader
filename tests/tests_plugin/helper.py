@@ -328,7 +328,13 @@ def run_pytest_with_context(
                 else:
                     assert node_id.endswith(f"[{{data!r}}]")
         else:
-            if is_abs_path:
+            if has_id_func:
+                id_func = eval({id_func_def!r})
+                expected_id = validate_loader_func_args_and_normalize(id_func, with_file_path_only=True)(
+                    file_path, None
+                )
+                assert node_id.endswith(f"[{{expected_id}}]")
+            elif is_abs_path:
                 assert node_id.endswith(f"[{{file_path}}]")
             else:
                 assert node_id.endswith(f"[{{file_path.relative_to(data_dir)}}]")

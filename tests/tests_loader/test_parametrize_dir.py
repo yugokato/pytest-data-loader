@@ -66,6 +66,12 @@ def test_parametrize_dir_with_marker_func(request: FixtureRequest, file_path: Pa
     assert marker
 
 
+@parametrize_dir(("file_path", "data"), PATH_SOME_DIR, id_func=lambda x: x.stem)
+def test_parametrize_dir_with_id_func(request: FixtureRequest, file_path: Path, data: LoadedDataType) -> None:
+    """Test @parametrize_dir loader with the id_func option"""
+    assert request.node.nodeid.endswith(f"[{file_path.stem}]")
+
+
 @parametrize_dir(("file_path", "data"), PATH_SOME_DIR, recursive=True)
 def test_parametrize_dir_recursive(request: FixtureRequest, file_path: Path, data: LoadedDataType) -> None:
     """Test @parametrize_dir loader with recursive option"""
