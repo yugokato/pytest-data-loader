@@ -60,7 +60,7 @@ nearest data directory named `data` containing the target file or directory
 > - The default data directory name can be customized using an INI option. See the [INI Options](#ini-options) section for details
 > - Each data loader supports different optional keyword arguments to customize how the data is loaded. See the 
 > [Data Loading Pipeline](#data-loading-pipeline) and [Loader Options](#loader-options) sections for details
-> - Each data loder can be stacked on a test function. See the [Stacking Data Loader](#stacking-data-loaders) section for details
+> - Each data loder can be stacked on a test function. See the [Stacking Data Loaders](#stacking-data-loaders) section for details
 
 
 
