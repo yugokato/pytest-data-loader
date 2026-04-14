@@ -7,9 +7,9 @@ versions](https://img.shields.io/pypi/pyversions/pytest-data-loader.svg)](https:
 [![test](https://github.com/yugokato/pytest-data-loader/actions/workflows/test.yml/badge.svg?branch=main)](https://github.com/yugokato/pytest-data-loader/actions/workflows/test.yml?query=branch%3Amain)
 [![Code style ruff](https://img.shields.io/badge/code%20style-ruff-000000.svg)](https://docs.astral.sh/ruff/)
 
-`pytest-data-loader` is a `pytest` plugin that simplifies loading test data from files for data-driven testing.  
-It supports not only loading a single file, but also dynamic test parametrization either by splitting file data into 
-parts or by loading multiple files from a directory.
+`pytest-data-loader` is a `pytest` plugin that simplifies data-driven testing. It lets you load, transform, and 
+parametrize test data directly from files and directories using simple decorators.
+
 
 
 ## Installation
@@ -19,7 +19,10 @@ pip install pytest-data-loader
 ```
 
 
+
 ## Quick Start
+
+Load test data from a file and inject it directly into your test function.
 
 ```python
 from pytest_data_loader import load
@@ -28,33 +31,37 @@ from pytest_data_loader import load
 @load("data", "example.json")
 def test_example(data):
     """
-    Loads data/example.json and injects it as the "data" fixture.
-    
     example.json: '{"foo": 1, "bar": 2}'
     """
     assert "foo" in data
 ```
 
+
+
 ## Usage
 
 The plugin provides three data loaders — `@load`, `@parametrize`, and `@parametrize_dir` — available as decorators for 
-loading test data. Each loader takes two positional arguments: 
+loading test data.
 
-- `fixture_names`: Name(s) of the fixture(s) injected into the test function. Pass a single name to receive file data,
-                   or two names to receive both the file path and file data.
-- `path`: Path to the file or directory to load. Accepts an absolute path or a path relative to a `data` directory.
-          When a relative path is given, the plugin searches upward from the test file toward the pytest root to find
-          the nearest `data` directory containing the target file or directory.
+- `@load`: Loads file content into a test
+- `@parametrize`: Load a file and parametrize a test by splitting its content
+- `@parametrize_dir`: Load files from a directory and parametrize a test for each file
 
-> [!NOTE]
-> For `@parametrize` and `@parametrize_dir`, `path` can be a list of paths — the plugin loads from each path 
-> independently and concatenates the parametrized data into a single parameter list.
+Each data loader requires two positional arguments:
+- `fixture_names`: Names of the fixtures injected into the test function
+  - Single name: Injects the file data
+  - Two names: Injects both the resolved file path and the file data
+- `path`: An absolute path or a path relative to a data directory
+  - When a relative path is given, the plugin searches upward from the test file toward the pytest root to find the 
+nearest data directory named `data` containing the target file or directory
+  - For `@parametrize` and `@parametrize_dir`, this can be a list of paths to aggregate data from multiple sources
 
 > [!TIP]
-> - By default, the plugin looks for a directory named `data` when resolving relative paths. This default name can be 
-> customized using an INI option. See the [INI Options](#ini-options) section for details
+> - The default data directory name can be customized using an INI option. See the [INI Options](#ini-options) section for details
 > - Each data loader supports different optional keyword arguments to customize how the data is loaded. See the 
-> [Loader Options](#loader-options) section for details
+> [Data Loading Pipeline](#data-loading-pipeline) and [Loader Options](#loader-options) sections for details
+> - Each data loder can be stacked on a test function. See the [Stacking Data Loader](#stacking-data-loaders) section for details
+
 
 
 ## Examples
@@ -178,7 +185,7 @@ tests1/test_something.py::test_something2[data2.txt:part3] PASSED               
 >     - array: Each item in the array
 >     - other types (string, number, boolean, null): The whole content as single data
 >   - JSONL file: Each line (parsed as JSON)
->   - Binary file: Unsupported. Requires specifying a custom split logic as the `parametrizer_func` loader option
+>   - Binary file: Unsupported by default. You must provide a custom split logic as the `parametrizer_func` loader option
 
 
 #### Parametrize from multiple files
@@ -290,6 +297,85 @@ tests2/test_something_else.py::test_something[logos/logo.png] PASSED            
 ```
 
 
+
+## Stacking Data Loaders
+
+All three data loaders — `@load`, `@parametrize`, and `@parametrize_dir` — can be stacked on a single test function. 
+This allows you to declaratively compose complex, data-driven test scenarios while keeping test logic fully decoupled 
+from data.
+
+### Examples:
+
+#### 1. Load multiple datasets
+Stack multiple `@load` to inject independent datasets into a single test.
+
+```python
+from pytest_data_loader import load
+
+
+@load("input_data", "input.json")
+@load("expected_output", "expected.json")
+def test_transformation_matches_expected_output(input_data, expected_output):
+    """Verify that transforming input data produces the expected output."""
+    assert do_something(input_data) == expected_output
+```
+
+#### 2. Generate a Cartesian product of test cases
+Stack multiple `@parametrize` to automatically test all combinations.
+
+```python
+from pytest_data_loader import parametrize
+
+
+@parametrize("user", "users.txt")
+@parametrize("feature", "features.txt")
+def test_user_feature_access_matrix(user, feature):
+    """Validate access control for every user-feature combination."""
+    assert can_access(user, feature)
+```
+
+#### 3. Combine shared context with parametrized inputs
+Stack `@load` with `@parametrize` to test variable inputs with shared context.
+
+```python
+from pytest_data_loader import load, parametrize
+
+
+@load("prices", "prices.json")
+@parametrize("order", "orders.json")
+def test_order_total_matches_expected(prices, order):
+    """Validate that each order total is calculated correctly using the shared price catalog."""
+    total = calculate_total(order, prices)
+    assert total == order["expected_total"]
+```
+
+#### 4. Combine shared context with directory-based test scenarios
+Stack `@load` with `@parametrize_dir` to test structured test cases with shared context.
+
+```python
+from pytest_data_loader import load, parametrize_dir
+
+
+@load("banned_words", "banned_words.txt")
+@parametrize_dir("comment", "user_comments/flagged")    # Each comment data is stored as a .txt file
+def test_flagged_comments_contain_banned_words(banned_words, comment):
+    """Validate that flagged comments contain at least one banned word."""
+    assert any(word in comment.lower() for word in banned_words)
+```
+
+> [!NOTE]
+> - Fixture names must be unique across all stacked loaders on a test function
+> - Stacking multiple `@parametrize` and/or `@parametrize_dir` decorators generates a Cartesian product of N × M test 
+> cases (same behavior as `pytest.mark.parametrize`)
+> - Files are loaded once per test function and cached across parametrized test cases
+
+> [!TIP]
+> When stacking data loaders, test IDs generated with the default parameter IDs may become less readable. Consider 
+> explicitly specifying parameter IDs using the `id` option (`@load`) or the `id_func` option (`@parametrize`/`@parametrize_dir`).
+
+
+
+
 ## Lazy Loading
 
 Lazy loading is enabled by default for all data loaders to improve efficiency, especially with large datasets. During 
@@ -302,6 +388,47 @@ If you need to disable this behavior for a specific test, pass `lazy_loading=Fal
 > the total number of parameters in advance, the plugin still needs to inspect the file data and split it once during 
 > test collection phase. But once it's done, the split data will not be kept as parameter values and will be loaded 
 > lazily later.
+
+
+
+## Data Loading Pipeline
+Each data loader follows a simple pipeline where you can use loader options to hook into stages and filter or 
+transform data before it reaches your test.
+
+### @load
+```text
+file 
+  → open                 # with read options
+  → read and parse       # with file_reader()
+  → transform            # with onload_func()
+  → test(data)
+```
+
+### @parametrize
+```text
+file 
+  → open                 # with read options 
+  → read and parse       # with file_reader() 
+  → transform            # with onload_func()
+  → split                # with default or custom parametrizer_func()
+    ↳ for each part:
+      → filter           # with filter_func()
+      → transform        # with process_func()
+  → test(data₁, data₂, ...)
+```
+
+### @parametrize_dir
+```text
+directory 
+  → collect files 
+    ↳ for each file:
+      → filter           # with filter_func()
+      → open             # with read options
+      → read and parse   # with file_reader_func()
+      → transform        # with process_func()
+  → test(file₁, file₂, ...)
+```
+
 
 
 ## File Reader
@@ -419,9 +546,10 @@ def test_something2(data):
 >  ```
 
 
+
 ## Loader Options
 
-Each loader supports different optional parameters you can use to change how your data is loaded.
+Each data loader supports different optional parameters you can use to change how your data is loaded.
 
 ### @load
 - `lazy_loading`: Enable or disable lazy loading
@@ -468,6 +596,7 @@ may contain only `mode`, `encoding`, `errors`, and `newline` keys, which are pas
 > [!NOTE]
 > - `process_func` must take either one (data) or two (file path, data) arguments
 > - `file_reader_func`, `filter_func`, `marker_func`, `id_func`, and `read_option_func` must take only one argument (file path)
+
 
 
 ## INI Options

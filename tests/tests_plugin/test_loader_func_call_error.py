@@ -25,9 +25,8 @@ def test_onload_func_error(pytester: Pytester, lazy_loading: bool) -> None:
     else:
         assert result.ret == ExitCode.INTERRUPTED
     output = str(result.stdout)
-    assert "onload_func" in output
-    assert "data.json" in output
     assert "ValueError: loader func error" in output
+    assert "Error while processing onload_func for 'data.json'" in output
 
 
 @pytest.mark.parametrize("lazy_loading", [True, False])
@@ -48,9 +47,8 @@ def test_parametrizer_func_error(pytester: Pytester, lazy_loading: bool) -> None
     result = pytester.runpytest()
     assert result.ret == ExitCode.INTERRUPTED
     output = str(result.stdout)
-    assert "parametrizer_func" in output
-    assert "data.txt" in output
     assert "ValueError: loader func error" in output
+    assert "Error while processing parametrizer_func for 'data.txt'" in output
 
 
 @pytest.mark.parametrize("lazy_loading", [True, False])
@@ -71,9 +69,8 @@ def test_filter_func_error(pytester: Pytester, lazy_loading: bool) -> None:
     result = pytester.runpytest()
     assert result.ret == ExitCode.INTERRUPTED
     output = str(result.stdout)
-    assert "filter_func" in output
-    assert "data.txt" in output
     assert "ValueError: loader func error" in output
+    assert "Error while processing filter_func for 'data.txt'" in output
 
 
 @pytest.mark.parametrize("lazy_loading", [True, False])
@@ -97,9 +94,8 @@ def test_process_func_error(pytester: Pytester, lazy_loading: bool) -> None:
     else:
         assert result.ret == ExitCode.INTERRUPTED
     output = str(result.stdout)
-    assert "process_func" in output
-    assert "data.txt" in output
     assert "ValueError: loader func error" in output
+    assert "Error while processing process_func for 'data.txt'" in output
 
 
 @pytest.mark.parametrize("lazy_loading", [True, False])
@@ -120,9 +116,8 @@ def test_id_func_error(pytester: Pytester, lazy_loading: bool) -> None:
     result = pytester.runpytest()
     assert result.ret == ExitCode.INTERRUPTED
     output = str(result.stdout)
-    assert "id_func" in output
-    assert "data.txt" in output
     assert "ValueError: loader func error" in output
+    assert "Error while processing id_func for 'data.txt'" in output
 
 
 @pytest.mark.parametrize("lazy_loading", [True, False])
@@ -143,9 +138,8 @@ def test_marker_func_error(pytester: Pytester, lazy_loading: bool) -> None:
     result = pytester.runpytest()
     assert result.ret == ExitCode.INTERRUPTED
     output = str(result.stdout)
-    assert "marker_func" in output
-    assert "data.txt" in output
     assert "ValueError: loader func error" in output
+    assert "Error while processing marker_func for 'data.txt'" in output
 
 
 @pytest.mark.parametrize("lazy_loading", [True, False])
@@ -166,6 +160,6 @@ def test_read_option_func_error(pytester: Pytester, lazy_loading: bool) -> None:
     """)
     result = pytester.runpytest()
     assert result.ret == ExitCode.INTERRUPTED
-    output = str(result.stdout) + str(result.stderr)
-    assert "read_option_func" in output
+    output = str(result.stdout)
     assert "ValueError: loader func error" in output
+    assert "Error while processing read_option_func for 'file1.txt'" in output

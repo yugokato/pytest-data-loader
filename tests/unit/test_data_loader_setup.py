@@ -4,7 +4,7 @@ from typing import Any
 import pytest
 
 from pytest_data_loader import load
-from pytest_data_loader.constants import PYTEST_DATA_LOADER_ATTR
+from pytest_data_loader.constants import PYTEST_DATA_LOADER_ATTRS
 from pytest_data_loader.types import DataLoaderLoadAttrs
 
 pytestmark = pytest.mark.unittest
@@ -18,8 +18,11 @@ def test_data_loader_setup(fixture_names: Any) -> None:
     @load(fixture_names, path)
     def test_something(*args: Any) -> None: ...
 
-    assert hasattr(test_something, PYTEST_DATA_LOADER_ATTR)
-    load_attr = getattr(test_something, PYTEST_DATA_LOADER_ATTR)
+    assert hasattr(test_something, PYTEST_DATA_LOADER_ATTRS)
+    load_attrs_list = getattr(test_something, PYTEST_DATA_LOADER_ATTRS)
+    assert isinstance(load_attrs_list, list)
+    assert len(load_attrs_list) == 1
+    load_attr = load_attrs_list[0]
     assert isinstance(load_attr, DataLoaderLoadAttrs)
     if isinstance(fixture_names, str):
         fixtures = tuple(x.strip() for x in fixture_names.split(","))
