@@ -6,7 +6,7 @@ from typing import Any, cast
 from pytest import Mark, MarkDecorator
 
 from pytest_data_loader.compat import Unpack
-from pytest_data_loader.constants import PYTEST_DATA_LOADER_ATTR
+from pytest_data_loader.constants import PYTEST_DATA_LOADER_ATTRS
 from pytest_data_loader.types import (
     DataLoader,
     DataLoaderLoadAttrs,
@@ -299,30 +299,54 @@ def _setup_data_loader(
         raise ValueError(f"recursive option is not available for {loader.__name__} loader")
 
     def wrapper(test_func: Func) -> Func:
-        """Add attributes to the test function"""
-        setattr(
-            test_func,
-            PYTEST_DATA_LOADER_ATTR,
-            DataLoaderLoadAttrs(
-                loader=loader,
-                search_from=Path(inspect.getabsfile(test_func)),
-                # fixture_names and path will be validated and normalized in __post_init__()
-                fixture_names=cast(tuple[str, ...], fixture_names),
-                path=cast(Path | tuple[Path, ...], path),
-                lazy_loading=lazy_loading,
-                recursive=recursive,
-                file_reader=file_reader,
-                file_reader_func=file_reader_func,
-                onload_func=onload_func,
-                parametrizer_func=parametrizer_func,
-                filter_func=filter_func,
-                process_func=process_func,
-                marker_func=marker_func,
-                id_func=id_func,
-                read_option_func=read_option_func,
-                read_options=HashableDict(read_options),
-            ),
+        """Add attributes to the test function. This supports stacking multiple data loaders"""
+        load_attrs = DataLoaderLoadAttrs(
+            loader=loader,
+            search_from=Path(inspect.getabsfile(test_func)),
+            # fixture_names and path will be validated and normalized in __post_init__()
+            fixture_names=cast(tuple[str, ...], fixture_names),
+            path=cast(Path | tuple[Path, ...], path),
+            lazy_loading=lazy_loading,
+            recursive=recursive,
+            file_reader=file_reader,
+            file_reader_func=file_reader_func,
+            onload_func=onload_func,
+            parametrizer_func=parametrizer_func,
+            filter_func=filter_func,
+            process_func=process_func,
+            marker_func=marker_func,
+            id_func=id_func,
+            read_option_func=read_option_func,
+            read_options=HashableDict(read_options),
         )
+        existing_load_attrs: list[DataLoaderLoadAttrs] | None = getattr(test_func, PYTEST_DATA_LOADER_ATTRS, None)
+        if existing_load_attrs is None:
+            setattr(test_func, PYTEST_DATA_LOADER_ATTRS, [load_attrs])
+        else:
+            _check_fixture_name_collisions(test_func, existing_load_attrs, load_attrs)
+            existing_load_attrs.append(load_attrs)
         return test_func
 
     return wrapper
+
+
+def _check_fixture_name_collisions(
+    test_func: Func,
+    existing_load_attrs: list[DataLoaderLoadAttrs],
+    new_load_attrs: DataLoaderLoadAttrs,
+) -> None:
+    """Raise ValueError if any fixture name in new_load_attrs collides with those already registered.
+
+    :param test_func: The test function that stacks multiple data loaders
+    :param existing_load_attrs: List of already-registered DataLoaderLoadAttrs for the function
+    :param new_load_attrs: The newly created DataLoaderLoadAttrs to check for collisions
+    """
+    used_names: set[str] = set()
+    for attrs in existing_load_attrs:
+        used_names.update(attrs.fixture_names)
+    collisions = used_names.intersection(new_load_attrs.fixture_names)
+    if collisions:
+        raise ValueError(
+            f"Duplicate fixture name(s) {sorted(collisions)!r} in stacked data loaders on '{test_func.__name__}'. "
+            f"Each stacked data loader must use unique fixture names."
+        )

@@ -269,15 +269,18 @@ class TestParametrizeDirMultiPaths:
         assert "Unable to locate the specified directory" in str(result.stdout)
 
 
-def test_load_multi_path_not_supported(pytester: pytest.Pytester) -> None:
-    """Test that @load does not support multi-path and raises an error."""
-    pytester.makepyfile("""
+class TestLoadMultiPath:
+    """Tests for multi-path behavior of @load loader."""
+
+    def test_load_multi_path_not_supported(self, pytester: pytest.Pytester) -> None:
+        """Test that @load does not support multi-path and raises an error."""
+        pytester.makepyfile("""
     from pytest_data_loader import load
 
     @load("data", ["file1.txt", "file2.txt"])
     def test_func(data):
         pass
     """)
-    result = pytester.runpytest("--collect-only", "-q")
-    assert result.ret == ExitCode.INTERRUPTED
-    assert "Multi-path is not supported for @load loader" in str(result.stdout)
+        result = pytester.runpytest("--collect-only", "-q")
+        assert result.ret == ExitCode.INTERRUPTED
+        assert "Multi-path is not supported for @load loader" in str(result.stdout)

@@ -157,6 +157,10 @@ class LoaderABC(ABC):
     def load(self) -> LoadedData | LazyLoadedData | Iterable[LoadedData | LazyLoadedPartData]:
         raise NotImplementedError
 
+    @abstractmethod
+    def clear_cache(self) -> None:
+        raise NotImplementedError
+
     @property
     def loader(self) -> DataLoader:
         return self.load_attrs.loader
@@ -180,6 +184,7 @@ class FileDataLoader(LoaderABC):
                 if not self.read_options:
                     self.read_options = registered_reader.read_options
         assert isinstance(self.read_options, HashableDict)
+        self._effective_read_mode: str | None = None
         self._is_streamable = self.file_reader is not None or all(
             # non-structured text data can be read line by line
             [
@@ -189,26 +194,37 @@ class FileDataLoader(LoaderABC):
                 self.load_attrs.parametrizer_func is None,
             ]
         )
-        # caches used by the @parametrize loader.
+
+        # Caches used by data loaders.
         # NOTE: In Pytest, these cache data will be cleared as a module teardown managed by the plugin
         self._cached_file_objects: dict[tuple[Path, HashableDict], IO[Any]] = {}
         self._cached_file_loaders: set[Callable[..., Any]] = set()
-        if self.loader == parametrize:
-            weakref.finalize(self, self.clear_cache)
+        self._cached_reader_split: dict[Callable[..., Any], list[Any]] = {}
+        weakref.finalize(
+            self,
+            _clear_file_loader_caches,
+            self._cached_file_objects,
+            self._cached_file_loaders,
+            self._cached_reader_split,
+        )
 
     @property
     def read_mode(self) -> str:
+        if self._effective_read_mode:
+            return self._effective_read_mode
+
         if mode := self.read_options.get("mode"):
-            return mode
+            self._effective_read_mode = mode
         elif any(x in self.read_options for x in ("encoding", "newline")):
-            return "r"
+            self._effective_read_mode = "r"
         else:
             # This will be identified on the first file read
             return "auto"
+        return self._effective_read_mode
 
     @read_mode.setter
     def read_mode(self, mode: str) -> None:
-        self.read_options["mode"] = mode
+        self._effective_read_mode = mode
 
     @property
     def is_streamable(self) -> bool:
@@ -240,26 +256,7 @@ class FileDataLoader(LoaderABC):
 
     def clear_cache(self) -> None:
         """Clear cache associated with this file loader"""
-        if self._cached_file_objects:
-            for p in self._cached_file_objects:
-                try:
-                    self._cached_file_objects[p].close()
-                except Exception as e:
-                    logger.exception(e)
-            self._cached_file_objects.clear()
-
-        if self._cached_file_loaders:
-            for f in self._cached_file_loaders:
-                try:
-                    f.cache_clear()  # type: ignore[attr-defined]
-                except Exception as e:
-                    logger.exception(e)
-            self._cached_file_loaders.clear()
-
-        try:
-            self._read_reader_and_split.cache_clear()
-        except Exception as e:
-            logger.exception(e)
+        _clear_file_loader_caches(self._cached_file_objects, self._cached_file_loaders, self._cached_reader_split)
 
     @requires_loader(parametrize)
     def _parametrizer_func(self, data: Any) -> Iterable[Any]:
@@ -303,6 +300,8 @@ class FileDataLoader(LoaderABC):
               all part data
         """
         if self.file_reader:
+            # The file obj needs to remain opened during a test so that a test can access to the loaded data.
+            # This will be automatically closed later by the plugin's cleanup fixture.
             f = self._get_file_obj()
             data = self.file_reader(f)
         else:
@@ -347,14 +346,9 @@ class FileDataLoader(LoaderABC):
                 part_data = self.load_attrs.process_func(self.path, part_data)
             return LoadedData(file_path=self.path, loaded_from=self.load_from, data=part_data)
         finally:
-            has_cache = (self.path, self.read_options) in self._cached_file_objects
             if close:
                 f.close()
-                if has_cache:
-                    del self._cached_file_objects[(self.path, self.read_options)]
-            else:
-                if not has_cache:
-                    self._cached_file_objects[(self.path, self.read_options)] = f
+                self._cached_file_objects.pop((self.path, self.read_options), None)
 
     def _load_lazily(self) -> LazyLoadedData | Iterable[LazyLoadedPartData]:
         """Lazily load data. The actual data will be resolved when needed in a test"""
@@ -378,13 +372,14 @@ class FileDataLoader(LoaderABC):
                 ]
             else:
                 # The entire file content needs to be loaded once during the collection phase to be able to determine
-                # the number of parametrized tests by splitting the content. Once it is done,
-                # we will not keep the data in memory
+                # the number of parametrized tests by splitting the content. Once it is done, we will not keep the
+                # data in memory.
                 # NOTE: The actual data loaded with the file loader called during a test setup will be cached and
                 #       reused among tests for the same test function
                 loaded_data = self._load_now()
                 assert isinstance(loaded_data, list)
                 file_loader = lru_cache(maxsize=1)(self._load_now)
+                self._cached_file_loaders.add(file_loader)
                 return [
                     LazyLoadedPartData(
                         file_path=self.path,
@@ -397,22 +392,25 @@ class FileDataLoader(LoaderABC):
                             else None,
                             id=self.load_attrs.id_func(self.path, data.data) if self.load_attrs.id_func else None,
                         ),
-                        # Add the file loader to the cache when the part data is resolved
-                        post_load_hook=partial(self._cached_file_loaders.add, file_loader),
                     )
                     for i, data in enumerate(loaded_data)
                 ]
         else:
-            return LazyLoadedData(file_path=self.path, loaded_from=self.load_from, file_loader=self._load_now)
+            # Caches the loaded data for reusing in case other parametrized loader is stacked
+            file_loader = lru_cache(maxsize=1)(self._load_now)
+            self._cached_file_loaders.add(file_loader)
+            return LazyLoadedData(
+                file_path=self.path,
+                loaded_from=self.load_from,
+                file_loader=file_loader,
+            )
 
     def _get_file_obj(self) -> IO[Any]:
-        """Get file object from cache or open a new one"""
+        """Get file object from cache or open a new one and cache it"""
         f = self._cached_file_objects.get((self.path, self.read_options))
-        is_closed = f and f.closed
-        if not f or is_closed:
+        if not f or f.closed:
             f = open(self.path, **self.read_options)
-            if is_closed:
-                self._cached_file_objects[(self.path, self.read_options)] = f
+            self._cached_file_objects[(self.path, self.read_options)] = f
         f.seek(0)
         return f
 
@@ -485,22 +483,25 @@ class FileDataLoader(LoaderABC):
                 # set the determined read mode
                 self.read_mode = read_mode
         else:
-            with open(self.path, **self.read_options) as f:
+            read_options = dict(self.read_options) | {"mode": self.read_mode}
+            with open(self.path, **read_options) as f:
                 data = f.read()
         return data
 
-    @lru_cache(maxsize=1)
     @requires_loader(parametrize)
     def _read_reader_and_split(self, file_reader: Callable[..., Iterable[Any] | object], f: IO[Any]) -> list[Any]:
-        """Read full data from the file reader and split into parts
+        """Read full data from the file reader and split into parts, caching the result per reader.
 
         :param file_reader: A file reader to read data from
+        :param f: File object to read from
         """
-        f.seek(0)
-        reader = file_reader(f)
-        if self.load_attrs.onload_func:
-            reader = self.load_attrs.onload_func(self.path, reader)
-        return list(self.parametrizer_func(self.path, reader))
+        if file_reader not in self._cached_reader_split:
+            f.seek(0)
+            reader = file_reader(f)
+            if self.load_attrs.onload_func:
+                reader = self.load_attrs.onload_func(self.path, reader)
+            self._cached_reader_split[file_reader] = list(self.parametrizer_func(self.path, reader))
+        return self._cached_reader_split[file_reader]
 
 
 class DirectoryDataLoader(LoaderABC):
@@ -513,6 +514,12 @@ class DirectoryDataLoader(LoaderABC):
             raise ValueError(f"path must be a directory path: {self.path}")
         if self.loader.is_file_loader:
             raise NotImplementedError(f"Unsupported loader for {DirectoryDataLoader.__name__}: {self.loader}")
+        self._file_loaders: list[FileDataLoader] = []
+        weakref.finalize(self, _clear_dir_loader_caches, self._file_loaders)
+
+    def clear_cache(self) -> None:
+        """Clear file loader cache associated with this directory loader"""
+        _clear_dir_loader_caches(self._file_loaders)
 
     def load(self) -> Iterable[LoadedData | LazyLoadedData]:  # type: ignore[override]
         """Load multiple files from a directory"""
@@ -552,9 +559,50 @@ class DirectoryDataLoader(LoaderABC):
                                 file_loader.read_options = HashableDict(read_options)
                         loaded_data = file_loader.load()
                         assert isinstance(loaded_data, LoadedData | LazyLoadedData), type(loaded_data)
+                        self._file_loaders.append(file_loader)
                         loaded_files.append(loaded_data)
 
         visited_dirs: set[tuple[int, int]] = set()
         loaded_files: list[LoadedData | LazyLoadedData] = []
         load_files(self.path)
         return loaded_files
+
+
+def _clear_file_loader_caches(
+    cached_file_objects: dict[tuple[Path, HashableDict], IO[Any]],
+    cached_file_loaders: set[Callable[..., Any]],
+    cached_reader_split: dict[Callable[..., Any], list[Any]],
+) -> None:
+    """Release all caches held by a FileDataLoader instance
+
+    :param cached_file_objects: Open file handles keyed by (path, read_options)
+    :param cached_file_loaders: lru_cache-wrapped file loader functions
+    :param cached_reader_split: Per-reader split results
+    """
+    if cached_file_objects:
+        for f in cached_file_objects.values():
+            try:
+                f.close()
+            except Exception as e:
+                logger.exception(e)
+        cached_file_objects.clear()
+
+    if cached_file_loaders:
+        for loader_func in cached_file_loaders:
+            try:
+                loader_func.cache_clear()  # type: ignore[attr-defined]
+            except Exception as e:
+                logger.exception(e)
+        cached_file_loaders.clear()
+
+    cached_reader_split.clear()
+
+
+def _clear_dir_loader_caches(file_loaders: list[FileDataLoader]) -> None:
+    """Release all caches held by a DirectoryDataLoader instance
+
+    :param file_loaders: FileDataLoader instances associated with a DirectoryDataLoader instance
+    """
+    for file_loader in file_loaders:
+        file_loader.clear_cache()
+    file_loaders.clear()

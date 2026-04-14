@@ -113,7 +113,6 @@ class LoadedData(LoadedDataABC):
 @dataclass(frozen=True, kw_only=True, slots=True, repr=False)
 class LazyLoadedDataABC(LoadedDataABC):
     file_loader: Callable[[], LoadedData | Iterable[LoadedData]]
-    post_load_hook: Callable[[], None] | None = None
 
     @property
     def data(self: T) -> T:
@@ -128,8 +127,6 @@ class LazyLoadedDataABC(LoadedDataABC):
 class LazyLoadedData(LazyLoadedDataABC):
     def resolve(self) -> LoadedDataType:
         loaded_data = self.file_loader()
-        if self.post_load_hook:
-            self.post_load_hook()
         assert isinstance(loaded_data, LoadedData), type(loaded_data)
         return loaded_data.data
 
@@ -147,9 +144,6 @@ class LazyLoadedPartData(LazyLoadedDataABC):
 
     def resolve(self) -> LoadedDataType:
         loaded_data = self.file_loader()
-        if self.post_load_hook:
-            self.post_load_hook()
-
         if isinstance(loaded_data, LoadedData):
             part_data = loaded_data
         else:
