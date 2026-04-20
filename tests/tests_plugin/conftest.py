@@ -11,8 +11,8 @@ from pytest import MonkeyPatch, Pytester
 
 from pytest_data_loader import load, parametrize, parametrize_dir
 from pytest_data_loader.constants import DEFAULT_LOADER_DIR_NAME
+from pytest_data_loader.paths import has_env_vars
 from pytest_data_loader.types import DataLoader
-from pytest_data_loader.utils import has_env_vars
 from tests.tests_plugin.helper import LoaderRootDir, TestContext, create_test_context
 
 pytest_plugins = "pytester"
