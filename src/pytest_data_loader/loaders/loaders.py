@@ -119,11 +119,12 @@ def parametrize(
                           name is provided, the loaded part data will be passed to that fixture. If two names are
                           provided either as a tuple or as a comma-separated string, the first fixture will receive the
                           file path, and the second will receive the loaded part data.
-    :param path: Path to the file to load, or a list of file paths to concatenate. It can be either an absolute path
-                 or a path relative to one of the base data directories. When a relative path is provided, the loader
-                 searches for the nearest data directory containing a matching file and loads the data from there.
-                 When a list of paths is provided, the plugin loads and splits each file independently, then
-                 concatenates all parametrized data into a single parameter list.
+    :param path: Path to the file (or a list of file paths, a glob pattern, or a list that mixes both) to load. It
+                 can be either an absolute path or a path relative to one of the base data directories. When a relative
+                 path is provided, the loader searches for the nearest data directory containing a matching file and
+                 loads the data from there.
+                 When the provided path represents multiple files, the plugin loads and splits each file independently,
+                 then concatenates all parametrized data into a single parameter list.
     :param lazy_loading: If True, the plugin will defer the timing of file loading to the test setup phase. Note that
                          unlike other loaders, the plugin still needs to inspect the file data during the collection
                          phase to determine the total number of parametrized tests. The inspection is done in one of
@@ -217,14 +218,17 @@ def parametrize_dir(
                           name is provided, the loaded data will be passed to that fixture. If two names are provided
                           either as a tuple or as a comma-separated string, the first fixture will receive the file
                           path, and the second will receive the loaded data.
-    :param path: Path to the directory (or list of directories) to load files from. It can be either an absolute path
-                 or a path relative to one of the data directories. When a relative path is provided, the loader
-                 searches for the nearest data directory containing a matching directory and loads files from there.
-                 When a list of paths is provided, the loader concatenates files from all directories in the order
-                 provided.
+    :param path: Path to the directory (or a list of directory paths, a glob pattern, or a list that mixes both) to
+                 load files from. It can be either an absolute path or a path relative to one of the data directories.
+                 When a relative path is provided, the loader searches for the nearest data directory containing a
+                 matching directory and loads files from there.
+                 When the provided path represents multiple directories, the loader concatenates files from all
+                 directories in the order provided.
     :param lazy_loading: If True, the plugin will defer the timing of file loading to the test setup phase. If False,
                          the data will be loaded during the test collection phase, which could cause a performance issue
-    :param recursive: Recursively load files from all subdirectories of the given directory. Defaults to False
+    :param recursive: Recursively load files from all subdirectories of the given directory. Defaults to False.
+                      NOTE: This option is ignored for directories matched by a glob pattern. Use ** for recursive
+                            matching
     :param file_reader_func: A function to specify file readers to matching file paths.
     :param filter_func: A function to filter file paths. Only the contents of matching file paths are included as the
                         test parameters.

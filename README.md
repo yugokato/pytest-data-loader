@@ -54,7 +54,8 @@ Each data loader requires two positional arguments:
 - `path`: An absolute path or a path relative to a data directory
   - When a relative path is given, the plugin searches upward from the test file toward the pytest root to find the 
 nearest data directory named `data` containing the target file or directory
-  - For `@parametrize` and `@parametrize_dir`, this can be a list of paths to aggregate data from multiple sources
+  - For `@parametrize` and `@parametrize_dir`, this can also be a list of paths, a glob pattern, or a list that mixes 
+both to aggregate data from multiple sources
 
 > [!TIP]
 > - The default data directory name can be customized using an INI option. See the [INI Options](#ini-options) section for details
@@ -190,8 +191,8 @@ tests1/test_something.py::test_something2[data2.txt:part3] PASSED               
 
 #### Parametrize from multiple files
 
-You can pass a list of file paths to `@parametrize` to load and concatenate data from multiple files into a single
-parameter list:
+You can pass a list of file paths, a glob pattern, or a list that mixes both to `@parametrize` to load and concatenate 
+data from multiple files into a single parameter list:
 
 ```python
 # test_something_else.py
@@ -199,11 +200,12 @@ parameter list:
 from pytest_data_loader import parametrize
 
 
-@parametrize("data", ["data1.txt", "data2.txt"])
+@parametrize("data", "*.txt")   # or ["data1.txt", "data2.txt"]
 def test_something(data):
     """
-    data1.txt: "line1\nline2"
-    data2.txt: "line3\nline4"
+    The glob pattern matches: 
+      data1.txt: "line1\nline2"
+      data2.txt: "line3\nline4"
     """
     assert data in ["line1", "line2", "line3", "line4"]
 ```
@@ -256,15 +258,16 @@ tests1/test_something.py::test_something[images/image.png] PASSED               
 ```
 
 > [!NOTE]
-> - File names starting with a dot (.) are considered hidden files regardless of your platform.
-> These files are automatically excluded from the parametrization.
-> - Specify `recursive=True` to include files in subdirectories
+> - Use the `recursive=True` option to include files in subdirectories
+> - Directory and file names starting with a dot (.) are considered hidden regardless of your platform.
+> These are automatically excluded from the parametrization
+
 
 
 #### Parametrize files from multiple directories
 
-You can pass a list of directory paths to `@parametrize_dir` to collect and concatenate files from multiple
-directories into a single parameter list:
+You can pass a list of directory paths, a glob pattern, or a list that mixes both to `@parametrize_dir` to collect and 
+concatenate files from multiple directories into a single parameter list:
 
 ```python
 # test_something_else.py
@@ -583,7 +586,8 @@ the data is the reader object itself.
 
 ### @parametrize_dir
 - `lazy_loading`: Enable or disable lazy loading
-- `recursive`: Recursively load files from all subdirectories of the given directory. Defaults to `False`
+- `recursive`: Recursively load files from all subdirectories of the given directory. Defaults to `False`.
+NOTE: This option is ignored for directories matched by a glob pattern. Use ** for recursive matching
 - `file_reader_func`: A function to specify file readers to matching file paths
 - `filter_func`: A function to filter file paths. Only the contents of matching file paths are included as the test 
 parameters

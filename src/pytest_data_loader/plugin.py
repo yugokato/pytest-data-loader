@@ -1,23 +1,19 @@
 import logging
-from collections.abc import Generator, Iterable
+from collections.abc import Collection, Generator, Iterable
 from pathlib import Path
-from typing import cast
+from typing import Any
 
 import pytest
 from _pytest.fixtures import SubRequest
-from pytest import Config, Metafunc, Parser, StashKey
+from _pytest.mark import ParameterSet
+from pytest import Config, Mark, MarkDecorator, Metafunc, Parser, StashKey
 
 from pytest_data_loader.constants import (
     DEFAULT_LOADER_DIR_NAME,
     PYTEST_DATA_LOADER_ATTRS,
     PYTEST_DATA_LOADER_MODULE_CACHE,
 )
-from pytest_data_loader.loaders.impl import (
-    DirectoryDataLoader,
-    FileDataLoader,
-    data_loader_factory,
-    resolve_relative_path,
-)
+from pytest_data_loader.loaders.impl import DirectoryDataLoader, FileDataLoader, create_data_loaders
 from pytest_data_loader.types import (
     DataLoaderIniOption,
     DataLoaderLoadAttrs,
@@ -27,7 +23,7 @@ from pytest_data_loader.types import (
     LoadedData,
     LoadedDataType,
 )
-from pytest_data_loader.utils import add_error_note, generate_parameterset
+from pytest_data_loader.utils import add_error_note
 
 STASH_KEY_DATA_LOADER_OPTION = StashKey[DataLoaderOption]()
 logger = logging.getLogger(__name__)
@@ -97,37 +93,14 @@ def _apply_load_attrs(
     loaded_data: list[LoadedData | LazyLoadedData | LazyLoadedPartData] = []
 
     for path in paths:
-        if path.is_absolute():
-            data_dir_path = None
-            test_data_path = path
-        else:
-            data_dir_path, test_data_path = resolve_relative_path(
-                data_loader_option.loader_dir_name,
-                data_loader_option.loader_root_dir,
-                path,
-                load_attrs.search_from,
-                is_file=load_attrs.loader.is_file_loader,
-            )
+        for data_loader in create_data_loaders(path, load_attrs, data_loader_option):
+            _register_cleanup(metafunc.module, data_loader)
 
-        data_loader = data_loader_factory(
-            test_data_path,
-            load_attrs,
-            load_from=data_dir_path,
-            strip_trailing_whitespace=cast(bool, data_loader_option.strip_trailing_whitespace),
-        )
-
-        # Keep file/directory loaders per module for clean up
-        data_loader_cache: set[FileDataLoader | DirectoryDataLoader] | None
-        if data_loader_cache := getattr(metafunc.module, PYTEST_DATA_LOADER_MODULE_CACHE, None):
-            data_loader_cache.add(data_loader)
-        else:
-            setattr(metafunc.module, PYTEST_DATA_LOADER_MODULE_CACHE, {data_loader})
-
-        loaded = data_loader.load()
-        if isinstance(loaded, LoadedData | LazyLoadedData):
-            loaded_data.append(loaded)
-        elif loaded:
-            loaded_data.extend(loaded)
+            loaded = data_loader.load()
+            if isinstance(loaded, LoadedData | LazyLoadedData):
+                loaded_data.append(loaded)
+            elif loaded:
+                loaded_data.extend(loaded)
 
     values: Iterable[
         LoadedDataType
@@ -136,7 +109,7 @@ def _apply_load_attrs(
         | tuple[Path, LoadedDataType | LazyLoadedData | LazyLoadedPartData]
     ]
     if loaded_data:
-        values = (generate_parameterset(load_attrs, x) for x in loaded_data)
+        values = (_generate_parameterset(load_attrs, x) for x in loaded_data)
     else:
         values = []
 
@@ -156,6 +129,61 @@ def pytest_fixture_setup(request: SubRequest) -> None:
         request.param = val.resolve()
 
 
+def _generate_parameterset(
+    load_attrs: DataLoaderLoadAttrs, loaded_data: LoadedData | LazyLoadedData | LazyLoadedPartData
+) -> ParameterSet:
+    """Generate Pytest ParameterSet object for the loaded data.
+
+    :param load_attrs: The load attributes
+    :param loaded_data: The loaded data
+    """
+
+    def generate_param_id() -> Any:
+        if load_attrs.id_func is None:
+            if load_attrs.lazy_loading or not (
+                load_attrs.loader.is_file_loader and load_attrs.loader.requires_parametrization
+            ):
+                return repr(loaded_data)
+            else:
+                return repr(loaded_data.data)
+        else:
+            if isinstance(loaded_data, LazyLoadedPartData):
+                # When id_func is provided for the @parametrize loader, parameter ID is generated when
+                # LazyLoadedPartData is created
+                return loaded_data.meta["id"] or repr(loaded_data)
+            return load_attrs.id_func(loaded_data.file_path, loaded_data.data)
+
+    def generate_param_marks() -> MarkDecorator | Collection[MarkDecorator | Mark]:
+        default_markers: tuple[()] = ()
+        if load_attrs.marker_func is None:
+            return default_markers
+        else:
+            assert load_attrs.loader.requires_parametrization
+            if isinstance(loaded_data, LazyLoadedPartData):
+                # When marker_func is provided for the @parametrize loader, marks are generated when
+                # LazyLoadedPartData is created
+                marks = loaded_data.meta["marks"]
+            else:
+                func_args: tuple[Any, ...]
+                if load_attrs.loader.is_file_loader:
+                    func_args = (loaded_data.file_path, loaded_data.data)
+                else:
+                    func_args = (loaded_data.file_path,)
+                marks = load_attrs.marker_func(*func_args)
+            return marks or default_markers
+
+    args: tuple[Any, ...]
+    if load_attrs.requires_file_path:
+        args = (loaded_data.file_path, loaded_data.data)
+    else:
+        args = (loaded_data.data,)
+    try:
+        return pytest.param(*args, marks=generate_param_marks(), id=generate_param_id())
+    finally:
+        if isinstance(loaded_data, LazyLoadedPartData):
+            loaded_data.meta.clear()
+
+
 @pytest.fixture(scope="module", autouse=True)
 def _pytest_data_loader_cleanup(request: SubRequest) -> Generator[None]:
     """Clear cache used by data loaders with lazy loading at the end of each module"""
@@ -168,3 +196,16 @@ def _pytest_data_loader_cleanup(request: SubRequest) -> Generator[None]:
             except Exception as e:
                 logger.exception(e)
         data_loaders.clear()
+
+
+def _register_cleanup(module: Any, loader: FileDataLoader | DirectoryDataLoader) -> None:
+    """Track a loader on the module-scoped cache consumed by ``_pytest_data_loader_cleanup``.
+
+    :param module: The test module object (``metafunc.module`` or ``request.module``)
+    :param loader: The file/directory data loader to register
+    """
+    cache: set[FileDataLoader | DirectoryDataLoader] | None = getattr(module, PYTEST_DATA_LOADER_MODULE_CACHE, None)
+    if cache is None:
+        cache = set()
+        setattr(module, PYTEST_DATA_LOADER_MODULE_CACHE, cache)
+    cache.add(loader)

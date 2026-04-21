@@ -4,13 +4,8 @@ import pytest
 from pytest import FixtureRequest
 
 from pytest_data_loader.constants import DEFAULT_LOADER_DIR_NAME
-from pytest_data_loader.loaders.impl import resolve_relative_path
-from tests.tests_loader.helper import (
-    ABS_PATH_LOADER_DIR,
-    PATH_JSON_FILE_OBJECT,
-    PATH_SOME_DIR,
-    PATH_TEXT_FILE,
-)
+from pytest_data_loader.paths import resolve_relative_path
+from tests.tests_loader.helper import ABS_PATH_LOADER_DIR, PATH_JSON_FILE_OBJECT, PATH_SOME_DIR, PATH_TEXT_FILE
 
 pytestmark = pytest.mark.unittest
 
@@ -27,7 +22,7 @@ class TestPathResolver:
         """
         assert (ABS_PATH_LOADER_DIR / PATH_JSON_FILE_OBJECT).exists()
         assert not (LOCAL_LOADER_DIR / PATH_JSON_FILE_OBJECT).exists()
-        data_dir_path, resolved_path = resolve_relative_path(
+        data_dir_path, (resolved_path,) = resolve_relative_path(
             DEFAULT_LOADER_DIR_NAME, request.config.rootpath, Path(PATH_JSON_FILE_OBJECT), Path(__file__), is_file=True
         )
         assert data_dir_path == resolved_path.parent.parent.parent == ABS_PATH_LOADER_DIR
@@ -38,7 +33,7 @@ class TestPathResolver:
         """
         assert (ABS_PATH_LOADER_DIR / PATH_TEXT_FILE).exists()
         assert (LOCAL_LOADER_DIR / PATH_TEXT_FILE).exists()
-        data_dir_path, resolved_path = resolve_relative_path(
+        data_dir_path, (resolved_path,) = resolve_relative_path(
             DEFAULT_LOADER_DIR_NAME, request.config.rootpath, Path(PATH_TEXT_FILE), Path(__file__), is_file=True
         )
         assert data_dir_path == resolved_path.parent.parent.parent == LOCAL_LOADER_DIR
@@ -51,7 +46,7 @@ class TestPathResolver:
         assert (LOCAL_LOADER_DIR / PATH_SOME_DIR).exists()
         assert (LOCAL_LOADER_DIR / PATH_SOME_DIR).is_file()
 
-        data_dir_path, resolved_path = resolve_relative_path(
+        data_dir_path, (resolved_path,) = resolve_relative_path(
             DEFAULT_LOADER_DIR_NAME, request.config.rootpath, Path(PATH_SOME_DIR), Path(__file__), is_file=is_file
         )
         if is_file:

@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import glob
+import os
+import warnings
 from abc import ABC, abstractmethod
 from collections.abc import Callable, Collection, Iterable, Mapping
 from dataclasses import dataclass, field
@@ -7,10 +10,13 @@ from enum import auto
 from pathlib import Path
 from typing import Any, Literal, ParamSpec, Protocol, TypeAlias, TypedDict, TypeVar, runtime_checkable
 
+import pytest
 from pytest import Config, Mark, MarkDecorator
 
 from pytest_data_loader.compat import StrEnum
 from pytest_data_loader.constants import ROOT_DIR
+from pytest_data_loader.paths import check_circular_symlink, has_env_vars
+from pytest_data_loader.utils import is_valid_fixture_name, validate_loader_func_args_and_normalize
 
 T = TypeVar("T")
 P = ParamSpec("P")
@@ -55,9 +61,47 @@ class DataLoaderOption:
         )
 
     def _parse_ini_option(self, option: DataLoaderIniOption) -> str | bool | Path:
-        from pytest_data_loader.utils import parse_ini_option
+        """Parse pytest INI option and perform additional validation if needed.
 
-        return parse_ini_option(self._config, option)
+        :param option: INI option
+        """
+        try:
+            v = self._config.getini(option)
+            if option == DataLoaderIniOption.DATA_LOADER_DIR_NAME:
+                assert isinstance(v, str)
+                if v in ("", ".", "..") or os.sep in v:
+                    raise ValueError(rf"Invalid value: '{v}'")
+            elif option == DataLoaderIniOption.DATA_LOADER_ROOT_DIR:
+                assert isinstance(v, str)
+                orig_value = v
+                pytest_rootdir = self._config.rootpath
+                if v == "":
+                    return pytest_rootdir
+                if has_env_vars(v):
+                    v = os.path.expandvars(v)
+                    if has_env_vars(v):
+                        raise ValueError(f"Unable to resolve environment variable(s) in the path: {v!r}")
+                v = Path(os.path.expanduser(v))
+                if not v.is_absolute():
+                    v = v.resolve()
+
+                err = None
+                if not v.exists():
+                    err = "The specified path does not exist"
+                elif v.is_file():
+                    err = "The path must be a directory"
+                elif not pytest_rootdir.is_relative_to(v):
+                    err = "The path must be one of the parent directories of pytest rootdir"
+                elif v.is_relative_to(pytest_rootdir):
+                    err = "The path must be outside the pytest rootdir"
+                if err:
+                    err += f": {orig_value!r}"
+                    if orig_value != str(v):
+                        err += f" (resolved value: {str(v)!r})"
+                    raise ValueError(err)
+            return v
+        except ValueError as e:
+            raise pytest.UsageError(f"INI option {option}: {e}") from e
 
 
 @runtime_checkable
@@ -187,8 +231,6 @@ class DataLoaderLoadAttrs:
         return len(self.fixture_names) == 2
 
     def _validate_fixture_names(self) -> None:
-        from pytest_data_loader.utils import is_valid_fixture_name
-
         orig_value = self.fixture_names
         if not isinstance(orig_value, (str, tuple)):
             raise TypeError(f"fixture_names: Expected a string or tuple, but got {type(orig_value).__name__!r}")
@@ -214,14 +256,11 @@ class DataLoaderLoadAttrs:
         self._modify_value("fixture_names", normalized_names)
 
     def _validate_path(self) -> None:
-        from pytest_data_loader import parametrize, parametrize_dir
-
         orig_value = self.path
-        _multi_path_loaders = (parametrize, parametrize_dir)
 
         # Multi-path case: list or tuple of path-like values (only supported by @parametrize and @parametrize_dir)
         if isinstance(orig_value, list | tuple):
-            if self.loader not in _multi_path_loaders:
+            if not self.loader.requires_parametrization:
                 raise ValueError(f"Multi-path is not supported for @{self.loader.__name__} loader")
             if len(orig_value) == 0:
                 raise ValueError("path: Multi-path list must not be empty")
@@ -250,10 +289,20 @@ class DataLoaderLoadAttrs:
         """
         if path in (Path("."), Path(".."), Path(ROOT_DIR)):
             raise ValueError(f"Invalid path value: '{path}'")
+        if glob.has_magic(str(path)):
+            if not self.loader.requires_parametrization:
+                raise ValueError(f"@{self.loader.__name__} loader does not support glob pattern: '{path}'")
+            # existence of matching items is checked at path resolution time
+            if self.recursive is True and "**" not in str(path):
+                warnings.warn(
+                    f"The 'recursive' option is ignored for the glob pattern {str(path)!r}. Use '**' in the pattern to "
+                    f"enable recursive matching",
+                    UserWarning,
+                    stacklevel=6,  # The @parametrize_dir(...) def in the test (for Python >=3.11)
+                )
+            return
         if path.is_absolute():
             if path.is_symlink():
-                from pytest_data_loader.utils import check_circular_symlink
-
                 check_circular_symlink(path)
             if not path.exists():
                 raise ValueError(f"The provided path does not exist: '{path}'")
@@ -265,9 +314,6 @@ class DataLoaderLoadAttrs:
                 )
 
     def _validate_loader_func(self) -> None:
-        from pytest_data_loader import parametrize_dir
-        from pytest_data_loader.utils import validate_loader_func_args_and_normalize
-
         for f, func_type in [
             (self.file_reader_func, DataLoaderFunctionType.FILE_READER_FUNC),
             (self.onload_func, DataLoaderFunctionType.ONLOAD_FUNC),
@@ -281,7 +327,7 @@ class DataLoaderLoadAttrs:
             if f is not None:
                 if not callable(f):
                     raise TypeError(f"{func_type}: Must be a callable, not {type(f).__name__!r}")
-                with_file_path_only = self.loader == parametrize_dir and func_type in (
+                with_file_path_only = not self.loader.is_file_loader and func_type in (
                     DataLoaderFunctionType.FILE_READER_FUNC,
                     DataLoaderFunctionType.FILTER_FUNC,
                     DataLoaderFunctionType.MARKER_FUNC,
