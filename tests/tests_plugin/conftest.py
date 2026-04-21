@@ -19,8 +19,12 @@ pytest_plugins = "pytester"
 
 if sys.platform == "win32":
     NEW_LINE = "\r\n"
+    # Matches %VAR_NAME% style environment variable references on Windows
+    _ENV_VAR_PATTERN = r"%(?P<var_name>[^%]+)%"
 else:
     NEW_LINE = "\n"
+    # Matches ${VAR_NAME} and $VAR_NAME style environment variable references on POSIX
+    _ENV_VAR_PATTERN = r"\${?(?P<var_name>[^}]+)}?"
 TRAILING_WHITESPACE = "  \t  "
 
 
@@ -36,9 +40,7 @@ def loader(request: SubRequest) -> DataLoader:
 @pytest.fixture
 def data_dir_name(request: SubRequest) -> str:
     """Data dir name. Supports indirect parametrization to override the default value"""
-    if getattr(request, "param", None):
-        return request.param
-    return DEFAULT_LOADER_DIR_NAME
+    return getattr(request, "param", DEFAULT_LOADER_DIR_NAME)
 
 
 @pytest.fixture
@@ -52,11 +54,7 @@ def loader_root_dir(request: SubRequest, pytester: Pytester, monkeypatch: Monkey
         if has_env_vars(root_dir):
             # We use the original pytester dir as the expected env var value.
             # Then we manipulate the pytester dir so that the original dir gets placed outside the pytester dir
-            if sys.platform == "win32":
-                pattern_env_var = r"%(?P<var_name>[^}]+)%"
-            else:
-                pattern_env_var = r"\${?(?P<var_name>[^}]+)}?"
-            matched = re.match(rf"{pattern_env_var}.*", root_dir)
+            matched = re.match(rf"{_ENV_VAR_PATTERN}.*", root_dir)
             assert matched
             env_var = matched.group("var_name")
 
@@ -64,10 +62,14 @@ def loader_root_dir(request: SubRequest, pytester: Pytester, monkeypatch: Monkey
             monkeypatch.setenv(env_var, str(orig_path))
 
             # replace the env var with the original pytester dir
-            root_dir = Path(re.sub(pattern_env_var, lambda m: str(orig_path), root_dir))
+            root_dir = Path(re.sub(_ENV_VAR_PATTERN, lambda m: str(orig_path), root_dir))
             assert root_dir.is_relative_to(orig_path)
 
-            # Create the directory and change the pytester dir to it
+            # pytester._path is a private attribute. We mutate it here so that all subsequent
+            # pytester.mkdir / makepyfile calls land inside root_dir (the resolved loader-root-dir)
+            # rather than the default pytester temp directory. This is necessary because the plugin
+            # validates that the pytest rootdir is a sub-path of data_loader_root_dir, which only
+            # holds when the pytester working directory is physically nested inside it.
             root_dir.mkdir(parents=True, exist_ok=True)
             pytester._path = root_dir
             pytester.chdir()
@@ -99,9 +101,8 @@ def strip_trailing_whitespace(request: SubRequest) -> bool:
 
 @pytest.fixture
 def file_extension(request: SubRequest) -> str:
-    """File extension to test. Supports indirect parametrization to override the default file type"""
-    default_ext = ".txt"
-    return getattr(request, "param", default_ext)
+    """File extension under test. Supports indirect parametrization to override the default file type."""
+    return getattr(request, "param", ".txt")
 
 
 @pytest.fixture

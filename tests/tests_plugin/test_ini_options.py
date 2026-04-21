@@ -7,12 +7,7 @@ from pytest import ExitCode
 from pytest_data_loader import load
 from pytest_data_loader.constants import DEFAULT_LOADER_DIR_NAME, ROOT_DIR
 from pytest_data_loader.types import DataLoader, DataLoaderIniOption
-from tests.tests_plugin.helper import (
-    LoaderRootDir,
-    TestContext,
-    create_test_data_in_data_dir,
-    run_pytest_with_context,
-)
+from tests.tests_plugin.helper import LoaderRootDir, TestContext, create_test_data_in_data_dir, run_pytest_with_context
 
 pytestmark = pytest.mark.plugin
 
@@ -72,11 +67,10 @@ class TestIniOptions:
             data=test_context.test_file_content,
         )
 
-        ini_filedata = f"""
-    [pytest]
-    {DataLoaderIniOption.DATA_LOADER_ROOT_DIR} = {loader_root_dir.requested_path}
-    """
-        test_context.pytester.makefile(".ini", pytest=ini_filedata)
+        test_context.pytester.makeini(f"""
+        [pytest]
+        {DataLoaderIniOption.DATA_LOADER_ROOT_DIR} = {loader_root_dir.requested_path}
+        """)
 
         result = run_pytest_with_context(
             test_context,
@@ -126,9 +120,9 @@ class TestIniOptions:
     ) -> None:
         """Test data_loader_root_dir INI option with invalid names"""
         test_context.pytester.makeini(f"""
-    [pytest]
-    {DataLoaderIniOption.DATA_LOADER_ROOT_DIR} = {invalid_dir}
-    """)
+        [pytest]
+        {DataLoaderIniOption.DATA_LOADER_ROOT_DIR} = {invalid_dir}
+        """)
         result = run_pytest_with_context(test_context, collect_only=collect_only)
         assert result.ret == ExitCode.USAGE_ERROR
         assert f"INI option {DataLoaderIniOption.DATA_LOADER_ROOT_DIR}: " in str(result.stderr)
@@ -140,9 +134,9 @@ class TestIniOptions:
     ) -> None:
         """Test data_loader_strip_trailing_whitespace INI option with invalid values"""
         test_context.pytester.makeini(f"""
-    [pytest]
-    {DataLoaderIniOption.DATA_LOADER_STRIP_TRAILING_WHITESPACE} = {invalid_value}
-    """)
+        [pytest]
+        {DataLoaderIniOption.DATA_LOADER_STRIP_TRAILING_WHITESPACE} = {invalid_value}
+        """)
         result = run_pytest_with_context(test_context, collect_only=collect_only)
         assert result.ret == ExitCode.USAGE_ERROR
         expected = (
