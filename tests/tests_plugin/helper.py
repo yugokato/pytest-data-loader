@@ -17,6 +17,8 @@ from pytest_data_loader.utils import is_valid_fixture_name
 
 @dataclass(kw_only=True)
 class TestContext:
+    """Container for the per-test pytester context created by the ``test_context`` fixture."""
+
     __test__ = False
 
     pytester: Pytester
@@ -29,6 +31,7 @@ class TestContext:
 
     @property
     def num_expected_tests(self) -> int:
+        """Number of inner test cases expected to be parametrized from the test data."""
         if self.loader.is_file_loader:
             if self.loader.requires_parametrization:
                 if self.test_file_ext == ".json":
@@ -55,11 +58,17 @@ class TestContext:
 
 @dataclass
 class LoaderRootDir:
+    """Configuration for an optional loader root directory."""
+
     requested_path: str | None = None
     resolved_path: Path | None = None
 
 
 def is_valid_fixture_names(args: str | tuple[str, ...]) -> bool:
+    """Return True if ``args`` represents one or two valid Python identifiers as fixture names.
+
+    :param args: A comma-separated string or tuple of fixture name strings.
+    """
     if isinstance(args, str):
         args = tuple(x.strip() for x in args.split(","))
     else:
@@ -68,9 +77,12 @@ def is_valid_fixture_names(args: str | tuple[str, ...]) -> bool:
 
 
 def get_num_func_args(loader_func: Callable[..., Any]) -> int:
+    """Return the number of positional parameters accepted by ``loader_func``.
+
+    :param loader_func: The callable to inspect.
+    """
     sig = inspect.signature(loader_func)
-    parameters = sig.parameters
-    return len(parameters)
+    return len(sig.parameters)
 
 
 def create_test_data_in_data_dir(
@@ -81,6 +93,15 @@ def create_test_data_in_data_dir(
     data: str | bytes = "content",
     return_abs_path: bool = False,
 ) -> Path:
+    """Create a test data file inside the pytester data directory.
+
+    :param pytester: The pytester fixture.
+    :param data_dir: Name or path of the data directory relative to the pytester root.
+    :param relative_file_path: Path of the file relative to ``data_dir``.
+    :param loader_root_dir: Optional absolute path to an alternative loader root directory.
+    :param data: File content (str or bytes).
+    :param return_abs_path: When True, return the absolute path instead of the relative one.
+    """
     if loader_root_dir:
         data_dir = loader_root_dir / data_dir
     else:
@@ -91,7 +112,8 @@ def create_test_data_in_data_dir(
         abs_file_path.parent.mkdir(parents=True, exist_ok=True)
     name, ext = os.path.splitext(abs_file_path)
     if ext == ".png":
-        abs_file_path.write_bytes(data)  # type: ignore
+        assert isinstance(data, bytes), "PNG files require bytes content"
+        abs_file_path.write_bytes(data)
     else:
         pytester.makefile(ext, **{name: data})
     assert abs_file_path.exists()
@@ -115,6 +137,19 @@ def create_test_context(
     path_type: type[str | Path] = str,
     is_abs_path: bool = False,
 ) -> TestContext:
+    """Create a :class:`TestContext` with the necessary test data files for a pytester run.
+
+    :param pytester: The pytester fixture.
+    :param loader: The loader decorator under test.
+    :param file_extension: Extension of the test data file(s).
+    :param file_content: Content written into the test data file(s).
+    :param parent_dirs: Optional subdirectory path under the data dir.
+    :param data_dir_name: Name of the data directory searched by the plugin.
+    :param loader_root_dir: Optional custom loader root directory configuration.
+    :param strip_trailing_whitespace: Forwarded to :class:`TestContext` for line-count calculations.
+    :param path_type: Python type (``str`` or ``Path``) used for the path argument in the inner test.
+    :param is_abs_path: When True the path argument is absolute.
+    """
     test_data_dir = pytester.mkdir(data_dir_name)
     if parent_dirs:
         Path(test_data_dir, parent_dirs).mkdir(parents=True, exist_ok=True)
@@ -179,41 +214,62 @@ def run_pytest_with_context(
     check_test_id: bool = False,
     **other_loader_options: Any,
 ) -> RunResult:
-    """Common test logic that runs pytest via pytester with various test context and checks the basic functionality
-    of pytest-data-loader plugin
+    """Run pytest via pytester with the given test context and loader options.
+
+    Builds an inner test module that exercises the plugin under the conditions defined by
+    ``test_context`` and the loader arguments, runs it, and returns the result.
+
+    :param test_context: The test context containing pytester, loader, path, and file-content metadata.
+    :param fixture_names: Fixture name(s) to pass to the decorator.
+    :param data_loader_root_dir: When set, asserts the resolved file paths are under this directory.
+    :param path: Override the path from ``test_context``.
+    :param lazy_loading: ``None`` uses the loader default; ``False`` forces eager loading.
+    :param onload_func_def: Python expression string for the ``onload_func`` argument.
+    :param parametrizer_func_def: Python expression string for the ``parametrizer_func`` argument.
+    :param filter_func_def: Python expression string for the ``filter_func`` argument.
+    :param process_func_def: Python expression string for the ``process_func`` argument.
+    :param marker_func_def: Python expression string for the ``marker_func`` argument.
+    :param id_: Explicit id string for the ``@load`` decorator.
+    :param id_func_def: Python expression string for the ``id_func`` argument.
+    :param file_reader_func_def: Python expression string for the ``file_reader_func`` argument.
+    :param read_option_func_def: Python expression string for the ``read_option_func`` argument.
+    :param collect_only: When True run with ``--collect-only`` instead of ``-vs``.
+    :param check_test_id: When True, append assertions about the pytest node ID into the inner test body.
+    :param other_loader_options: Additional keyword arguments forwarded verbatim to the loader decorator.
     """
     if collect_only and check_test_id:
         raise ValueError("check_test_id is not supported when collect_only=True")
 
     pytester = test_context.pytester
     loader = test_context.loader
-    loader_options = []
+
     if path:
         test_context.path = path
+
+    # Build the loader option list from explicit kwargs and any extras
+    loader_options: list[str] = []
     if lazy_loading is False:
         loader_options.append(f"lazy_loading={lazy_loading}")
-    if onload_func_def:
-        loader_options.append(f"{DataLoaderFunctionType.ONLOAD_FUNC}={onload_func_def}")
-    if parametrizer_func_def:
-        loader_options.append(f"{DataLoaderFunctionType.PARAMETRIZER_FUNC}={parametrizer_func_def}")
-    if filter_func_def:
-        loader_options.append(f"{DataLoaderFunctionType.FILTER_FUNC}={filter_func_def}")
-    if process_func_def:
-        loader_options.append(f"{DataLoaderFunctionType.PROCESS_FUNC}={process_func_def}")
-    if marker_func_def:
-        loader_options.append(f"{DataLoaderFunctionType.MARKER_FUNC}={marker_func_def}")
-    if id_:
+    func_defs = {
+        DataLoaderFunctionType.ONLOAD_FUNC: onload_func_def,
+        DataLoaderFunctionType.PARAMETRIZER_FUNC: parametrizer_func_def,
+        DataLoaderFunctionType.FILTER_FUNC: filter_func_def,
+        DataLoaderFunctionType.PROCESS_FUNC: process_func_def,
+        DataLoaderFunctionType.MARKER_FUNC: marker_func_def,
+        DataLoaderFunctionType.ID_FUNC: id_func_def,
+        DataLoaderFunctionType.FILE_READER_FUNC: file_reader_func_def,
+        DataLoaderFunctionType.READ_OPTION_FUNC: read_option_func_def,
+    }
+    for func_type, func_def in func_defs.items():
+        if func_def is not None:
+            loader_options.append(f"{func_type}={func_def}")
+    if id_ is not None:
         loader_options.append(f"id={id_!r}")
-    if id_func_def:
-        loader_options.append(f"{DataLoaderFunctionType.ID_FUNC}={id_func_def}")
-    if file_reader_func_def:
-        loader_options.append(f"{DataLoaderFunctionType.FILE_READER_FUNC}={file_reader_func_def}")
-    if read_option_func_def:
-        loader_options.append(f"{DataLoaderFunctionType.READ_OPTION_FUNC}={read_option_func_def}")
     if other_loader_options:
         loader_options.extend(f"{k}={v!r}" for k, v in other_loader_options.items())
-    loader_options_str = ", " + ", ".join(loader_options) if loader_options else ""
+    loader_options_str = (", " + ", ".join(loader_options)) if loader_options else ""
 
+    # Build path and fixture-name representations for the inner test
     is_abs_path = Path(test_context.path).is_absolute()
 
     # Make sure to apply repr() on the string value to handle window's path correctly
@@ -232,23 +288,7 @@ def run_pytest_with_context(
         fixture_names_str = "_"
 
     fixtures = fixture_names_str.split(",")
-    if test_context.test_file_ext == ".txt":
-        data_type = "str"
-    elif test_context.test_file_ext == ".json":
-        if loader == parametrize:
-            data_type = "tuple"
-        else:
-            data_type = "dict"
-    elif test_context.test_file_ext == ".jsonl":
-        if loader == parametrize:
-            data_type = "dict"
-        else:
-            data_type = "Iterator"
-    elif test_context.test_file_ext == ".png":
-        data_type = "bytes"
-    else:
-        raise NotImplementedError(f"Unsupported file type: {test_context.test_file_ext}")
-
+    data_type = _infer_data_type(test_context.test_file_ext, loader)
     iterator_import = "from collections.abc import Iterator" if data_type == "Iterator" else ""
 
     test_code = f"""
@@ -298,8 +338,31 @@ def run_pytest_with_context(
 
     if check_test_id:
         assert len(fixtures) == 2, "This test requires to give 2 fixture names"
-        test_code += f"""
+        test_code += _render_test_id_assertions_block(loader, fixtures, id_, id_func_def, is_abs_path, lazy_loading)
 
+    pytester.makepyfile(test_code)
+    cmd_options = ["--collect-only", "-q"] if collect_only else ["-vs"]
+    return pytester.runpytest(*cmd_options)
+
+
+def _render_test_id_assertions_block(
+    loader: DataLoader,
+    fixtures: list[str],
+    id_: str | None,
+    id_func_def: str | None,
+    is_abs_path: bool,
+    lazy_loading: bool | None,
+) -> str:
+    """Build the test-ID assertion block appended to the inner test body when ``check_test_id=True``.
+
+    :param loader: The loader decorator under test.
+    :param fixtures: List of fixture name strings (must have length 2).
+    :param id_: Explicit id string for the ``@load`` decorator, or None.
+    :param id_func_def: Python expression string for the ``id_func`` argument, or None.
+    :param is_abs_path: Whether the path argument is absolute.
+    :param lazy_loading: The lazy_loading option value used for the inner test.
+    """
+    return f"""
         has_id = {bool(id_)}
         has_id_func = {bool(id_func_def)}
         is_lazy_loading = {bool(lazy_loading)}
@@ -340,11 +403,20 @@ def run_pytest_with_context(
                 assert node_id.endswith(f"[{{file_path.relative_to(data_dir)}}]")
 
     """
-    pytester.makepyfile(test_code)
 
-    # print(f"\ntest code:\n{test_code}")
-    if collect_only:
-        cmd_options = ["--collect-only", "-q"]
-    else:
-        cmd_options = ["-vs"]
-    return pytester.runpytest(*cmd_options)
+
+def _infer_data_type(file_ext: str, loader: DataLoader) -> str:
+    """Return the Python type name expected for data loaded from a file with the given extension.
+
+    :param file_ext: File extension including the leading dot (e.g. ``".txt"``).
+    :param loader: The loader decorator used for the inner test.
+    """
+    if file_ext == ".txt":
+        return "str"
+    if file_ext == ".json":
+        return "tuple" if loader is parametrize else "dict"
+    if file_ext == ".jsonl":
+        return "dict" if loader is parametrize else "Iterator"
+    if file_ext == ".png":
+        return "bytes"
+    raise NotImplementedError(f"Unsupported file type: {file_ext}")
