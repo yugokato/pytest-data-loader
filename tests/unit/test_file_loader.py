@@ -7,7 +7,7 @@ from typing import Any
 import pytest
 
 from pytest_data_loader import load, parametrize, parametrize_dir
-from pytest_data_loader.loaders.impl import FileDataLoader
+from pytest_data_loader.loaders.impl import FileLoader
 from pytest_data_loader.types import DataLoader, DataLoaderLoadAttrs, LazyLoadedData, LazyLoadedPartData, LoadedData
 from tests.tests_loader.helper import (
     ABS_PATH_LOADER_DIR,
@@ -53,7 +53,7 @@ class TestFileLoader:
             marker_func=lambda _: marks,
         )
 
-        file_loader = FileDataLoader(abs_file_path, load_attrs, load_from=load_from, strip_trailing_whitespace=True)
+        file_loader = FileLoader(abs_file_path, load_attrs, load_from=load_from, strip_trailing_whitespace=True)
         if path.suffix == ".json":
             assert file_loader.file_reader is not None
         loaded_data = file_loader.load()
@@ -115,7 +115,7 @@ class TestFileLoader:
         load_attrs = DataLoaderLoadAttrs(
             loader=load, search_from=Path(__file__), fixture_names=("data",), path=abs_file_path, lazy_loading=False
         )
-        file_loader = FileDataLoader(abs_file_path, load_attrs)
+        file_loader = FileLoader(abs_file_path, load_attrs)
         loaded_data = file_loader.load()
 
         assert isinstance(loaded_data, LoadedData)
@@ -124,7 +124,7 @@ class TestFileLoader:
 
 
 class TestFileLoaderCaching:
-    """Tests for FileDataLoader cache state management across loading modes"""
+    """Tests for FileLoader cache state management across loading modes"""
 
     @staticmethod
     def check_lru_cache_result(
@@ -174,7 +174,7 @@ class TestFileLoaderCaching:
         abs_file_path = ABS_PATH_LOADER_DIR / path
         parametrizer_func: Callable[..., Any] | None = (lambda x: [x]) if path in PATHS_BINARY_FILES else None
         load_attrs = self._make_load_attrs(loader, path, lazy_loading=True, parametrizer_func=parametrizer_func)
-        file_loader = FileDataLoader(
+        file_loader = FileLoader(
             abs_file_path, load_attrs, load_from=ABS_PATH_LOADER_DIR, strip_trailing_whitespace=True
         )
         if path.suffix == ".json":
@@ -198,26 +198,26 @@ class TestFileLoaderCaching:
                 lazy_data.resolve()
                 if file_loader.is_streamable:
                     # The file object should be cached, but file loader should not be cached
-                    assert not hasattr(lazy_data.file_loader, "cache_info")
+                    assert not hasattr(lazy_data.file_loader_func, "cache_info")
                     assert len(file_loader._cached_file_objects) == 1
-                    assert lazy_data.file_loader not in file_loader._cached_file_loaders
+                    assert lazy_data.file_loader_func not in file_loader._cached_file_loaders
                     assert (abs_file_path, file_loader.read_options) in file_loader._cached_file_objects
                     if file_loader.file_reader:
                         # The result of _read_reader_and_split() should be cached per reader
                         assert file_loader.file_reader in file_loader._cached_reader_split
                 else:
                     # The file object should not be cached, but the file loader function should be cached
-                    assert hasattr(lazy_data.file_loader, "cache_info")
+                    assert hasattr(lazy_data.file_loader_func, "cache_info")
                     assert len(file_loader._cached_file_objects) == 0
-                    assert lazy_data.file_loader in file_loader._cached_file_loaders
-                    self.check_lru_cache_result(lazy_data.file_loader, i, 1, 1, 1)
+                    assert lazy_data.file_loader_func in file_loader._cached_file_loaders
+                    self.check_lru_cache_result(lazy_data.file_loader_func, i, 1, 1, 1)
         else:
             assert isinstance(lazy_loaded_data, LazyLoadedData)
-            assert hasattr(lazy_loaded_data.file_loader, "cache_info")
+            assert hasattr(lazy_loaded_data.file_loader_func, "cache_info")
             lazy_loaded_data.resolve()
             # The file loader function should be cached for reuse across stacked parametrize calls
-            assert lazy_loaded_data.file_loader in file_loader._cached_file_loaders
-            self.check_lru_cache_result(lazy_loaded_data.file_loader, 0, 1, 1, 1)
+            assert lazy_loaded_data.file_loader_func in file_loader._cached_file_loaders
+            self.check_lru_cache_result(lazy_loaded_data.file_loader_func, 0, 1, 1, 1)
 
         # Clear cache
         file_loader.clear_cache()
@@ -229,7 +229,7 @@ class TestFileLoaderCaching:
         """Test that eager loading does not populate lru_cache or reader_split caches for a plain text file"""
         abs_file_path = ABS_PATH_LOADER_DIR / PATH_TEXT_FILE
         load_attrs = self._make_load_attrs(load, PATH_TEXT_FILE, lazy_loading=False)
-        file_loader = FileDataLoader(
+        file_loader = FileLoader(
             abs_file_path, load_attrs, load_from=ABS_PATH_LOADER_DIR, strip_trailing_whitespace=True
         )
         assert file_loader.file_reader is None
@@ -244,7 +244,7 @@ class TestFileLoaderCaching:
         """Test that eager loading with a file_reader caches the open file handle in _cached_file_objects"""
         abs_file_path = ABS_PATH_LOADER_DIR / PATH_JSON_FILE_ARRAY
         load_attrs = self._make_load_attrs(load, PATH_JSON_FILE_ARRAY, lazy_loading=False)
-        file_loader = FileDataLoader(
+        file_loader = FileLoader(
             abs_file_path, load_attrs, load_from=ABS_PATH_LOADER_DIR, strip_trailing_whitespace=True
         )
         assert file_loader.file_reader is not None
@@ -267,7 +267,7 @@ class TestFileLoaderCaching:
         # for @parametrize, unlike JSON which is streamable because it has a registered file_reader.
         abs_file_path = ABS_PATH_LOADER_DIR / PATH_XML_FILE
         load_attrs = self._make_load_attrs(parametrize, PATH_XML_FILE, lazy_loading=True)
-        file_loader = FileDataLoader(
+        file_loader = FileLoader(
             abs_file_path, load_attrs, load_from=ABS_PATH_LOADER_DIR, strip_trailing_whitespace=True
         )
         assert not file_loader.is_streamable
@@ -313,7 +313,7 @@ class TestFileLoaderCaching:
         """
         abs_file_path = ABS_PATH_LOADER_DIR / PATH_JSONL_FILE
         load_attrs = self._make_load_attrs(parametrize, PATH_JSONL_FILE, lazy_loading=True)
-        file_loader = FileDataLoader(
+        file_loader = FileLoader(
             abs_file_path, load_attrs, load_from=ABS_PATH_LOADER_DIR, strip_trailing_whitespace=True
         )
         assert file_loader.is_streamable
@@ -339,10 +339,10 @@ class TestFileLoaderCaching:
         file_loader.clear_cache()
 
     def test_weakref_finalize_clears_cache_on_gc(self) -> None:
-        """Test that GC-ing a FileDataLoader triggers the weakref finalizer, closing cached file handles"""
+        """Test that GC-ing a FileLoader triggers the weakref finalizer, closing cached file handles"""
         abs_file_path = ABS_PATH_LOADER_DIR / PATH_JSON_FILE_ARRAY
         load_attrs = self._make_load_attrs(load, PATH_JSON_FILE_ARRAY, lazy_loading=False)
-        file_loader = FileDataLoader(
+        file_loader = FileLoader(
             abs_file_path, load_attrs, load_from=ABS_PATH_LOADER_DIR, strip_trailing_whitespace=True
         )
         file_loader.load()

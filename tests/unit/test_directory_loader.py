@@ -4,7 +4,7 @@ from pathlib import Path
 import pytest
 
 from pytest_data_loader import parametrize_dir
-from pytest_data_loader.loaders.impl import DirectoryDataLoader, FileDataLoader
+from pytest_data_loader.loaders.impl import DirectoryLoader, FileLoader
 from pytest_data_loader.types import DataLoaderLoadAttrs, LazyLoadedData, LoadedData
 from tests.tests_loader.helper import ABS_PATH_LOADER_DIR, PATH_EMPTY_DIR, PATH_SOME_DIR, PATH_SOME_DIR_INNER
 
@@ -39,7 +39,7 @@ class TestDirectoryLoader:
             recursive=recursive,
         )
 
-        loaded_files = DirectoryDataLoader(
+        loaded_files = DirectoryLoader(
             abs_dir_path, load_attrs, load_from=load_from, strip_trailing_whitespace=True
         ).load()
         assert isinstance(loaded_files, list)
@@ -69,7 +69,7 @@ class TestDirectoryLoader:
 
 
 class TestDirectoryLoaderCaching:
-    """Tests for DirectoryDataLoader cache state management"""
+    """Tests for DirectoryLoader cache state management"""
 
     def _make_load_attrs(self, lazy_loading: bool = True) -> DataLoaderLoadAttrs:
         """Create DataLoaderLoadAttrs for PATH_SOME_DIR.
@@ -84,13 +84,13 @@ class TestDirectoryLoaderCaching:
             lazy_loading=lazy_loading,
         )
 
-    def _make_dir_loader(self, lazy_loading: bool = True) -> DirectoryDataLoader:
-        """Create a DirectoryDataLoader for PATH_SOME_DIR.
+    def _make_dir_loader(self, lazy_loading: bool = True) -> DirectoryLoader:
+        """Create a DirectoryLoader for PATH_SOME_DIR.
 
         :param lazy_loading: Whether to use lazy loading
         """
         abs_dir_path = ABS_PATH_LOADER_DIR / PATH_SOME_DIR
-        return DirectoryDataLoader(
+        return DirectoryLoader(
             abs_dir_path,
             self._make_load_attrs(lazy_loading=lazy_loading),
             load_from=ABS_PATH_LOADER_DIR,
@@ -98,7 +98,7 @@ class TestDirectoryLoaderCaching:
         )
 
     def test_directory_loader_file_loaders_populated(self) -> None:
-        """Test that _file_loaders is populated with one FileDataLoader per file after load()"""
+        """Test that _file_loaders is populated with one FileLoader per file after load()"""
         dir_loader = self._make_dir_loader()
 
         loaded_files = dir_loader.load()
@@ -106,10 +106,10 @@ class TestDirectoryLoaderCaching:
         assert isinstance(loaded_files, list)
         assert len(loaded_files) == _NUM_FILES_IN_SOME_DIR
         assert len(dir_loader._file_loaders) == _NUM_FILES_IN_SOME_DIR
-        assert all(isinstance(c, FileDataLoader) for c in dir_loader._file_loaders)
+        assert all(isinstance(c, FileLoader) for c in dir_loader._file_loaders)
 
     def test_directory_loader_clear_cache_delegates_to_children(self) -> None:
-        """Test that clear_cache() calls clear_cache() on each child FileDataLoader and empties _file_loaders"""
+        """Test that clear_cache() calls clear_cache() on each child FileLoader and empties _file_loaders"""
         dir_loader = self._make_dir_loader(lazy_loading=True)
         loaded_files = dir_loader.load()
 
@@ -138,7 +138,7 @@ class TestDirectoryLoaderCaching:
             assert child._cached_reader_split == {}
 
     def test_directory_loader_weakref_finalize(self) -> None:
-        """Test that GC-ing a DirectoryDataLoader triggers the weakref finalizer, clearing child caches"""
+        """Test that GC-ing a DirectoryLoader triggers the weakref finalizer, clearing child caches"""
         dir_loader = self._make_dir_loader(lazy_loading=True)
         loaded_files = dir_loader.load()
 

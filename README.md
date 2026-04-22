@@ -128,11 +128,12 @@ tests1/test_something.py::test_something2[data2.txt] PASSED                     
 ```
 
 > [!NOTE]
-> If both `./tests1/test_something.py` and `./tests2/test_something_else.py` happen to have the above same loader 
+> - If both `./tests1/test_something.py` and `./tests2/test_something_else.py` happen to have the above same loader 
 > definitions, the first test function will load `./data/data1.json` for both test files, and the second test function 
 > will load `data2.txt` from each test file's **nearest** `data` directory. This ensures that each test file loads data 
 > from its nearest data directory.  
 > This behavior applies to all loaders.
+> - If your path is dynamic or unknown until runtime, see the [The data_loader Fixture](#the-data_loader-fixture) section.
 
 
 ### 2. Parametrize file data — `@parametrize`
@@ -375,6 +376,43 @@ def test_flagged_comments_contain_banned_words(banned_words, comment):
 > [!TIP]
 > When stacking data loaders, test IDs generated with the default parameter IDs may become less readable. Consider 
 > explicitly specifying parameter IDs using the `id` option (`@load`) or the `id_func` option (`@parametrize`/`@parametrize_dir`).
+
+
+
+## The `data_loader` Fixture
+
+The plugin provides a function-scoped `data_loader` fixture as an alternative to `@load`. Use this fixture when the 
+file path is not known until test runtime — for example, when it depends on another fixture, a parametrized value, or a 
+CLI option, etc. The fixture provides a callable (an instance of the `DataLoaderFixture` class) that accepts a file 
+path and returns the loaded data. It uses the same path resolution and loading logic as `@load`. Loader options like 
+`file_reader`, `onload_func`, and read options are also supported and can be passed as keyword arguments.  
+Below is an example where the file path depends on both a custom CLI option (`--env`) and parametrized test 
+inputs, which is something the regular data loader decorators cannot support:
+
+```python
+import pytest
+from pytest import FixtureRequest
+
+from pytest_data_loader import DataLoaderFixture
+
+
+@pytest.fixture(scope="session")
+def env(request: FixtureRequest) -> str:
+    """Target environment specified by the --env CLI option"""
+    return request.config.getoption("--env")
+
+
+@pytest.mark.parametrize("filename", ["case1.json", "case2.json"])
+def test_env_specific_cases(data_loader: DataLoaderFixture, env: str, filename: str):
+    # Construct path from a CLI option and parametrized value
+    path = f"{env}/{filename}"
+    case_data = data_loader(path)
+    assert isinstance(case_data, dict)
+```
+
+> [!TIP]
+> You can combine the `data_loader` fixture with `@load`, `@parametrize`, and `@parametrize_dir` in the same test 
+> function. This is useful when some data paths are static while others are determined dynamically at runtime.
 
 
 

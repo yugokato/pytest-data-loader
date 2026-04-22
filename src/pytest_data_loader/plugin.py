@@ -1,19 +1,16 @@
 import logging
-from collections.abc import Collection, Generator, Iterable
+from collections.abc import Collection, Iterable
 from pathlib import Path
 from typing import Any
 
 import pytest
 from _pytest.fixtures import SubRequest
 from _pytest.mark import ParameterSet
-from pytest import Config, Mark, MarkDecorator, Metafunc, Parser, StashKey
+from pytest import Config, Mark, MarkDecorator, Metafunc, Parser
 
-from pytest_data_loader.constants import (
-    DEFAULT_LOADER_DIR_NAME,
-    PYTEST_DATA_LOADER_ATTRS,
-    PYTEST_DATA_LOADER_MODULE_CACHE,
-)
-from pytest_data_loader.loaders.impl import DirectoryDataLoader, FileDataLoader, create_data_loaders
+from pytest_data_loader.constants import DEFAULT_LOADER_DIR_NAME, PYTEST_DATA_LOADER_ATTRS, STASH_KEY_DATA_LOADER_OPTION
+from pytest_data_loader.fixtures import _pytest_data_loader_cleanup, data_loader  # noqa: F401
+from pytest_data_loader.loaders.impl import create_loaders
 from pytest_data_loader.types import (
     DataLoaderIniOption,
     DataLoaderLoadAttrs,
@@ -25,7 +22,6 @@ from pytest_data_loader.types import (
 )
 from pytest_data_loader.utils import add_error_note
 
-STASH_KEY_DATA_LOADER_OPTION = StashKey[DataLoaderOption]()
 logger = logging.getLogger(__name__)
 
 
@@ -93,10 +89,10 @@ def _apply_load_attrs(
     loaded_data: list[LoadedData | LazyLoadedData | LazyLoadedPartData] = []
 
     for path in paths:
-        for data_loader in create_data_loaders(path, load_attrs, data_loader_option):
-            _register_cleanup(metafunc.module, data_loader)
+        for loader in create_loaders(path, load_attrs, data_loader_option):
+            loader.register_cleanup(metafunc.module)
 
-            loaded = data_loader.load()
+            loaded = loader.load()
             if isinstance(loaded, LoadedData | LazyLoadedData):
                 loaded_data.append(loaded)
             elif loaded:
@@ -182,30 +178,3 @@ def _generate_parameterset(
     finally:
         if isinstance(loaded_data, LazyLoadedPartData):
             loaded_data.meta.clear()
-
-
-@pytest.fixture(scope="module", autouse=True)
-def _pytest_data_loader_cleanup(request: SubRequest) -> Generator[None]:
-    """Clear cache used by data loaders with lazy loading at the end of each module"""
-    yield
-    data_loaders: set[FileDataLoader | DirectoryDataLoader] | None
-    if data_loaders := getattr(request.module, PYTEST_DATA_LOADER_MODULE_CACHE, None):
-        for data_loader in data_loaders:
-            try:
-                data_loader.clear_cache()
-            except Exception as e:
-                logger.exception(e)
-        data_loaders.clear()
-
-
-def _register_cleanup(module: Any, loader: FileDataLoader | DirectoryDataLoader) -> None:
-    """Track a loader on the module-scoped cache consumed by ``_pytest_data_loader_cleanup``.
-
-    :param module: The test module object (``metafunc.module`` or ``request.module``)
-    :param loader: The file/directory data loader to register
-    """
-    cache: set[FileDataLoader | DirectoryDataLoader] | None = getattr(module, PYTEST_DATA_LOADER_MODULE_CACHE, None)
-    if cache is None:
-        cache = set()
-        setattr(module, PYTEST_DATA_LOADER_MODULE_CACHE, cache)
-    cache.add(loader)
