@@ -156,7 +156,7 @@ class LoadedData(LoadedDataABC):
 
 @dataclass(frozen=True, kw_only=True, slots=True, repr=False)
 class LazyLoadedDataABC(LoadedDataABC):
-    file_loader: Callable[[], LoadedData | Iterable[LoadedData]]
+    file_loader_func: Callable[[], LoadedData | Iterable[LoadedData]]
 
     @property
     def data(self: T) -> T:
@@ -170,7 +170,7 @@ class LazyLoadedDataABC(LoadedDataABC):
 @dataclass(frozen=True, kw_only=True, slots=True, repr=False)
 class LazyLoadedData(LazyLoadedDataABC):
     def resolve(self) -> LoadedDataType:
-        loaded_data = self.file_loader()
+        loaded_data = self.file_loader_func()
         assert isinstance(loaded_data, LoadedData), type(loaded_data)
         return loaded_data.data
 
@@ -187,7 +187,7 @@ class LazyLoadedPartData(LazyLoadedDataABC):
         return str(parent_dir / f"{self.file_name}:part{self.idx + 1}")
 
     def resolve(self) -> LoadedDataType:
-        loaded_data = self.file_loader()
+        loaded_data = self.file_loader_func()
         if isinstance(loaded_data, LoadedData):
             part_data = loaded_data
         else:
@@ -305,7 +305,7 @@ class DataLoaderLoadAttrs:
             if path.is_symlink():
                 check_circular_symlink(path)
             if not path.exists():
-                raise ValueError(f"The provided path does not exist: '{path}'")
+                raise FileNotFoundError(f"The provided path does not exist: '{path}'")
             if path.is_dir() and self.loader.is_file_loader:
                 raise ValueError(f"Invalid path: @{self.loader.__name__} loader must take a file path, not '{path}'")
             if path.is_file() and not self.loader.is_file_loader:

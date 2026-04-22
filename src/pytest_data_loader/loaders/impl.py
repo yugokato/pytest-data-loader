@@ -9,8 +9,10 @@ from collections.abc import Callable, Generator, Iterable, Iterator, Mapping
 from functools import cached_property, lru_cache, partial, wraps
 from io import StringIO
 from pathlib import Path
+from types import ModuleType
 from typing import IO, Any, ClassVar, Concatenate, ParamSpec, TypeVar
 
+from pytest_data_loader.constants import PYTEST_DATA_LOADER_MODULE_CACHE
 from pytest_data_loader.loaders.reader import FileReader
 from pytest_data_loader.paths import (
     check_and_track_dir,
@@ -32,14 +34,14 @@ from pytest_data_loader.utils import validate_loader_func_args_and_normalize
 
 P = ParamSpec("P")
 R = TypeVar("R")
-T = TypeVar("T", bound="FileDataLoader")
+T = TypeVar("T", bound="FileLoader")
 
 logger = logging.getLogger(__name__)
 
 
-def create_data_loaders(
+def create_loaders(
     path: Path, load_attrs: DataLoaderLoadAttrs, data_loader_option: DataLoaderOption
-) -> list[FileDataLoader | DirectoryDataLoader]:
+) -> list[FileLoader | DirectoryLoader]:
     """Resolve a single path entry (which may be a glob pattern or a concrete path) to file or directory loaders.
     Returns one loader per matched entry (possibly many when *path* is a glob pattern).
 
@@ -102,7 +104,7 @@ def requires_loader(*loaders_names: str) -> Callable[[Callable[Concatenate[T, P]
     return decorator
 
 
-class LoaderABC(ABC):
+class Loader(ABC):
     def __init__(
         self,
         path: Path,
@@ -135,8 +137,19 @@ class LoaderABC(ABC):
     def loader(self) -> DataLoader:
         return self.load_attrs.loader
 
+    def register_cleanup(self, module: ModuleType) -> None:
+        """Track a loader on the module-scoped cache.
 
-class FileDataLoader(LoaderABC):
+        :param module: The module object the cache is attached to
+        """
+        cache: set[Loader] | None = getattr(module, PYTEST_DATA_LOADER_MODULE_CACHE, None)
+        if cache is None:
+            cache = set()
+            setattr(module, PYTEST_DATA_LOADER_MODULE_CACHE, cache)
+        cache.add(self)
+
+
+class FileLoader(Loader):
     """File loader for loading single file"""
 
     STREAMABLE_FILE_TYPES: ClassVar[tuple[str, ...]] = (".txt", ".log", ".csv", ".tsv")
@@ -157,7 +170,7 @@ class FileDataLoader(LoaderABC):
         self._is_streamable = self.file_reader is not None or all(
             # non-structured text data can be read line by line
             [
-                self.path.suffix in FileDataLoader.STREAMABLE_FILE_TYPES,
+                self.path.suffix in FileLoader.STREAMABLE_FILE_TYPES,
                 self.read_mode != "rb",
                 self.load_attrs.onload_func is None,
                 self.load_attrs.parametrizer_func is None,
@@ -332,7 +345,7 @@ class FileDataLoader(LoaderABC):
                     LazyLoadedPartData(
                         file_path=self.path,
                         loaded_from=self.load_from,
-                        file_loader=partial(self._load_part_data_now, pos, close=False),
+                        file_loader_func=partial(self._load_part_data_now, pos, close=False),
                         idx=i,
                         pos=pos,
                         meta=dict(marks=marks, id=param_id),
@@ -353,7 +366,7 @@ class FileDataLoader(LoaderABC):
                     LazyLoadedPartData(
                         file_path=self.path,
                         loaded_from=self.load_from,
-                        file_loader=file_loader,
+                        file_loader_func=file_loader,
                         idx=i,
                         meta=dict(
                             marks=self.load_attrs.marker_func(self.path, data.data)
@@ -371,7 +384,7 @@ class FileDataLoader(LoaderABC):
             return LazyLoadedData(
                 file_path=self.path,
                 loaded_from=self.load_from,
-                file_loader=file_loader,
+                file_loader_func=file_loader,
             )
 
     def _get_file_obj(self) -> IO[Any]:
@@ -480,7 +493,7 @@ class FileDataLoader(LoaderABC):
         return self._cached_reader_split[file_reader]
 
 
-class DirectoryDataLoader(LoaderABC):
+class DirectoryLoader(Loader):
     """Data loader for loading files in a directory"""
 
     def __init__(self, *args: Any, ignore_recursive: bool = False, **kwargs: Any):
@@ -488,9 +501,9 @@ class DirectoryDataLoader(LoaderABC):
         if not self.path.is_dir():
             raise ValueError(f"path must be a directory path: {self.path}")
         if self.loader.is_file_loader:
-            raise NotImplementedError(f"Unsupported loader for {DirectoryDataLoader.__name__}: {self.loader}")
+            raise NotImplementedError(f"Unsupported loader for {DirectoryLoader.__name__}: {self.loader}")
         self._ignore_recursive = ignore_recursive
-        self._file_loaders: list[FileDataLoader] = []
+        self._file_loaders: list[FileLoader] = []
         weakref.finalize(self, _clear_dir_loader_caches, self._file_loaders)
 
     def clear_cache(self) -> None:
@@ -503,7 +516,7 @@ class DirectoryDataLoader(LoaderABC):
         def load_file(file_path: Path) -> None:
             if not file_path.name.startswith("."):
                 if not self.load_attrs.filter_func or self.load_attrs.filter_func(file_path):
-                    file_loader = FileDataLoader(
+                    file_loader = FileLoader(
                         file_path,
                         self.load_attrs,
                         load_from=self.load_from,
@@ -554,24 +567,24 @@ def _data_loader_factory(
     load_from: Path | None = None,
     strip_trailing_whitespace: bool,
     ignore_recursive: bool = False,
-) -> FileDataLoader | DirectoryDataLoader:
-    """Data loader factory that creates either FileDataLoader or DirectoryDataLoader depending on the specified path
+) -> FileLoader | DirectoryLoader:
+    """Data loader factory that creates either FileLoader or DirectoryLoader depending on the specified path
 
     :param abs_data_path: File or directory's absolute path
     :param load_attrs: Data loader attributes
     :param load_from: Data directory to load from
     :param strip_trailing_whitespace: Whether to strip trailing whitespace from loaded data
-    :param ignore_recursive: When True, DirectoryDataLoader will ignore the recursive flag
+    :param ignore_recursive: When True, DirectoryLoader will ignore the recursive flag
     """
     if not abs_data_path.is_absolute():
         raise ValueError("abs_data_path must be an absolute path")
 
     if abs_data_path.is_file():
-        return FileDataLoader(
+        return FileLoader(
             abs_data_path, load_attrs, load_from=load_from, strip_trailing_whitespace=strip_trailing_whitespace
         )
     else:
-        return DirectoryDataLoader(
+        return DirectoryLoader(
             abs_data_path,
             load_attrs,
             load_from=load_from,
@@ -585,7 +598,7 @@ def _clear_file_loader_caches(
     cached_file_loaders: set[Callable[..., Any]],
     cached_reader_split: dict[Callable[..., Any], list[Any]],
 ) -> None:
-    """Release all caches held by a FileDataLoader instance
+    """Release all caches held by a FileLoader instance
 
     :param cached_file_objects: Open file handles keyed by (path, read_options)
     :param cached_file_loaders: lru_cache-wrapped file loader functions
@@ -610,10 +623,10 @@ def _clear_file_loader_caches(
     cached_reader_split.clear()
 
 
-def _clear_dir_loader_caches(file_loaders: list[FileDataLoader]) -> None:
-    """Release all caches held by a DirectoryDataLoader instance
+def _clear_dir_loader_caches(file_loaders: list[FileLoader]) -> None:
+    """Release all caches held by a DirectoryLoader instance
 
-    :param file_loaders: FileDataLoader instances associated with a DirectoryDataLoader instance
+    :param file_loaders: FileLoader instances associated with a DirectoryLoader instance
     """
     for file_loader in file_loaders:
         file_loader.clear_cache()

@@ -18,14 +18,14 @@ class TestCacheCleanup:
         json_file = test_data_dir / "file.json"
         json_file.write_text(json.dumps({"key": "value"}))
 
-        # Patch FileDataLoader.clear_cache to count invocations across the entire session
+        # Patch FileLoader.clear_cache to count invocations across the entire session
         pytester.makeconftest("""
 import json
 import pytest
-from pytest_data_loader.loaders.impl import FileDataLoader
+from pytest_data_loader.loaders.impl import FileLoader
 
 _clear_cache_call_count = 0
-_original_clear_cache = FileDataLoader.clear_cache
+_original_clear_cache = FileLoader.clear_cache
 
 
 def _counting_clear_cache(self) -> None:
@@ -34,11 +34,11 @@ def _counting_clear_cache(self) -> None:
     _original_clear_cache(self)
 
 
-FileDataLoader.clear_cache = _counting_clear_cache
+FileLoader.clear_cache = _counting_clear_cache
 
 
 def pytest_terminal_summary() -> None:
-    FileDataLoader.clear_cache = _original_clear_cache
+    FileLoader.clear_cache = _original_clear_cache
     print("CLEAR_CACHE_REPORT:" + json.dumps({"calls": _clear_cache_call_count}))
 """)
 
