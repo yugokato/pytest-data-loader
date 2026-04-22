@@ -101,6 +101,27 @@ class TestFileLoader:
                 assert isinstance(loaded_data, LoadedData)
                 assert loaded_data.file_path == abs_file_path
 
+    @pytest.mark.parametrize("data", ["test", b"\x00\x01\x02"])
+    def test_read_mode_detection(self, tmp_path: Path, data: str | bytes) -> None:
+        """Test that file loading can detect the file read mode"""
+        abs_file_path = tmp_path / "file.bin"
+        if isinstance(data, bytes):
+            abs_file_path.write_bytes(data)
+            expected_mode = "rb"
+        else:
+            abs_file_path.write_text(data)
+            expected_mode = "r"
+
+        load_attrs = DataLoaderLoadAttrs(
+            loader=load, search_from=Path(__file__), fixture_names=("data",), path=abs_file_path, lazy_loading=False
+        )
+        file_loader = FileDataLoader(abs_file_path, load_attrs)
+        loaded_data = file_loader.load()
+
+        assert isinstance(loaded_data, LoadedData)
+        assert loaded_data.data == data
+        assert file_loader.read_mode == expected_mode
+
 
 class TestFileLoaderCaching:
     """Tests for FileDataLoader cache state management across loading modes"""

@@ -439,23 +439,30 @@ class FileDataLoader(LoaderABC):
     def _read_file(self) -> str | bytes:
         """Read file data"""
         assert self.path.is_absolute()
-        data: str | bytes
         if self.read_mode == "auto":
-            try:
-                # Without specifying encoding, this logic fails for binary data on Windows
-                with open(self.path, encoding="utf-8", **self.read_options) as f:
-                    data = f.read()
-            except UnicodeDecodeError:
-                read_mode = "rb"
-                with open(self.path, read_mode, **self.read_options) as f:
-                    data = f.read()
-                # set the determined read mode
-                self.read_mode = read_mode
-        else:
-            read_options = dict(self.read_options) | {"mode": self.read_mode}
-            with open(self.path, **read_options) as f:
-                data = f.read()
-        return data
+            # Detect read mode based on sampled data
+            is_binary = False
+            with open(self.path, "rb") as f:
+                chunk = f.read(4096)
+
+            if chunk:
+                if b"\x00" in chunk:
+                    is_binary = True
+                else:
+                    try:
+                        chunk.decode("utf-8")
+                    except UnicodeDecodeError:
+                        is_binary = True
+
+            read_mode = "rb" if is_binary else "r"
+            self.read_mode = read_mode
+
+        read_options = dict(self.read_options) | {"mode": self.read_mode}
+        if self.read_mode == "r" and "encoding" not in read_options:
+            read_options["encoding"] = "utf-8"
+
+        with open(self.path, **read_options) as f:
+            return f.read()
 
     @requires_loader("parametrize")
     def _read_reader_and_split(self, file_reader: Callable[..., Iterable[Any] | object], f: IO[Any]) -> list[Any]:
