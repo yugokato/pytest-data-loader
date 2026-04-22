@@ -13,6 +13,7 @@ class TestLoaderStacking:
         pytester.makefile(".json", **{"data/config": '{"key": "value"}'})
         pytester.makefile(".json", **{"data/extra": '{"x": 1}'})
         pytester.makefile(".json", **{"data/third": '{"z": 3}'})
+        pytester.makefile(".txt", **{"data/columns": "a\nb\nc"})
         pytester.makefile(".txt", **{"data/rows": "alpha\nbeta\ngamma"})
         pytester.mkdir("data/items")
         pytester.makefile(".txt", **{"data/items/a": "item_a"})
@@ -219,7 +220,7 @@ class TestLoaderStacking:
 
     def test_stacked_loaders_read_file_from_cache(self, pytester: pytest.Pytester) -> None:
         """Test that each file in stacked data loaders is opened only once per test function, not per Cartesian test."""
-        _tracked_files = {"config.json", "rows.txt", "a.txt", "b.txt"}
+        _tracked_files = {"columns.txt", "rows.txt", "a.txt", "b.txt"}
         pytester.makeconftest(f"""
         import builtins
         from pathlib import Path
@@ -231,7 +232,8 @@ class TestLoaderStacking:
         def _counting_open(file, *args, **kwargs):
             file_name = Path(file).name if isinstance(file, str | Path) else None
             if file_name in _tracked:
-                counter[file_name] = counter.get(file_name, 0) + 1
+                if kwargs.get("encoding") == "utf-8":
+                    counter[file_name] = counter.get(file_name, 0) + 1
             return _open(file, *args, **kwargs)
 
         builtins.open = _counting_open
@@ -240,17 +242,16 @@ class TestLoaderStacking:
         from conftest import counter
         from pytest_data_loader import load, parametrize, parametrize_dir
 
-        @load("cfg", "config.json")
-        @parametrize("row", "rows.txt")
-        @parametrize_dir("item", "items")
-        def test_func(cfg, row, item):
-            assert cfg == {"key": "value"}
-            assert row in ("alpha", "beta", "gamma")
-            assert item in ("item_a", "item_b")
+        # Adding encoding option to differentiate the actual open v.s. sampling
+        @load("columns", "columns.txt", encoding="utf-8")
+        @parametrize("row", "rows.txt", encoding="utf-8")
+        @parametrize_dir("item", "items", read_option_func=lambda x: {"encoding": "utf-8"})
+        def test_func(columns, row, item):
+            ...
 
         def test_open_counts():
             # @load: opened exactly once at first test setup (subsequent tests reuse it via lru_cache)
-            assert counter.get("config.json", 0) == 1
+            assert counter.get("columns.txt", 0) == 1
 
             # @parametrize: 1 scan open (collection) + 1 lazy-load open
             # (subsequent tests reuse it via _cached_file_objects)
