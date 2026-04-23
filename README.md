@@ -33,7 +33,8 @@ def test_example(data):
     """
     example.json: '{"foo": 1, "bar": 2}'
     """
-    assert "foo" in data
+    assert isinstance(data, dict)
+    assert data["foo"] == 1
 ```
 
 
@@ -44,24 +45,28 @@ The plugin provides three data loaders — `@load`, `@parametrize`, and `@parame
 loading test data.
 
 - `@load`: Loads file content into a test
-- `@parametrize`: Load a file and parametrize a test by splitting its content
-- `@parametrize_dir`: Load files from a directory and parametrize a test for each file
+- `@parametrize`: Loads a file and parametrize a test by splitting its content into logical parts (e.g. lines, JSON items, etc.)
+- `@parametrize_dir`: Loads files from a directory and parametrize a test for each file
 
 Each data loader requires two positional arguments:
 - `fixture_names`: Names of the fixtures injected into the test function
   - Single name: Injects the file data
   - Two names: Injects both the resolved file path and the file data
 - `path`: An absolute path or a path relative to a data directory
-  - When a relative path is given, the plugin searches upward from the test file toward the pytest root to find the 
-nearest data directory named `data` containing the target file or directory
+  - When a relative path is given, the plugin searches upward from the test file for the **nearest** `data` directory 
+  containing the target file or directory
   - For `@parametrize` and `@parametrize_dir`, this can also be a list of paths, a glob pattern, or a list that mixes 
 both to aggregate data from multiple sources
 
+> [!NOTE]
+> If your data path is dynamic and unknown until runtime, use the `data_loader` fixture as a programmatic alternative to 
+> `@load`. See [The data_loader Fixture](#the-data_loader-fixture)
+
 > [!TIP]
-> - The default data directory name can be customized using an INI option. See the [INI Options](#ini-options) section for details
-> - Each data loader supports different optional keyword arguments to customize how the data is loaded. See the 
-> [Data Loading Pipeline](#data-loading-pipeline) and [Loader Options](#loader-options) sections for details
-> - Each data loder can be stacked on a test function. See the [Stacking Data Loaders](#stacking-data-loaders) section for details
+> - The default data directory name can be customized using an INI option. See [INI Options](#ini-options)
+> - Each data loader supports different optional keyword arguments to customize how the data is loaded. See 
+> [Data Loading Pipeline](#data-loading-pipeline) and [Loader Options](#loader-options)
+> - Each data loader can be stacked on a test function. See [Stacking Data Loaders](#stacking-data-loaders)
 
 
 
@@ -70,7 +75,7 @@ both to aggregate data from multiple sources
 Given you have the following project structure:
 ```
 .(pytest rootdir)
-├── data/               # outer data directory
+├── data/               # shared data directory
 │   ├── data1.json
 │   ├── data2.txt
 │   └── images/
@@ -80,7 +85,7 @@ Given you have the following project structure:
 ├── tests1/
 │   └── test_something.py
 └── tests2/
-    ├── data/           # inner data directory
+    ├── data/           # local data directory
     │   ├── data1.txt
     │   ├── data2.txt
     │   └── logos/
@@ -128,12 +133,10 @@ tests1/test_something.py::test_something2[data2.txt] PASSED                     
 ```
 
 > [!NOTE]
-> - If both `./tests1/test_something.py` and `./tests2/test_something_else.py` happen to have the above same loader 
-> definitions, the first test function will load `./data/data1.json` for both test files, and the second test function 
-> will load `data2.txt` from each test file's **nearest** `data` directory. This ensures that each test file loads data 
-> from its nearest data directory.  
-> This behavior applies to all loaders.
-> - If your path is dynamic or unknown until runtime, see the [The data_loader Fixture](#the-data_loader-fixture) section.
+> - If both test files load `data1.json` and `data2.txt` using the same relative paths, the former is loaded from the 
+> shared data directory, while the latter is resolved from each test file's **nearest** `data` directory. 
+> This behavior applies to all loaders
+> - For dynamic paths, use the `data_loader` fixture instead. See [The data_loader Fixture](#the-data_loader-fixture)
 
 
 ### 2. Parametrize file data — `@parametrize`
@@ -151,6 +154,7 @@ def test_something1(data):
     """
     data1.json: '{"foo": 1, "bar": 2}'
     """
+    # parametrized as key–value pairs
     assert data in [("foo", 1), ("bar", 2)]
 
 
@@ -159,6 +163,7 @@ def test_something2(file_path, data):
     """
     data2.txt: "line1\nline2\nline3"
     """
+    # parametrized as lines
     assert file_path.name == "data2.txt"
     assert data in ["line1", "line2", "line3"]
 ```
@@ -181,7 +186,7 @@ tests1/test_something.py::test_something2[data2.txt:part3] PASSED               
 > [!TIP]
 > - You can apply your own logic by specifying the `parametrizer_func` loader option
 > - By default, the plugin will apply the following logic for splitting file content:
->   - Text file: Each line in the file
+>   - Text file: Each line
 >   - JSON file:
 >     - object: Each key–value pair in the object
 >     - array: Each item in the array
@@ -190,7 +195,7 @@ tests1/test_something.py::test_something2[data2.txt:part3] PASSED               
 >   - Binary file: Unsupported by default. You must provide a custom split logic as the `parametrizer_func` loader option
 
 
-#### Parametrize from multiple files
+**Parametrize from multiple files**
 
 You can pass a list of file paths, a glob pattern, or a list that mixes both to `@parametrize` to load and concatenate 
 data from multiple files into a single parameter list:
@@ -242,6 +247,7 @@ def test_something(data):
     """
     images dir: contains 3 image files
     """
+    # parametrized as files
     assert isinstance(data, bytes)
 ```
 
@@ -260,12 +266,12 @@ tests1/test_something.py::test_something[images/image.png] PASSED               
 
 > [!NOTE]
 > - Use the `recursive=True` option to include files in subdirectories
-> - Directory and file names starting with a dot (.) are considered hidden regardless of your platform.
-> These are automatically excluded from the parametrization
+> - Directory and file names starting with a dot (.) are considered hidden regardless of your platform. These are 
+> automatically excluded from the parametrization
 
 
 
-#### Parametrize files from multiple directories
+**Parametrize files from multiple directories**
 
 You can pass a list of directory paths, a glob pattern, or a list that mixes both to `@parametrize_dir` to collect and 
 concatenate files from multiple directories into a single parameter list:
@@ -361,7 +367,7 @@ from pytest_data_loader import load, parametrize_dir
 
 
 @load("banned_words", "banned_words.txt")
-@parametrize_dir("comment", "user_comments/flagged")    # Each comment data is stored as a .txt file
+@parametrize_dir("comment", "user_comments/flagged")    # Each comment is stored as a .txt file
 def test_flagged_comments_contain_banned_words(banned_words, comment):
     """Validate that flagged comments contain at least one banned word."""
     assert any(word in comment.lower() for word in banned_words)
@@ -375,7 +381,7 @@ def test_flagged_comments_contain_banned_words(banned_words, comment):
 
 > [!TIP]
 > When stacking data loaders, test IDs generated with the default parameter IDs may become less readable. Consider 
-> explicitly specifying parameter IDs using the `id` option (`@load`) or the `id_func` option (`@parametrize`/`@parametrize_dir`).
+> explicitly specifying parameter IDs using the `id` option (`@load`) or the `id_func` option (`@parametrize`/`@parametrize_dir`)
 
 
 
@@ -398,7 +404,7 @@ from pytest_data_loader import DataLoaderFixture
 
 @pytest.fixture(scope="session")
 def env(request: FixtureRequest) -> str:
-    """Target environment specified by the --env CLI option"""
+    """Target environment specified by the custom --env CLI option"""
     return request.config.getoption("--env")
 
 
@@ -412,7 +418,7 @@ def test_env_specific_cases(data_loader: DataLoaderFixture, env: str, filename: 
 
 > [!TIP]
 > You can combine the `data_loader` fixture with `@load`, `@parametrize`, and `@parametrize_dir` in the same test 
-> function. This is useful when some data paths are static while others are determined dynamically at runtime.
+> function. This is useful when some data paths are static while others are determined dynamically at runtime
 
 
 
@@ -420,15 +426,15 @@ def test_env_specific_cases(data_loader: DataLoaderFixture, env: str, filename: 
 ## Lazy Loading
 
 Lazy loading is enabled by default for all data loaders to improve efficiency, especially with large datasets. During 
-test collection, pytest receives a lazy object as a test parameter instead of the actual data. The data is resolved 
-only when it is needed during test setup.  
+test collection, pytest receives a lazy object instead of the actual data. The data is resolved only when it is needed 
+during test setup.  
 If you need to disable this behavior for a specific test, pass `lazy_loading=False` to the data loader.
 
 > [!NOTE]
 > Lazy loading for the `@parametrize` loader works slightly differently from other loaders. Since Pytest needs to know 
 > the total number of parameters in advance, the plugin still needs to inspect the file data and split it once during 
 > test collection phase. But once it's done, the split data will not be kept as parameter values and will be loaded 
-> lazily later.
+> lazily later
 
 
 
@@ -478,14 +484,14 @@ directory
 
 By default, the plugin reads and parses file content on loading as follows:
 - `.json` — Parsed with `json.load`
-- `.jsonl` — Each line is parsed as JSON
+- `.jsonl` — Each line is parsed as JSON object
 - All other file types — Loads as raw text or binary content
 
 ### Customizing defaults
 
-The above default behavior can be customized by specifying any file reader that accepts a file-like object returned by 
-`open()`. This includes built-in readers, third-party library readers, and your own custom readers. File read 
-options (e.g., `mode`, `encoding`, etc.) can also be provided and will be passed to `open()`.
+You can customize this behavior by specifying a file reader that accepts a file-like object returned by `open()`. 
+This includes built-in readers, third-party library readers, and your own custom readers. File read options 
+(e.g., `mode`, `encoding`, etc.) can also be provided and will be passed to `open()`.
 
 Below are some common examples of file readers you might use:
 
@@ -565,12 +571,12 @@ def test_something2(data):
 
 > [!NOTE]
 > If read options are specified without a `file_reader`, the plugin uses the `conftest.py`-registered reader (if any)
-> with those options. If a `file_reader` is specified without read options, no read options are applied.
+> with those options. If a `file_reader` is specified without read options, no read options are applied
 
 > [!TIP]
 > - A file reader must take one argument (a file-like object returned by `open()`)
-> - If you need to pass options to the file reader, use `lambda` function or a regular function.  
-> eg. `file_reader=lambda f: csv.reader(f, delimiter=";")`
+> - If you need to pass options to the file reader, use `lambda` function or a regular function  
+> e.g. `file_reader=lambda f: csv.reader(f, delimiter=";")`
 > - You can adjust the final data the test function receives using loader functions. For example, 
 > the following code will parametrize the test with the text data from each PDF page   
 >  ```python
@@ -602,7 +608,7 @@ Each data loader supports different optional parameters you can use to change ho
 
 > [!NOTE]
 > `onload_func` must take either one (data) or two (file path, data) arguments. When `file_reader` is provided, the 
-data is the reader object itself.
+data is the reader object itself
 
 
 ### @parametrize
@@ -619,14 +625,14 @@ and `newline` options
 
 > [!NOTE]
 > Each loader function must take either one (data) or two (file path, data) arguments. When `file_reader` is provided, 
-the data is the reader object itself.
+its return value becomes the data passed to loader functions
 
 
 ### @parametrize_dir
 - `lazy_loading`: Enable or disable lazy loading
-- `recursive`: Recursively load files from all subdirectories of the given directory. Defaults to `False`.
-NOTE: This option is ignored for directories matched by a glob pattern. Use ** for recursive matching
-- `file_reader_func`: A function to specify file readers to matching file paths
+- `recursive`: Recursively load files from all subdirectories of the given directory. Defaults to `False`. 
+This option is ignored for glob patterns. Use `**` instead for recursive matching
+- `file_reader_func`: A function that determines the file reader for each file path
 - `filter_func`: A function to filter file paths. Only the contents of matching file paths are included as the test 
 parameters
 - `process_func`: A function to adjust the shape of each loaded file's data before passing it to the test function
