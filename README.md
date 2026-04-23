@@ -392,8 +392,8 @@ file path is not known until test runtime — for example, when it depends on an
 CLI option, etc. The fixture provides a callable (an instance of the `DataLoaderFixture` class) that accepts a file 
 path and returns the loaded data. It uses the same path resolution and loading logic as `@load`. Loader options like 
 `file_reader`, `onload_func`, and read options are also supported and can be passed as keyword arguments.  
-Below is an example where the file path depends on both a custom CLI option (`--env`) and parametrized test 
-inputs, which is something the regular data loader decorators cannot support:
+Below is an example where the file path depends on both a custom CLI option and parametrized test inputs, which is 
+a use case `@load` cannot support:
 
 ```python
 import pytest
