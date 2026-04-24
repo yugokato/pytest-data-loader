@@ -93,6 +93,8 @@ def get_matching_paths(root_dir: Path, pattern: str, match_type: Literal["file",
     matched_paths: list[Path] = []
     for path in sorted(paths):
         p = root_dir / path
+        if p.is_symlink():
+            check_circular_symlink(p)
         if (is_file and p.is_file()) or (is_dir and p.is_dir()):
             if p.is_dir():
                 check_and_track_dir(p, visited_dirs)
