@@ -5,7 +5,9 @@ from pypdf import PageObject, PdfReader
 from pytest import FixtureRequest
 
 from pytest_data_loader import load, parametrize, parametrize_dir
-from tests.tests_loader.helper import PATH_PDF_FILE, PATH_PDF_FILE_DIR, get_parametrized_test_idx
+from tests.paths import PATH_PDF_FILE, PATH_PDF_FILE_DIR
+
+from ..helper import get_parametrized_test_idx
 
 pytestmark = pytest.mark.readers
 

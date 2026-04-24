@@ -7,7 +7,8 @@ from pytest import ExitCode
 from pytest_data_loader import load
 from pytest_data_loader.constants import DEFAULT_LOADER_DIR_NAME, ROOT_DIR
 from pytest_data_loader.types import DataLoader, DataLoaderIniOption
-from tests.tests_plugin.helper import LoaderRootDir, TestContext, create_test_data_in_data_dir, run_pytest_with_context
+
+from .helper import LoaderRootDir, TestContext, create_test_data_in_data_dir, run_pytest_with_context
 
 pytestmark = pytest.mark.plugin
 
@@ -28,9 +29,9 @@ class TestIniOptions:
     ) -> None:
         """Test data_loader_dir_name INI option with valid names"""
         test_context.pytester.makeini(f"""
-    [pytest]
-    {DataLoaderIniOption.DATA_LOADER_DIR_NAME} = {data_dir_name}
-    """)
+        [pytest]
+        {DataLoaderIniOption.DATA_LOADER_DIR_NAME} = {data_dir_name}
+        """)
         result = run_pytest_with_context(test_context, collect_only=collect_only)
         assert result.ret == ExitCode.OK
         if not collect_only:
@@ -89,9 +90,9 @@ class TestIniOptions:
     ) -> None:
         """Test data_loader_strip_trailing_whitespace INI option with valid names"""
         test_context.pytester.makeini(f"""
-    [pytest]
-    {DataLoaderIniOption.DATA_LOADER_STRIP_TRAILING_WHITESPACE} = {strip_trailing_whitespace}
-    """)
+        [pytest]
+        {DataLoaderIniOption.DATA_LOADER_STRIP_TRAILING_WHITESPACE} = {strip_trailing_whitespace}
+        """)
         result = run_pytest_with_context(test_context, collect_only=collect_only)
         assert result.ret == ExitCode.OK
         if not collect_only:
@@ -104,9 +105,9 @@ class TestIniOptions:
     ) -> None:
         """Test data_loader_dir_name INI option with invalid names"""
         test_context.pytester.makeini(f"""
-    [pytest]
-    {DataLoaderIniOption.DATA_LOADER_DIR_NAME} = {invalid_dir_name}
-    """)
+        [pytest]
+        {DataLoaderIniOption.DATA_LOADER_DIR_NAME} = {invalid_dir_name}
+        """)
         result = run_pytest_with_context(test_context, collect_only=collect_only)
         assert result.ret == ExitCode.USAGE_ERROR
         assert f"INI option {DataLoaderIniOption.DATA_LOADER_DIR_NAME}: Invalid value: '{invalid_dir_name}'" in str(

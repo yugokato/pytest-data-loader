@@ -5,7 +5,9 @@ import pytest
 from pytest import FixtureRequest
 
 from pytest_data_loader import load, parametrize
-from tests.tests_loader.helper import PATH_TEXT_FILE, get_parametrized_test_idx
+from tests.paths import PATH_TEXT_FILE
+
+from ..helper import get_parametrized_test_idx
 
 pytestmark = pytest.mark.readers
 

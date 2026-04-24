@@ -8,8 +8,9 @@ from pytest import ExitCode, Pytester, RunResult
 from pytest_data_loader import parametrize_dir
 from pytest_data_loader.constants import ROOT_DIR
 from pytest_data_loader.types import DataLoader
-from tests.tests_loader.helper import ABS_PATH_LOADER_DIR
-from tests.tests_plugin.helper import (
+from tests.paths import ABS_PATH_LOADER_DIR
+
+from .helper import (
     TestContext,
     create_test_context,
     create_test_data_in_data_dir,

@@ -5,7 +5,7 @@ from typing import Any
 import pytest
 
 from pytest_data_loader import load, parametrize, parametrize_dir
-from tests.tests_loader.helper import PATH_INI_FILE, PATH_INI_FILE_DIR
+from tests.paths import PATH_INI_FILE, PATH_INI_FILE_DIR
 
 pytestmark = pytest.mark.readers
 

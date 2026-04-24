@@ -159,13 +159,13 @@ class TestParametrizeWithGlobPath:
             pattern = str(data_dir / pattern)
 
         pytester.makepyfile(f"""
-            from pytest_data_loader import parametrize
+        from pytest_data_loader import parametrize
 
-            @parametrize(("file_path", "data"), {pattern!r})
-            def test_func(file_path, data):
-                assert not file_path.name.startswith(".")
-                assert file_path.name != "should_be_excluded.txt"
-            """)
+        @parametrize(("file_path", "data"), {pattern!r})
+        def test_func(file_path, data):
+            assert not file_path.name.startswith(".")
+            assert file_path.name != "should_be_excluded.txt"
+        """)
         result = pytester.runpytest("-v")
         assert result.ret == ExitCode.OK
         result.assert_outcomes(passed=2)
@@ -312,12 +312,12 @@ class TestParametrizeDirWithGlobPath:
             pattern = str(data_dir / pattern)
 
         pytester.makepyfile(f"""
-           from pytest_data_loader import parametrize_dir
+        from pytest_data_loader import parametrize_dir
 
-           @parametrize_dir(("file_path", "data"), [{sub_dir1!r}, {pattern!r}])
-           def test_func(file_path, data):
-               ...
-           """)
+        @parametrize_dir(("file_path", "data"), [{sub_dir1!r}, {pattern!r}])
+        def test_func(file_path, data):
+            ...
+        """)
         result = pytester.runpytest("-v")
         assert result.ret == ExitCode.OK
         result.assert_outcomes(passed=4)
@@ -389,11 +389,11 @@ class TestParametrizeDirWithGlobPath:
             pattern = str(data_dir / pattern)
 
         code = f"""
-            from pytest_data_loader import parametrize_dir
+        from pytest_data_loader import parametrize_dir
 
-            @parametrize_dir(("file_path", "data"), {pattern!r})
-            def test_func(file_path, data):
-            """
+        @parametrize_dir(("file_path", "data"), {pattern!r})
+        def test_func(file_path, data):
+        """
         if has_matching_dir:
             code += '    assert "[" in file_path.parent.name\n'
         else:
@@ -469,12 +469,12 @@ class TestParametrizeDirWithGlobPath:
 
         loader_def = f'@parametrize_dir(("file_path", "data"), {path}, recursive=True)'
         p = pytester.makepyfile(f"""
-                from pytest_data_loader import parametrize_dir
+        from pytest_data_loader import parametrize_dir
 
-                {loader_def}
-                def test_func(file_path, data):
-                    ...
-                """)
+        {loader_def}
+        def test_func(file_path, data):
+            ...
+        """)
 
         result = pytester.runpytest("-v")
         assert result.ret == ExitCode.OK

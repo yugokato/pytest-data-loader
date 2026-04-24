@@ -1,7 +1,7 @@
 import pytest
 from pytest import ExitCode
 
-from tests.tests_plugin.helper import TestContext, is_valid_fixture_names, run_pytest_with_context
+from .helper import TestContext, is_valid_fixture_names, run_pytest_with_context
 
 pytestmark = pytest.mark.plugin
 

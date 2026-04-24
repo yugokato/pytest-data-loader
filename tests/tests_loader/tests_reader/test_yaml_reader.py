@@ -6,7 +6,7 @@ import pytest
 import yaml
 
 from pytest_data_loader import load, parametrize, parametrize_dir
-from tests.tests_loader.helper import PATH_YAML_DOCUMENTS_FILE, PATH_YAML_FILE, PATH_YAML_FILE_DIR
+from tests.paths import PATH_YAML_DOCUMENTS_FILE, PATH_YAML_FILE, PATH_YAML_FILE_DIR
 
 pytestmark = pytest.mark.readers
 

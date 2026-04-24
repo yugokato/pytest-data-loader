@@ -3,7 +3,8 @@ from _pytest.config import ExitCode
 
 from pytest_data_loader import load, parametrize, parametrize_dir
 from pytest_data_loader.types import DataLoader
-from tests.tests_plugin.helper import TestContext, run_pytest_with_context
+
+from .helper import TestContext, run_pytest_with_context
 
 pytestmark = pytest.mark.plugin
 

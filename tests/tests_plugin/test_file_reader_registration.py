@@ -28,28 +28,28 @@ class TestFileReaderRegistration:
         else:
             reader_def = ""
         pytester.makepyfile(f"""
-    import io
-    from pathlib import Path
+        import io
+        from pathlib import Path
 
-    import pytest_data_loader
-    from pytest_data_loader.loaders.reader import FileReader
+        import pytest_data_loader
+        from pytest_data_loader.loaders.reader import FileReader
 
-    register = {register}
-    override = {override}
+        register = {register}
+        override = {override}
 
-    @pytest_data_loader.load("data", {rel_path!r}{reader_def})
-    def test_something(data):
-        if register or override:
-            registered_file_reader = FileReader.get_registered_reader(Path(__file__), {ext!r})
-            assert registered_file_reader.reader == io.TextIOWrapper
-            if override:
-                assert isinstance(data, io.BufferedReader)
+        @pytest_data_loader.load("data", {rel_path!r}{reader_def})
+        def test_something(data):
+            if register or override:
+                registered_file_reader = FileReader.get_registered_reader(Path(__file__), {ext!r})
+                assert registered_file_reader.reader == io.TextIOWrapper
+                if override:
+                    assert isinstance(data, io.BufferedReader)
+                else:
+                    assert isinstance(data, io.TextIOWrapper)
             else:
-                assert isinstance(data, io.TextIOWrapper)
-        else:
-            assert isinstance(data, str)
-            assert data == {file_data!r}
-    """)
+                assert isinstance(data, str)
+                assert data == {file_data!r}
+        """)
         result = pytester.runpytest_subprocess()
         assert result.ret == ExitCode.OK
         result.assert_outcomes(passed=1)
@@ -77,18 +77,18 @@ class TestFileReaderRegistration:
 
         # Create test file
         pytester.makepyfile(f"""
-       import io
-       from pathlib import Path
+        import io
+        from pathlib import Path
 
-       import pytest_data_loader
-       from pytest_data_loader.loaders.reader import FileReader
+        import pytest_data_loader
+        from pytest_data_loader.loaders.reader import FileReader
 
-       @pytest_data_loader.load("data", {rel_path!r})
-       def test_something(data):
-           file_reader = FileReader.get_registered_reader(Path(__file__), {ext!r})
-           assert file_reader.reader == io.BufferedReader
-           assert isinstance(data, io.BufferedReader)
-       """)
+        @pytest_data_loader.load("data", {rel_path!r})
+        def test_something(data):
+            file_reader = FileReader.get_registered_reader(Path(__file__), {ext!r})
+            assert file_reader.reader == io.BufferedReader
+            assert isinstance(data, io.BufferedReader)
+        """)
 
         pytester._path = orig_dir
         pytester.chdir()
@@ -155,23 +155,23 @@ class TestFileReaderRegistration:
         else:
             read_option_def = ""
         pytester.makeconftest(f"""
-    import io
-    import pytest_data_loader
+        import io
+        import pytest_data_loader
 
-    pytest_data_loader.register_reader({ext!r}, {reader_def}, {read_option_def})
-    """)
+        pytest_data_loader.register_reader({ext!r}, {reader_def}, {read_option_def})
+        """)
 
     @staticmethod
     def _create_test_for_negative_cases(pytester: Pytester, rel_path: str, register_reader: bool = False) -> Path:
         return pytester.makepyfile(f"""
-    import io
-    from pathlib import Path
-    import pytest_data_loader
+        import io
+        from pathlib import Path
+        import pytest_data_loader
 
-    if {register_reader}:
-        pytest_data_loader.register_reader({Path(rel_path).suffix!r}, "io.TextIOWrapper")
+        if {register_reader}:
+            pytest_data_loader.register_reader({Path(rel_path).suffix!r}, "io.TextIOWrapper")
 
-    @pytest_data_loader.load("data", {rel_path!r})
-    def test_something(data):
-        ...
-    """)
+        @pytest_data_loader.load("data", {rel_path!r})
+        def test_something(data):
+            ...
+        """)

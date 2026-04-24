@@ -6,11 +6,11 @@ import pytest
 from pytest_data_loader import parametrize_dir
 from pytest_data_loader.loaders.impl import DirectoryLoader, FileLoader
 from pytest_data_loader.types import DataLoaderLoadAttrs, LazyLoadedData, LoadedData
-from tests.tests_loader.helper import ABS_PATH_LOADER_DIR, PATH_EMPTY_DIR, PATH_SOME_DIR, PATH_SOME_DIR_INNER
+from tests.paths import ABS_PATH_LOADER_DIR, EMPTY_DIR, SOME_DIR, SOME_DIR_INNER
 
 pytestmark = pytest.mark.unittest
 
-# Number of non-hidden files in PATH_SOME_DIR (non-recursive)
+# Number of non-hidden files in SOME_DIR (non-recursive)
 _NUM_FILES_IN_SOME_DIR = 3
 
 
@@ -19,12 +19,12 @@ class TestDirectoryLoader:
 
     @pytest.mark.parametrize("is_abs_path", [False, True])
     @pytest.mark.parametrize("recursive", [False, True])
-    @pytest.mark.parametrize("path", [PATH_SOME_DIR, PATH_EMPTY_DIR])
+    @pytest.mark.parametrize("path", [SOME_DIR, EMPTY_DIR])
     @pytest.mark.parametrize("lazy_loading", [True, False])
     def test_directory_loader(self, lazy_loading: bool, path: str, is_abs_path: bool, recursive: bool) -> None:
         """Test directory loader with various file types and with/without lazy loading"""
         abs_dir_path = ABS_PATH_LOADER_DIR / path
-        is_empty_dir = path == PATH_EMPTY_DIR
+        is_empty_dir = path == EMPTY_DIR
         if is_abs_path:
             path = abs_dir_path
             load_from = None
@@ -49,9 +49,9 @@ class TestDirectoryLoader:
         else:
             assert len(loaded_files) > 0
             if recursive:
-                assert any(f.file_path.is_relative_to(abs_dir_path / PATH_SOME_DIR_INNER) for f in loaded_files)
+                assert any(f.file_path.is_relative_to(abs_dir_path / SOME_DIR_INNER) for f in loaded_files)
             else:
-                assert not any(f.file_path.is_relative_to(abs_dir_path / PATH_SOME_DIR_INNER) for f in loaded_files)
+                assert not any(f.file_path.is_relative_to(abs_dir_path / SOME_DIR_INNER) for f in loaded_files)
             for loaded_data in loaded_files:
                 file_path = loaded_data.file_path
                 assert file_path.is_relative_to(abs_dir_path)
@@ -72,7 +72,7 @@ class TestDirectoryLoaderCaching:
     """Tests for DirectoryLoader cache state management"""
 
     def _make_load_attrs(self, lazy_loading: bool = True) -> DataLoaderLoadAttrs:
-        """Create DataLoaderLoadAttrs for PATH_SOME_DIR.
+        """Create DataLoaderLoadAttrs for SOME_DIR.
 
         :param lazy_loading: Whether to use lazy loading
         """
@@ -80,16 +80,16 @@ class TestDirectoryLoaderCaching:
             loader=parametrize_dir,
             search_from=Path(__file__),
             fixture_names=("file_path", "data"),
-            path=Path(PATH_SOME_DIR),
+            path=Path(SOME_DIR),
             lazy_loading=lazy_loading,
         )
 
     def _make_dir_loader(self, lazy_loading: bool = True) -> DirectoryLoader:
-        """Create a DirectoryLoader for PATH_SOME_DIR.
+        """Create a DirectoryLoader for SOME_DIR.
 
         :param lazy_loading: Whether to use lazy loading
         """
-        abs_dir_path = ABS_PATH_LOADER_DIR / PATH_SOME_DIR
+        abs_dir_path = ABS_PATH_LOADER_DIR / SOME_DIR
         return DirectoryLoader(
             abs_dir_path,
             self._make_load_attrs(lazy_loading=lazy_loading),

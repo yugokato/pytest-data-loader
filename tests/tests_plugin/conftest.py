@@ -17,6 +17,7 @@ from tests.tests_plugin.helper import LoaderRootDir, TestContext, create_test_co
 
 pytest_plugins = "pytester"
 
+
 if sys.platform == "win32":
     NEW_LINE = "\r\n"
     # Matches %VAR_NAME% style environment variable references on Windows
