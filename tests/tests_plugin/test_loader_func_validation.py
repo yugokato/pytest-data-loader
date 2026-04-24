@@ -7,7 +7,8 @@ from pytest_data_loader import load, parametrize, parametrize_dir
 from pytest_data_loader.constants import DEFAULT_LOADER_DIR_NAME
 from pytest_data_loader.types import DataLoader, DataLoaderFunctionType
 from pytest_data_loader.utils import validate_loader_func_args_and_normalize
-from tests.tests_plugin.helper import TestContext, get_num_func_args, run_pytest_with_context
+
+from .helper import TestContext, get_num_func_args, run_pytest_with_context
 
 pytestmark = pytest.mark.plugin
 

@@ -8,7 +8,7 @@ else:
 import pytest
 
 from pytest_data_loader import load, parametrize, parametrize_dir
-from tests.tests_loader.helper import PATH_TOML_FILE, PATH_TOML_FILE_DIR
+from tests.paths import PATH_TOML_FILE, PATH_TOML_FILE_DIR
 
 pytestmark = pytest.mark.readers
 

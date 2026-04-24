@@ -5,7 +5,7 @@ import pytest
 from pytest import FixtureRequest
 
 from pytest_data_loader import load
-from tests.tests_loader.helper import (
+from tests.paths import (
     ABS_PATH_LOADER_DIR,
     PATH_JPEG_FILE,
     PATH_JSON_FILE_NESTED_OBJECT,
@@ -17,7 +17,10 @@ pytestmark = pytest.mark.loaders
 
 # NOTE:
 # - lazy_loading option is separately tested in another test using pytester
-# - This file covers 3 types of data types the plugin handles differently: text file, json file, and binary file
+# - This file covers 3 types of data types the plugin handles differently:
+#   - text file (non-structured file)
+#   - json file (structured file)
+#   - binary file
 
 
 # Text file

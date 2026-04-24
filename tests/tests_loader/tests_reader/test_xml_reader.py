@@ -3,7 +3,7 @@ import xml.etree.ElementTree as ET
 import pytest
 
 from pytest_data_loader import load, parametrize, parametrize_dir
-from tests.tests_loader.helper import PATH_XML_FILE, PATH_XML_FILE_DIR
+from tests.paths import PATH_XML_FILE, PATH_XML_FILE_DIR
 
 pytestmark = pytest.mark.readers
 

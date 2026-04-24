@@ -5,14 +5,9 @@ from pytest import FixtureRequest
 
 from pytest_data_loader import parametrize_dir
 from pytest_data_loader.types import LoadedDataType
-from tests.tests_loader.helper import (
-    ABS_PATH_LOADER_DIR,
-    PATH_IMAGE_DIR,
-    PATH_SOME_DIR,
-    PATH_SOME_DIR_INNER,
-    PATH_TEXT_FILE_DIR,
-    get_parametrized_test_idx,
-)
+from tests.paths import ABS_PATH_LOADER_DIR, IMAGE_DIR, PATH_TEXT_FILE_DIR, SOME_DIR, SOME_DIR_INNER
+
+from .helper import get_parametrized_test_idx
 
 pytestmark = pytest.mark.loaders
 
@@ -20,36 +15,36 @@ pytestmark = pytest.mark.loaders
 # - lazy_loading option is separately tested in another test using pytester
 
 
-@parametrize_dir(("file_path", "data"), PATH_SOME_DIR)
+@parametrize_dir(("file_path", "data"), SOME_DIR)
 def test_parametrize_dir_with_no_options(request: FixtureRequest, file_path: Path, data: LoadedDataType) -> None:
     """Test @parametrize_dir loader with no options using text files"""
     assert isinstance(data, str)
     idx = get_parametrized_test_idx(request, "data")
-    assert file_path == ABS_PATH_LOADER_DIR / PATH_SOME_DIR / f"{idx}.txt"
+    assert file_path == ABS_PATH_LOADER_DIR / SOME_DIR / f"{idx}.txt"
     assert data == f"data{idx}"
 
 
-@parametrize_dir(("file_path", "data"), PATH_IMAGE_DIR)
+@parametrize_dir(("file_path", "data"), IMAGE_DIR)
 def test_parametrize_dir_with_no_options_binary(file_path: Path, data: LoadedDataType) -> None:
     """Test @parametrize_dir loader with no options using binary files"""
     assert isinstance(data, bytes)
     assert data == file_path.read_bytes()
 
 
-@parametrize_dir(("file_path", "data"), PATH_SOME_DIR, read_option_func=lambda x: {"mode": "rb"})
+@parametrize_dir(("file_path", "data"), SOME_DIR, read_option_func=lambda x: {"mode": "rb"})
 def test_parametrize_dir_in_binary_mode(file_path: Path, data: LoadedDataType) -> None:
     """Test @parametrize_dir loader in binary mode"""
     assert isinstance(data, bytes)
     assert data == file_path.read_bytes()
 
 
-@parametrize_dir(("file_path", "data"), PATH_SOME_DIR, filter_func=lambda x: int(x.stem) % 2 == 1)
+@parametrize_dir(("file_path", "data"), SOME_DIR, filter_func=lambda x: int(x.stem) % 2 == 1)
 def test_parametrize_dir_with_filter_func(file_path: Path, data: LoadedDataType) -> None:
     """Test @parametrize_dir loader with the filter_func option"""
     assert int(file_path.stem) % 2 == 1
 
 
-@parametrize_dir(("file_path", "data"), PATH_SOME_DIR, process_func=lambda x: "# " + x)
+@parametrize_dir(("file_path", "data"), SOME_DIR, process_func=lambda x: "# " + x)
 def test_parametrize_dir_with_process_func(file_path: Path, data: LoadedDataType) -> None:
     """Test @parametrize_dir loader with the process_func option"""
     assert data == "# " + file_path.read_text()
@@ -57,7 +52,7 @@ def test_parametrize_dir_with_process_func(file_path: Path, data: LoadedDataType
 
 @parametrize_dir(
     ("file_path", "data"),
-    PATH_IMAGE_DIR,
+    IMAGE_DIR,
     marker_func=lambda x: getattr(pytest.mark, x.suffix[1:]),
 )
 def test_parametrize_dir_with_marker_func(request: FixtureRequest, file_path: Path, data: LoadedDataType) -> None:
@@ -66,31 +61,31 @@ def test_parametrize_dir_with_marker_func(request: FixtureRequest, file_path: Pa
     assert marker
 
 
-@parametrize_dir(("file_path", "data"), PATH_SOME_DIR, id_func=lambda x: x.stem)
+@parametrize_dir(("file_path", "data"), SOME_DIR, id_func=lambda x: x.stem)
 def test_parametrize_dir_with_id_func(request: FixtureRequest, file_path: Path, data: LoadedDataType) -> None:
     """Test @parametrize_dir loader with the id_func option"""
     assert request.node.nodeid.endswith(f"[{file_path.stem}]")
 
 
-@parametrize_dir(("file_path", "data"), PATH_SOME_DIR, recursive=True)
+@parametrize_dir(("file_path", "data"), SOME_DIR, recursive=True)
 def test_parametrize_dir_recursive(request: FixtureRequest, file_path: Path, data: LoadedDataType) -> None:
     """Test @parametrize_dir loader with recursive option"""
     assert isinstance(data, str)
     idx = get_parametrized_test_idx(request, "data")
-    if file_path.parent == ABS_PATH_LOADER_DIR / PATH_SOME_DIR:
-        assert file_path == ABS_PATH_LOADER_DIR / PATH_SOME_DIR / f"{idx}.txt"
+    if file_path.parent == ABS_PATH_LOADER_DIR / SOME_DIR:
+        assert file_path == ABS_PATH_LOADER_DIR / SOME_DIR / f"{idx}.txt"
     else:
-        assert file_path == ABS_PATH_LOADER_DIR / PATH_SOME_DIR / PATH_SOME_DIR_INNER / f"{idx}.txt"
+        assert file_path == ABS_PATH_LOADER_DIR / SOME_DIR / SOME_DIR_INNER / f"{idx}.txt"
     assert data == f"data{idx}"
 
 
-@parametrize_dir(("file_path", "_"), PATH_SOME_DIR, recursive=True, filter_func=lambda x: int(x.stem) % 2 == 1)
+@parametrize_dir(("file_path", "_"), SOME_DIR, recursive=True, filter_func=lambda x: int(x.stem) % 2 == 1)
 def test_parametrize_dir_recursive_and_filter_func(file_path: Path, _: LoadedDataType) -> None:
     """Test @parametrize_dir loader with recursive and filter_func option"""
     assert int(file_path.stem) % 2 == 1
 
 
-@parametrize_dir("data", [PATH_SOME_DIR, PATH_TEXT_FILE_DIR])
+@parametrize_dir("data", [SOME_DIR, PATH_TEXT_FILE_DIR])
 def test_parametrize_dir_multi_dirs(request: FixtureRequest, data: str) -> None:
     """Test @parametrize_dir loader with a list of dir paths concatenates all parametrized data"""
     assert isinstance(data, str)
@@ -99,7 +94,7 @@ def test_parametrize_dir_multi_dirs(request: FixtureRequest, data: str) -> None:
     assert data == all_expected[idx]
 
 
-@parametrize_dir("data", [PATH_SOME_DIR, PATH_TEXT_FILE_DIR], recursive=True)
+@parametrize_dir("data", [SOME_DIR, PATH_TEXT_FILE_DIR], recursive=True)
 def test_parametrize_dir_multi_dirs_recursive(request: FixtureRequest, data: str) -> None:
     """Test @parametrize_dir loader with recursive option with a list of dir paths concatenates all parametrized data"""
     assert isinstance(data, str)

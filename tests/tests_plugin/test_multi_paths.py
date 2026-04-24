@@ -275,12 +275,12 @@ class TestLoadMultiPath:
     def test_load_multi_path_not_supported(self, pytester: pytest.Pytester) -> None:
         """Test that @load does not support multi-path and raises an error."""
         pytester.makepyfile("""
-    from pytest_data_loader import load
+        from pytest_data_loader import load
 
-    @load("data", ["file1.txt", "file2.txt"])
-    def test_func(data):
-        pass
-    """)
+        @load("data", ["file1.txt", "file2.txt"])
+        def test_func(data):
+            pass
+        """)
         result = pytester.runpytest("--collect-only", "-q")
         assert result.ret == ExitCode.INTERRUPTED
         assert "Multi-path is not supported for @load loader" in str(result.stdout)

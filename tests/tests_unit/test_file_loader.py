@@ -9,7 +9,7 @@ import pytest
 from pytest_data_loader import load, parametrize, parametrize_dir
 from pytest_data_loader.loaders.impl import FileLoader
 from pytest_data_loader.types import DataLoader, DataLoaderLoadAttrs, LazyLoadedData, LazyLoadedPartData, LoadedData
-from tests.tests_loader.helper import (
+from tests.paths import (
     ABS_PATH_LOADER_DIR,
     PATH_JSON_FILE_ARRAY,
     PATH_JSONL_FILE,

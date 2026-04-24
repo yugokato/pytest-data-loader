@@ -7,12 +7,8 @@ import pytest
 from pytest import FixtureRequest
 
 from pytest_data_loader import load, parametrize, parametrize_dir
-from tests.tests_loader.helper import (
-    PATH_CSV_FILE,
-    PATH_CSV_FILE_DIR,
-    PATH_CSV_FILE_SEMICOLON,
-    get_parametrized_test_idx,
-)
+from tests.paths import PATH_CSV_FILE, PATH_CSV_FILE_DIR, PATH_CSV_FILE_SEMICOLON
+from tests.tests_loader.helper import get_parametrized_test_idx
 
 pytestmark = pytest.mark.readers
 

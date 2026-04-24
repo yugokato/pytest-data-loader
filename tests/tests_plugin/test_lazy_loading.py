@@ -6,7 +6,8 @@ from pytest import ExitCode, Pytester
 
 from pytest_data_loader import parametrize
 from pytest_data_loader.types import DataLoader, LazyLoadedData, LazyLoadedPartData
-from tests.tests_plugin.helper import TestContext, create_test_context, run_pytest_with_context
+
+from .helper import TestContext, create_test_context, run_pytest_with_context
 
 pytestmark = pytest.mark.plugin
 
@@ -93,41 +94,40 @@ class TestLazyLoading:
         pytester = test_context.pytester
 
         pytester.makeconftest("""
-import builtins
-import json
+        import builtins
+        import json
 
-import pytest
+        import pytest
 
-_original_open = builtins.open
-_io_log = []
-_current_phase = "collection"
+        _original_open = builtins.open
+        _io_log = []
+        _current_phase = "collection"
 
-
-def _tracking_open(file, *args, **kwargs):
-    _io_log.append((_current_phase, str(file)))
-    return _original_open(file, *args, **kwargs)
-
-
-builtins.open = _tracking_open
+        def _tracking_open(file, *args, **kwargs):
+            _io_log.append((_current_phase, str(file)))
+            return _original_open(file, *args, **kwargs)
 
 
-def pytest_collection_modifyitems():
-    global _current_phase
-    _current_phase = "between"
+        builtins.open = _tracking_open
 
 
-@pytest.hookimpl(wrapper=True)
-def pytest_runtest_setup():
-    global _current_phase
-    _current_phase = "setup"
-    yield
-    _current_phase = "between"
+        def pytest_collection_modifyitems():
+            global _current_phase
+            _current_phase = "between"
 
 
-def pytest_terminal_summary():
-    builtins.open = _original_open
-    print("IO_TIMING_REPORT:" + json.dumps(_io_log))
-""")
+        @pytest.hookimpl(wrapper=True)
+        def pytest_runtest_setup():
+            global _current_phase
+            _current_phase = "setup"
+            yield
+            _current_phase = "between"
+
+
+        def pytest_terminal_summary():
+            builtins.open = _original_open
+            print("IO_TIMING_REPORT:" + json.dumps(_io_log))
+        """)
 
         result = run_pytest_with_context(test_context, "arg1", lazy_loading=lazy_loading)
         assert result.ret == ExitCode.OK
@@ -190,45 +190,45 @@ def pytest_terminal_summary():
         test_context = create_test_context(pytester, loader, file_extension=file_extension, file_content=file_content)
 
         pytester.makeconftest("""
-import sys
-import json
-import pytest
+        import sys
+        import json
+        import pytest
 
 
-def _get_data_size(obj, _seen=None):
-    if _seen is None:
-        _seen = set()
-    obj_id = id(obj)
-    if obj_id in _seen:
-        return 0
-    _seen.add(obj_id)
-    size = sys.getsizeof(obj)
-    if isinstance(obj, dict):
-        for k, v in obj.items():
-            size += _get_data_size(k, _seen)
-            size += _get_data_size(v, _seen)
-    elif isinstance(obj, (list, tuple, set, frozenset)):
-        for item in obj:
-            size += _get_data_size(item, _seen)
-    return size
+        def _get_data_size(obj, _seen=None):
+            if _seen is None:
+                _seen = set()
+            obj_id = id(obj)
+            if obj_id in _seen:
+                return 0
+            _seen.add(obj_id)
+            size = sys.getsizeof(obj)
+            if isinstance(obj, dict):
+                for k, v in obj.items():
+                    size += _get_data_size(k, _seen)
+                    size += _get_data_size(v, _seen)
+            elif isinstance(obj, (list, tuple, set, frozenset)):
+                for item in obj:
+                    size += _get_data_size(item, _seen)
+            return size
 
 
-_total_param_size = 0
+        _total_param_size = 0
 
 
-def pytest_collection_modifyitems(items):
-    global _total_param_size
-    for item in items:
-        if hasattr(item, "callspec"):
-            for v in item.callspec.params.values():
-                _total_param_size += _get_data_size(v)
+        def pytest_collection_modifyitems(items):
+            global _total_param_size
+            for item in items:
+                if hasattr(item, "callspec"):
+                    for v in item.callspec.params.values():
+                        _total_param_size += _get_data_size(v)
 
 
-@pytest.hookimpl(wrapper=True)
-def pytest_terminal_summary():
-    yield
-    print("MEMORY_REPORT:" + json.dumps({"total_param_size": _total_param_size}))
-""")
+        @pytest.hookimpl(wrapper=True)
+        def pytest_terminal_summary():
+            yield
+            print("MEMORY_REPORT:" + json.dumps({"total_param_size": _total_param_size}))
+        """)
 
         result = run_pytest_with_context(test_context, "arg1", lazy_loading=lazy_loading)
         assert result.ret == ExitCode.OK
