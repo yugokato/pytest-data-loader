@@ -603,6 +603,7 @@ Each data loader supports different optional parameters you can use to change ho
 - `file_reader`: A file reader the plugin should use to read the file data
 - `onload_func`: A function to transform or preprocess loaded data before passing it to the test function
 - `id`: The parameter ID for the loaded data. If not specified, the relative or absolute file path is used
+- `marks`: Pytest mark(s) to apply to the loaded parameter. Accepts a single mark or a collection of marks
 - `**read_options`: File read options the plugin passes to `open()`. Supports only `mode`, `encoding`, `errors`, and 
 `newline` options
 
