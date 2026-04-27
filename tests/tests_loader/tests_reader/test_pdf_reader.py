@@ -12,15 +12,15 @@ from ..helper import get_parametrized_test_idx
 pytestmark = pytest.mark.readers
 
 
-@load("data", PATH_PDF_FILE, file_reader=PdfReader, mode="rb")
+@load("data", PATH_PDF_FILE, reader=PdfReader, read_options={"mode": "rb"})
 def test_load_pdf_file_with_reader(data: PdfReader) -> None:
     """Test @load loader with PDF file reader"""
     assert isinstance(data, PdfReader)
 
 
-@load("data", PATH_PDF_FILE, file_reader=PdfReader, onload_func=lambda r: r.pages, mode="rb")
-def test_load_pdf_file_with_reader_with_onload_func(data: Sequence[PageObject]) -> None:
-    """Test @load loader with PDF file reader and onload_func"""
+@load("data", PATH_PDF_FILE, reader=PdfReader, read_options={"mode": "rb"}, onload=lambda r: r.pages)
+def test_load_pdf_file_with_reader_with_onload(data: Sequence[PageObject]) -> None:
+    """Test @load loader with PDF file reader and onload"""
     assert isinstance(data, Sequence)
     assert all(isinstance(x, PageObject) for x in data)
 
@@ -28,10 +28,10 @@ def test_load_pdf_file_with_reader_with_onload_func(data: Sequence[PageObject]) 
 @parametrize(
     "data",
     PATH_PDF_FILE,
-    file_reader=PdfReader,
-    parametrizer_func=lambda r: r.pages,
-    process_func=lambda p: p.extract_text().rstrip(),
-    mode="rb",
+    reader=PdfReader,
+    read_options={"mode": "rb"},
+    parametrizer=lambda r: r.pages,
+    processor=lambda p: p.extract_text().rstrip(),
 )
 def test_parametrize_pdf_file_with_reader(request: FixtureRequest, data: str) -> None:
     """Test @parametrize loader with PDF file reader and loader functions"""
@@ -40,9 +40,7 @@ def test_parametrize_pdf_file_with_reader(request: FixtureRequest, data: str) ->
     assert data == f"Page{idx + 1}"
 
 
-@parametrize_dir(
-    "data", PATH_PDF_FILE_DIR, file_reader_func=lambda f: PdfReader, read_option_func=lambda f: {"mode": "rb"}
-)
+@parametrize_dir("data", PATH_PDF_FILE_DIR, read_options=lambda f: {"mode": "rb"}, reader=lambda f: PdfReader)
 def test_parametrize_dir_with_pdf_reader(data: PdfReader) -> None:
     """Test @parametrize_dr loader with PDF file reader"""
     assert isinstance(data, PdfReader)

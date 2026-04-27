@@ -15,7 +15,7 @@ pytestmark = pytest.mark.readers
 DELIMITER = {"comma": ",", "semicolon": ";"}
 
 
-@load(("file_path", "df"), PATH_CSV_FILE, file_reader=pandas.read_csv)
+@load(("file_path", "df"), PATH_CSV_FILE, reader=pandas.read_csv)
 def test_load_csv_file_with_pandas(file_path: Path, df: pandas.DataFrame) -> None:
     """Test @load loader with the CSV reader from pandas"""
     assert isinstance(df, pandas.DataFrame)
@@ -25,9 +25,7 @@ def test_load_csv_file_with_pandas(file_path: Path, df: pandas.DataFrame) -> Non
         assert DELIMITER[file_path.stem].join(row.to_list()) == expected_data[i + 1]
 
 
-@parametrize(
-    ("file_path", "idx_and_row"), PATH_CSV_FILE, file_reader=pandas.read_csv, parametrizer_func=lambda df: df.iterrows()
-)
+@parametrize(("file_path", "idx_and_row"), PATH_CSV_FILE, reader=pandas.read_csv, parametrizer=lambda df: df.iterrows())
 def test_parametrize_csv_file_with_pandas(
     request: FixtureRequest, file_path: Path, idx_and_row: tuple[int, pandas.Series]
 ) -> None:
@@ -42,7 +40,7 @@ def test_parametrize_csv_file_with_pandas(
 @parametrize_dir(
     ("file_path", "df"),
     PATH_CSV_FILE_DIR,
-    file_reader_func=lambda p: lambda f: pandas.read_csv(f, delimiter=DELIMITER[p.stem]),
+    reader=lambda p: lambda f: pandas.read_csv(f, delimiter=DELIMITER[p.stem]),
 )
 def test_parametrize_dir_with_pandas(file_path: Path, df: pandas.DataFrame) -> None:
     """Test @parametrize_dir loader with the CSV reader from pandas"""

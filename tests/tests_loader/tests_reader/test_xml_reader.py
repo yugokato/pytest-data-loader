@@ -8,7 +8,7 @@ from tests.paths import PATH_XML_FILE, PATH_XML_FILE_DIR
 pytestmark = pytest.mark.readers
 
 
-@load("tree", PATH_XML_FILE, file_reader=ET.parse)
+@load("tree", PATH_XML_FILE, reader=ET.parse)
 def test_load_xml_file_with_reader(tree: ET.ElementTree) -> None:
     """Test @load loader with XML reader"""
     assert isinstance(tree, ET.ElementTree)
@@ -20,9 +20,9 @@ def test_load_xml_file_with_reader(tree: ET.ElementTree) -> None:
         assert child.tag == "child"
 
 
-@load("root", PATH_XML_FILE, file_reader=ET.parse, onload_func=lambda tree: tree.getroot())
-def test_load_xml_file_with_reader_and_onload_func(root: ET.Element) -> None:
-    """Test @load loader with XML file reader and onload_func"""
+@load("root", PATH_XML_FILE, reader=ET.parse, onload=lambda tree: tree.getroot())
+def test_load_xml_file_with_reader_and_onload(root: ET.Element) -> None:
+    """Test @load loader with XML file reader and onload"""
     assert isinstance(root, ET.Element)
     assert root.tag == "root"
     assert len(root) > 0
@@ -31,18 +31,16 @@ def test_load_xml_file_with_reader_and_onload_func(root: ET.Element) -> None:
         assert child.tag == "child"
 
 
-@parametrize("elem", PATH_XML_FILE, file_reader=ET.parse, onload_func=lambda tree: tree.getroot())
+@parametrize("elem", PATH_XML_FILE, reader=ET.parse, onload=lambda tree: tree.getroot())
 def test_parametrize_xml_file_with_reader(elem: ET.Element) -> None:
-    """Test @parametrize loader with XML file reader and onload_func"""
+    """Test @parametrize loader with XML file reader and onload"""
     assert isinstance(elem, ET.Element)
     assert elem.tag == "child"
 
 
-@parametrize_dir(
-    "root", PATH_XML_FILE_DIR, file_reader_func=lambda f: ET.parse, process_func=lambda tree: tree.getroot()
-)
+@parametrize_dir("root", PATH_XML_FILE_DIR, reader=lambda f: ET.parse, processor=lambda tree: tree.getroot())
 def test_parametrize_dir_with_xml_reader(root: ET.Element) -> None:
-    """Test @parametrize_dir loader with XML file reader and process_func"""
+    """Test @parametrize_dir loader with XML file reader and processor"""
     assert isinstance(root, ET.Element)
     assert len(root) > 0
     for child in root:

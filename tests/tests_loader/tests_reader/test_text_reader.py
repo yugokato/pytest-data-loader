@@ -19,9 +19,9 @@ pytestmark = pytest.mark.readers
 @load(
     ("file_path", "data"),
     PATH_TEXT_FILE,
-    file_reader=BufferedReader,
-    onload_func=lambda r: TextIOWrapper(r, encoding="utf-8").read(),
-    mode="rb",
+    reader=BufferedReader,
+    read_options={"mode": "rb"},
+    onload=lambda r: TextIOWrapper(r, encoding="utf-8").read(),
 )
 def test_load_text_file_with_reader(file_path: Path, data: str) -> None:
     """Test @load loader with text file reader"""
@@ -32,9 +32,9 @@ def test_load_text_file_with_reader(file_path: Path, data: str) -> None:
 @parametrize(
     ("file_path", "data"),
     PATH_TEXT_FILE,
-    file_reader=BufferedReader,
-    onload_func=lambda r: TextIOWrapper(r, encoding="utf-8").read(),
-    mode="rb",
+    reader=BufferedReader,
+    read_options={"mode": "rb"},
+    onload=lambda r: TextIOWrapper(r, encoding="utf-8").read(),
 )
 def test_parametrize_text_file_with_reader(request: FixtureRequest, file_path: Path, data: str) -> None:
     """Test @parametrize loader with text file reader"""

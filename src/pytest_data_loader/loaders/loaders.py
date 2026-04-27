@@ -1,39 +1,22 @@
 import inspect
-from collections.abc import Callable, Collection, Iterable, Sequence
+from collections.abc import Callable, Iterable, Sequence
 from pathlib import Path
 from typing import Any, cast
 
 from pytest import Mark, MarkDecorator
 
-from pytest_data_loader.compat import Unpack
 from pytest_data_loader.constants import PYTEST_DATA_LOADER_ATTRS
+from pytest_data_loader.loaders.impl import loader
 from pytest_data_loader.types import (
     DataLoader,
     DataLoaderLoadAttrs,
     DataLoaderType,
-    FileReadOptions,
     Func,
-    HashableDict,
+    PytestMarkType,
+    ReadOptions,
 )
 
 __all__ = ["load", "parametrize", "parametrize_dir"]
-
-
-def loader(loader_type: DataLoaderType, /, *, parametrize: bool = False) -> Callable[[Func], Func]:
-    """Decorator to register a decorated function as a data loader
-
-    :param loader_type: A type of the loader. file or directory
-    :param parametrize: Whether the loader needs to perform parametrization or not
-    """
-
-    def wrapper(loader_func: Func) -> Func:
-        loader_func.is_data_loader = True  # type: ignore[attr-defined]
-        loader_func.is_file_loader = DataLoaderType(loader_type) == DataLoaderType.FILE  # type: ignore[attr-defined]
-        loader_func.requires_parametrization = parametrize is True  # type: ignore[attr-defined]
-        loader_func.should_split_data = bool(loader_func.is_file_loader and loader_func.requires_parametrization)  # type: ignore[attr-defined]
-        return loader_func
-
-    return wrapper
 
 
 @loader(DataLoaderType.FILE)
@@ -43,11 +26,11 @@ def load(
     /,
     *,
     lazy_loading: bool = True,
-    file_reader: Callable[..., Iterable[Any] | object] | None = None,
-    onload_func: Callable[..., Any] | None = None,
+    reader: Callable[..., Iterable[Any] | object] | None = None,
+    onload: Callable[..., Any] | None = None,
+    read_options: ReadOptions | None = None,
+    marks: PytestMarkType | None = None,
     id: str | None = None,
-    marks: MarkDecorator | Collection[MarkDecorator | Mark] | None = None,
-    **read_options: Unpack[FileReadOptions],
 ) -> Callable[[Func], Func]:
     """A file loader that loads the file content and passes it to the test function.
 
@@ -60,22 +43,19 @@ def load(
                  containing a matching file and loads the data from there.
     :param lazy_loading: If True, the plugin will defer the timing of file loading to the test setup phase. If False,
                          the data will be loaded during the test collection phase, which could cause a performance issue
-    :param file_reader: A file reader the plugin should use to read the file data.
-                        (e.g. csv.reader, csv.DictReader, yaml.safe_load, etc.)
-                        It must take a file-like object as the first argument. If the file_reader needs to take
-                        options, use lambda function instead.
-                        e.g. file_reader=lambda f: csv.reader(f, delimiter=';')
-                        NOTE: The test function will receive the reader object as is
-    :param onload_func: A function to transform or preprocess loaded data before passing it to the test function.
-                        NOTE: .json files will always be automatically parsed during the plugin-managed onload process
-    :param id: Explicitly specify the parameter ID for the loaded data. Defaults to the relative or absolute file path
+    :param reader: A file reader the plugin should use to read the file data.
+                   (e.g. csv.reader, csv.DictReader, yaml.safe_load, etc.)
+                   It must take a file-like object as the first argument. If the reader needs to take options, use a
+                   lambda instead. e.g. reader=lambda f: csv.reader(f, delimiter=';')
+    :param read_options: File read options (as a dict) the plugin passes to `open()` when reading the file.
+                         Supports only the mode, encoding, errors, and newline keys.
+    :param onload: A function to transform or process loaded data before passing it to the test function.
     :param marks: Pytest mark(s) to apply to the loaded data. Accepts a single mark or a collection of marks
-    :param read_options: File read options the plugin passes to `open()` when reading the file. Supports only mode,
-                         encoding, errors, and newline options.
+    :param id: Explicitly specify the parameter ID for the loaded data. Defaults to the relative or absolute file path
 
     NOTE:
-        - onload_func loader function must take either one (data) or two (file path, data) arguments. When file_reader
-          is provided, the data is the reader object itself
+        - onload must take either one (data) or two (file path, data) arguments. When reader is provided,
+          its return value becomes the data passed to onload()
 
     Examples:
     >>> @load("data", "data.txt")
@@ -92,11 +72,11 @@ def load(
         fixture_names,
         path,
         lazy_loading=lazy_loading,
-        file_reader=file_reader,
-        onload_func=onload_func,
-        id_func=(lambda _: id) if id is not None else None,
-        marker_func=(lambda _: marks) if marks is not None else None,
-        **read_options,
+        reader=reader,
+        read_options=read_options,
+        onload=onload,
+        ids=[id] if id is not None else None,
+        marks=marks,
     )
 
 
@@ -107,14 +87,14 @@ def parametrize(
     /,
     *,
     lazy_loading: bool = True,
-    file_reader: Callable[..., Iterable[Any] | object] | None = None,
-    onload_func: Callable[..., Any] | None = None,
-    parametrizer_func: Callable[..., Iterable[Any]] | None = None,
-    filter_func: Callable[..., bool] | None = None,
-    process_func: Callable[..., Any] | None = None,
-    marker_func: Callable[..., MarkDecorator | Collection[MarkDecorator | Mark] | None] | None = None,
-    id_func: Callable[..., Any] | None = None,
-    **read_options: Unpack[FileReadOptions],
+    reader: Callable[..., Iterable[Any] | object] | None = None,
+    read_options: ReadOptions | None = None,
+    onload: Callable[..., Any] | None = None,
+    parametrizer: Callable[..., Iterable[Any]] | None = None,
+    filter: Callable[..., bool] | None = None,
+    processor: Callable[..., Any] | None = None,
+    marks: PytestMarkType | Callable[..., PytestMarkType | None] | None = None,
+    ids: Iterable[Any] | Callable[..., Any] | None = None,
 ) -> Callable[[Func], Func]:
     """A file loader that dynamically parametrizes the decorated test function by splitting the loaded file content
     into logical parts.
@@ -133,9 +113,9 @@ def parametrize(
                          unlike other loaders, the plugin still needs to inspect the file data during the collection
                          phase to determine the total number of parametrized tests. The inspection is done in one of
                          the following modes, depending on the file type and specified options:
-                         1. Quick scan: Applies to certain file extensions only, and only when neither `onload_func`
-                            nor `parametrizer_func` is provided. the plugin determines the number of parametrized
-                            tests without loading the entire file contents in memory.
+                         1. Quick scan: Applies to certain file extensions only, and only when neither `onload` nor
+                            `parametrizer` is provided. The plugin determines the number of parametrized tests without
+                            loading the entire file contents in memory.
                          2. Full scan: The plugin loads the entire file once during the collection phase to determine
                                        the number of parametrized tests, but it does not keep the loaded data in memory.
                          In both modes, Pytest receives only small metadata (such as file paths and record indices) as
@@ -144,34 +124,33 @@ def parametrize(
                          If False, Pytest will receive the fully loaded data for each parameter during test collection
                          and retain it for the entire test session. This can lead to significant memory usage when
                          working with large files.
-    :param file_reader: A file reader the plugin should use to read the file data.
-                        (e.g. csv.reader, csv.DictReader, yaml.safe_load, etc.)
-                        It must take a file-like object as the first argument. If the file_reader needs to take
-                        options, use lambda function.
-                        e.g. file_reader=lambda f: csv.reader(f, delimiter=';')
-    :param onload_func: A function to transform or preprocess loaded data before splitting into parts.
-                        NOTE: .json files will always be automatically parsed during the plugin-managed onload process
-    :param parametrizer_func: A function to determine how the loaded data should be split. If not provided, the plugin
-                              will automatically apply the following logic:
-                              - .json file:
-                                    - array: each item in the list
-                                    - object: each key-value pair as a tuple
-                                    - scalar: the whole value as a single parameter
-                              - Any other files with text data (.txt, .csv, .log, etc.): each line
-                              - Binary files: Not supported without a custom logic. An error will be raised.
-    :param filter_func: A function to filter the split data parts. Only matching parts are included as the test
-                        parameters.
-    :param process_func: A function to adjust the shape of each split data before passing it to the test function.
-    :param marker_func: A function to apply Pytest markers to matching part data
-    :param id_func: A function to generate a parameter ID for each part data.
-                    Defaults to "<relative/absolute file path>:part<number>" when lazy loading, otherwise the part
-                    data itself is used.
-    :param read_options: File read options the plugin passes to `open()` when reading the file. Supports only mode,
-                         encoding, errors, and newline options.
+    :param reader: A file reader the plugin should use to read the file data.
+                   (e.g. csv.reader, csv.DictReader, yaml.safe_load, etc.)
+                   It must take a file-like object as the first argument. If the reader needs to take options, use a
+                   lambda instead. e.g. reader=lambda f: csv.reader(f, delimiter=';')
+    :param read_options: File read options (as a dict) the plugin passes to `open()` when reading the file.
+                         Supports only the mode, encoding, errors, and newline keys.
+    :param onload: A function to transform or preprocess loaded data before splitting into parts.
+    :param parametrizer: A function to determine how the loaded data should be split. If not provided, the plugin
+                         will automatically apply the following logic:
+                         - .json file:
+                               - array: each item in the list
+                               - object: each key-value pair as a tuple
+                               - scalar: the whole value as a single parameter
+                         - Any other files with text data (.txt, .csv, .log, etc.): each line
+                         - Binary files: Not supported without a custom logic. An error will be raised.
+    :param filter: A function to filter the split data parts. Only matching parts are included as the test parameters.
+    :param processor: A function to adjust the shape of each part data before passing it to the test function.
+    :param marks: Pytest mark(s) for the loaded parts. Accepts a single mark or a collection of marks applied uniformly
+                  to all parts, or a function that returns mark(s) per part data.
+    :param ids: Parameter IDs for the loaded parts. Accepts an iterable of ID values or a function that returns an ID
+                per part data. Defaults to "<relative/absolute file path>:part<number>" when lazy loading, otherwise
+                the part data itself is used.
 
     NOTE:
-        - Each loader function must take either one (data) or two (file path, data) arguments. When file_reader
-          is provided, the data is the reader object itself
+        - onload, parametrizer, filter, processor, marks and ids (in callable form) must take either
+          one (data) or two (file path, data) arguments. When reader is provided, its return value becomes the data
+          passed to these callables
 
     Examples:
     >>> @parametrize("data", "data.txt")
@@ -189,14 +168,14 @@ def parametrize(
         fixture_names,
         path,
         lazy_loading=lazy_loading,
-        file_reader=file_reader,
-        onload_func=onload_func,
-        parametrizer_func=parametrizer_func,
-        filter_func=filter_func,
-        process_func=process_func,
-        marker_func=marker_func,
-        id_func=id_func,
-        **read_options,
+        reader=reader,
+        onload=onload,
+        parametrizer=parametrizer,
+        filter=filter,
+        processor=processor,
+        marks=marks,
+        ids=ids,
+        read_options=read_options,
     )
 
 
@@ -208,12 +187,12 @@ def parametrize_dir(
     *,
     lazy_loading: bool = True,
     recursive: bool = False,
-    file_reader_func: Callable[[Path], Callable[..., Iterable[Any] | object]] | None = None,
-    filter_func: Callable[[Path], bool] | None = None,
-    process_func: Callable[..., Any] | None = None,
-    marker_func: Callable[[Path], MarkDecorator | Collection[MarkDecorator | Mark] | None] | None = None,
-    id_func: Callable[[Path], Any] | None = None,
-    read_option_func: Callable[[Path], dict[str, Any]] | None = None,
+    reader: Callable[[Path], Callable[..., Iterable[Any] | object]] | None = None,
+    filter: Callable[[Path], bool] | None = None,
+    processor: Callable[..., Any] | None = None,
+    read_options: Callable[[Path], ReadOptions] | None = None,
+    marks: PytestMarkType | Callable[[Path], PytestMarkType | None] | None = None,
+    ids: Iterable[Any] | Callable[[Path], Any] | None = None,
 ) -> Callable[[Func], Func]:
     """A file loader that dynamically parametrizes the decorated test function with the content of files stored in the
     specified directory.
@@ -233,24 +212,20 @@ def parametrize_dir(
     :param recursive: Recursively load files from all subdirectories of the given directory. Defaults to False.
                       NOTE: This option is ignored for directories matched by a glob pattern. Use ** for recursive
                             matching
-    :param file_reader_func: A function to specify file readers to matching file paths.
-    :param filter_func: A function to filter file paths. Only the contents of matching file paths are included as the
-                        test parameters.
-    :param process_func: A function to adjust the shape of each loaded file's data before passing it to the test
-                         function.
-                         NOTE: .json files will always be automatically parsed during the plugin-managed onload process
-    :param marker_func: A function to apply Pytest markers to matching file paths
-    :param id_func: A function to generate custom test parameter IDs from each file path
-    :param read_option_func: A function to specify file read options the plugin passes to `open()` to matching file
-                             paths. Supports only mode, encoding, errors, and newline options. It must return these
-                             options as a dictionary.
+    :param reader: A function to specify file readers to matching file paths.
+    :param read_options: A function that returns the file read options (as a dict) the plugin passes to `open()` for
+                         matching file paths. Supports only the mode, encoding, errors, and newline keys.
+    :param filter: A function to filter file paths. Only the contents of matching file paths are included as the test
+                   parameters.
+    :param processor: A function to adjust the shape of each loaded file's data before passing it to the test function.
+    :param marks: Pytest mark(s) for the loaded files. Accepts a single mark or a collection of marks applied uniformly
+                  to all files, or a function that returns mark(s) for matching file paths.
+    :param ids: Parameter IDs for the loaded files. Accepts an iterable of ID values or a function that returns an ID
+                for matching file paths. Defaults to the relative or absolute file path when not provided.
 
     NOTE:
-        - file_reader_func, filter_func, marker_func, id_func, and read_option_func must take only one argument
-          (file path)
-        - process_func loader function must take either one (data) or two (file path, data) arguments
-        - The plugin automatically assigns each file path (relative or absolute) to the parameter ID when id_func
-          is not provided
+        - reader, filter, read_options, marks and ids (in callable form) must take only one argument (file path)
+        - processor must take either one (data) or two (file path, data) arguments
 
     Examples:
     >>> @parametrize_dir("data", "data_dir")
@@ -268,12 +243,12 @@ def parametrize_dir(
         path,
         lazy_loading=lazy_loading,
         recursive=recursive,
-        file_reader_func=file_reader_func,
-        filter_func=filter_func,
-        process_func=process_func,
-        marker_func=marker_func,
-        id_func=id_func,
-        read_option_func=read_option_func,
+        filter=filter,
+        processor=processor,
+        marks=marks,
+        ids=ids,
+        reader_func=reader,
+        read_options_func=read_options,
     )
 
 
@@ -285,26 +260,38 @@ def _setup_data_loader(
     *,
     lazy_loading: bool = True,
     recursive: bool = False,
-    file_reader: Callable[..., Iterable[Any] | object] | None = None,
-    file_reader_func: Callable[..., Callable[..., Iterable[Any] | object]] | None = None,
-    onload_func: Callable[..., Any] | None = None,
-    parametrizer_func: Callable[..., Iterable[Any]] | None = None,
-    filter_func: Callable[..., bool] | None = None,
-    process_func: Callable[..., Any] | None = None,
-    id_func: Callable[..., Any] | None = None,
-    marker_func: Callable[..., MarkDecorator | Collection[MarkDecorator | Mark] | None] | None = None,
-    read_option_func: Callable[[Path], dict[str, Any]] | None = None,
-    **read_options: Unpack[FileReadOptions],
+    reader: Callable[..., Iterable[Any] | object] | None = None,
+    read_options: ReadOptions | None = None,
+    onload: Callable[..., Any] | None = None,
+    parametrizer: Callable[..., Iterable[Any]] | None = None,
+    filter: Callable[..., bool] | None = None,
+    processor: Callable[..., Any] | None = None,
+    marks: PytestMarkType | Callable[..., PytestMarkType | None] | None = None,
+    ids: Iterable[Any] | Callable[..., Any] | None = None,
+    reader_func: Callable[[Path], Callable[..., Iterable[Any] | object]] | None = None,
+    read_options_func: Callable[[Path], ReadOptions] | None = None,
 ) -> Callable[[Func], Func]:
     """Set up a test function and inject loader attributes that are used by pytest_generate_tests hook"""
+    if ids is not None and not (callable(ids) or isinstance(ids, Iterable)):
+        # String value is intentionally allowed to match @pytest.mark.parametrize() behavior
+        raise TypeError("ids: Must be a callable or an iterable")
 
-    if not loader.requires_parametrization and any([parametrizer_func, filter_func, process_func]):
-        raise ValueError(
-            f"Invalid usage: parametrizer_func, filter_func, and process_func are not supported for "
-            f"{loader.__name__} loader"
-        )
-    if recursive and not loader == parametrize_dir:
-        raise ValueError(f"recursive option is not available for {loader.__name__} loader")
+    if read_options is not None and not isinstance(read_options, dict):
+        raise TypeError(f"read_options: Expected a dict, but got {type(read_options).__name__}")
+
+    marks_func: Callable[..., PytestMarkType | None] | None
+    if marks is None or (callable(marks) and not isinstance(marks, (MarkDecorator, Mark))):
+        marks_func = marks
+    else:
+        marks_func = lambda _: marks  # noqa: E731
+
+    id_func = ids_seq = None
+    if callable(ids):
+        id_func = ids
+    elif isinstance(ids, Iterable):
+        # Intentionally allowing a string value and ignoring empty IDs here to match the
+        # current pytest.mark.parametrize() behavior
+        ids_seq = tuple(ids) or None
 
     def wrapper(test_func: Func) -> Func:
         """Add attributes to the test function. This supports stacking multiple data loaders"""
@@ -312,20 +299,21 @@ def _setup_data_loader(
             loader=loader,
             search_from=Path(inspect.getabsfile(test_func)),
             # fixture_names and path will be validated and normalized in __post_init__()
-            fixture_names=cast(tuple[str, ...], fixture_names),
-            path=cast(Path | tuple[Path, ...], path),
+            fixture_names=fixture_names,  # type: ignore
+            path=path,  # type: ignore
             lazy_loading=lazy_loading,
             recursive=recursive,
-            file_reader=file_reader,
-            file_reader_func=file_reader_func,
-            onload_func=onload_func,
-            parametrizer_func=parametrizer_func,
-            filter_func=filter_func,
-            process_func=process_func,
-            marker_func=marker_func,
+            reader=reader,
+            read_options=read_options,  # type: ignore
+            onload_func=onload,
+            parametrizer_func=parametrizer,
+            filter_func=filter,
+            process_func=processor,
+            reader_func=reader_func,
+            read_options_func=read_options_func,
+            marker_func=marks_func,
             id_func=id_func,
-            read_option_func=read_option_func,
-            read_options=HashableDict(read_options),
+            ids=ids_seq,
         )
         existing_load_attrs: list[DataLoaderLoadAttrs] | None = getattr(test_func, PYTEST_DATA_LOADER_ATTRS, None)
         if existing_load_attrs is None:

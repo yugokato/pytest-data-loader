@@ -9,7 +9,6 @@ import pytest
 from _pytest.fixtures import FixtureRequest
 from pytest import Config
 
-from pytest_data_loader.compat import Unpack
 from pytest_data_loader.constants import PYTEST_DATA_LOADER_MODULE_CACHE, STASH_KEY_DATA_LOADER_OPTION
 from pytest_data_loader.loaders.impl import create_loaders
 from pytest_data_loader.loaders.loaders import load
@@ -17,9 +16,9 @@ from pytest_data_loader.types import (
     DataLoader,
     DataLoaderLoadAttrs,
     DataLoaderOption,
-    FileReadOptions,
     HashableDict,
     LoadedData,
+    ReadOptions,
 )
 
 if TYPE_CHECKING:
@@ -45,7 +44,7 @@ class DataLoaderFixture:
     """Callable returned by the data_loader fixture.
 
     Call it with a file path (absolute, or relative to the nearest data directory) to load a single
-    file at test runtime.  Accepts the same file_reader, onload_func, and open() read options as @load.
+    file at test runtime.  Accepts the same reader, onload, and open() read options as @load.
     Repeated calls with the same arguments within a single test return the cached result without re-reading the file.
     """
 
@@ -65,18 +64,21 @@ class DataLoaderFixture:
         path: Path | str,
         /,
         *,
-        file_reader: Callable[..., Iterable[Any] | object] | None = None,
-        onload_func: Callable[..., Any] | None = None,
-        **read_options: Unpack[FileReadOptions],
+        reader: Callable[..., Iterable[Any] | object] | None = None,
+        read_options: ReadOptions | None = None,
+        onload: Callable[..., Any] | None = None,
     ) -> Any:
         """Load a single file and return its parsed data.
 
         :param path: Absolute path or a path relative to a data directory
-        :param file_reader: A file reader the plugin should use to read the file data
-        :param onload_func: A function to transform or preprocess loaded data before passing it to the test function
+        :param reader: A file reader the plugin should use to read the file data
         :param read_options: File read options the plugin passes to open() when reading the file
+        :param onload: A function to transform or preprocess loaded data before passing it to the test function
         """
-        cache_key = (str(path), file_reader, onload_func, tuple(sorted(read_options.items())))
+        if read_options is not None and not isinstance(read_options, dict):
+            raise TypeError(f"read_options: Expected a dict, but got {type(read_options).__name__}")
+
+        cache_key = (str(path), reader, onload, tuple(sorted((read_options or {}).items())))
         if cache_key in self._cache:
             return self._cache[cache_key]
 
@@ -87,9 +89,9 @@ class DataLoaderFixture:
             fixture_names=("_",),
             path=path,
             lazy_loading=False,
-            file_reader=file_reader,
-            onload_func=onload_func,
-            read_options=HashableDict(read_options),
+            reader=reader,
+            read_options=HashableDict(read_options or {}),
+            onload_func=onload,
         )
 
         (file_loader,) = create_loaders(path, load_attrs, self._data_loader_option)

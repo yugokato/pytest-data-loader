@@ -26,13 +26,13 @@ def is_valid_fixture_name(name: str) -> bool:
 
 
 def validate_loader_func_args_and_normalize(
-    loader_func: Callable[..., Any], func_type: DataLoaderFunctionType | None = None, with_file_path_only: bool = False
+    loader_func: Callable[..., Any], func_type: DataLoaderFunctionType, with_file_path_only: bool = False
 ) -> Callable[..., Any]:
     """Validates the loader function definition and returns a normalized function that can take 2 arguments but call
     the original function it with the right argument(s)
 
     :param loader_func: Loader function
-    :param func_type: Loader function type
+    :param func_type: Type of the loader function
     :param with_file_path_only: The loader function must take only file path
     """
 
@@ -45,7 +45,10 @@ def validate_loader_func_args_and_normalize(
                 try:
                     return f(*args, **kwargs)
                 except Exception as e:
-                    err = f"Error while processing {func_type} for '{file_path.name}' ({file_path})"
+                    err = (
+                        f"Error while processing '{func_type.public_name}' callable for "
+                        f"'{file_path.name}' ({file_path})"
+                    )
                     add_error_note(e, err)
                     raise
 
@@ -56,7 +59,7 @@ def validate_loader_func_args_and_normalize(
     try:
         sig = inspect.signature(loader_func)
     except ValueError as e:
-        raise ValueError(f"Unsupported loader_func: {loader_func!r}") from e
+        raise ValueError(f"Unsupported '{func_type.public_name}' callable definition: {loader_func!r}") from e
 
     parameters = sig.parameters
     len_func_args = len(parameters)
@@ -64,12 +67,15 @@ def validate_loader_func_args_and_normalize(
     max_allowed_args = 1 if with_file_path_only else 2
     err = None
     if not 0 < len_func_args < max_allowed_args + 1:
-        err = f"It must take up to {max_allowed_args} arguments. Got {len_func_args}"
+        if max_allowed_args == 1:
+            err = "It must take only 1 argument (file path)."
+        else:
+            err = f"It must take up to {max_allowed_args} arguments."
+        err += f" Got {len_func_args}"
     elif not all(p.kind in (Parameter.POSITIONAL_ONLY, Parameter.POSITIONAL_OR_KEYWORD) for p in parameters.values()):
         err = "Only positional arguments are allowed"
     if err:
-        f_type = f"{func_type} " if func_type else ""
-        raise TypeError(f"Detected invalid {f_type}loader function definition. {err}")
+        raise TypeError(f"Detected invalid '{func_type.public_name}' callable definition. {err}")
 
     if len_func_args == 2:
         return wraps(loader_func)(lambda file_path, data: inject_error_context(file_path)(loader_func)(file_path, data))

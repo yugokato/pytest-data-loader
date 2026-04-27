@@ -63,12 +63,12 @@ class TestParametrizeMultiPaths:
         result.assert_outcomes(passed=4)
 
     @pytest.mark.parametrize("lazy_loading", [True, False])
-    def test_parametrize_multi_file_with_filter_func(self, pytester: pytest.Pytester, lazy_loading: bool) -> None:
-        """Test that filter_func applies correctly across multiple files in multi-path mode."""
+    def test_parametrize_multi_file_with_filter(self, pytester: pytest.Pytester, lazy_loading: bool) -> None:
+        """Test that filter applies correctly across multiple files in multi-path mode."""
         pytester.makepyfile(f"""
         from pytest_data_loader import parametrize
 
-        @parametrize("data", ["file1.txt", "file2.txt"], lazy_loading={lazy_loading}, filter_func=lambda d: d != "beta")
+        @parametrize("data", ["file1.txt", "file2.txt"], lazy_loading={lazy_loading}, filter=lambda d: d != "beta")
         def test_func(data):
             assert data in ("alpha", "gamma", "delta")
             assert data != "beta"
@@ -78,12 +78,12 @@ class TestParametrizeMultiPaths:
         result.assert_outcomes(passed=3)
 
     @pytest.mark.parametrize("lazy_loading", [True, False])
-    def test_parametrize_multi_file_with_process_func(self, pytester: pytest.Pytester, lazy_loading: bool) -> None:
-        """Test that process_func applies correctly across multiple files in multi-path mode."""
+    def test_parametrize_multi_file_with_processor(self, pytester: pytest.Pytester, lazy_loading: bool) -> None:
+        """Test that processor applies correctly across multiple files in multi-path mode."""
         pytester.makepyfile(f"""
         from pytest_data_loader import parametrize
 
-        @parametrize("data", ["file1.txt", "file2.txt"], lazy_loading={lazy_loading}, process_func=lambda d: d.upper())
+        @parametrize("data", ["file1.txt", "file2.txt"], lazy_loading={lazy_loading}, processor=lambda d: d.upper())
         def test_func(data):
             assert data in ("ALPHA", "BETA", "GAMMA", "DELTA")
         """)
@@ -165,13 +165,12 @@ class TestParametrizeDirMultiPaths:
         result.assert_outcomes(passed=4)
 
     @pytest.mark.parametrize("lazy_loading", [True, False])
-    def test_parametrize_dir_multi_dir_with_filter_func(self, pytester: pytest.Pytester, lazy_loading: bool) -> None:
-        """Test that filter_func applies correctly across multiple directories in multi-dir mode."""
+    def test_parametrize_dir_multi_dir_with_filter(self, pytester: pytest.Pytester, lazy_loading: bool) -> None:
+        """Test that filter applies correctly across multiple directories in multi-dir mode."""
         pytester.makepyfile(f"""
         from pytest_data_loader import parametrize_dir
 
-        @parametrize_dir("data", ["dir1", "dir2"], lazy_loading={lazy_loading},
-                         filter_func=lambda p: p.name != "file_a.txt")
+        @parametrize_dir("data", ["dir1", "dir2"], lazy_loading={lazy_loading}, filter=lambda p: p.name != "file_a.txt")
         def test_func(data):
             assert data in ("beta", "gamma", "delta")
             assert data != "alpha"
@@ -181,13 +180,12 @@ class TestParametrizeDirMultiPaths:
         result.assert_outcomes(passed=3)
 
     @pytest.mark.parametrize("lazy_loading", [True, False])
-    def test_parametrize_dir_multi_dir_with_process_func(self, pytester: pytest.Pytester, lazy_loading: bool) -> None:
-        """Test that process_func applies correctly across multiple directories in multi-dir mode."""
+    def test_parametrize_dir_multi_dir_with_processor(self, pytester: pytest.Pytester, lazy_loading: bool) -> None:
+        """Test that processor applies correctly across multiple directories in multi-dir mode."""
         pytester.makepyfile(f"""
         from pytest_data_loader import parametrize_dir
 
-        @parametrize_dir("data", ["dir1", "dir2"], lazy_loading={lazy_loading},
-                         process_func=lambda d: d.strip().upper())
+        @parametrize_dir("data", ["dir1", "dir2"], lazy_loading={lazy_loading}, processor=lambda d: d.strip().upper())
         def test_func(data):
             assert data in ("ALPHA", "BETA", "GAMMA", "DELTA")
         """)
@@ -212,15 +210,15 @@ class TestParametrizeDirMultiPaths:
         assert result.ret == ExitCode.OK
         result.assert_outcomes(passed=6)
 
-    def test_parametrize_dir_multi_dir_with_file_reader_func(self, pytester: pytest.Pytester) -> None:
-        """Test that file_reader_func selects correct readers per file in multi-dir mode."""
+    def test_parametrize_dir_multi_dir_with_reader(self, pytester: pytest.Pytester) -> None:
+        """Test that reader selects correct readers per file in multi-dir mode."""
         pytester.makepyfile("""
         from pytest_data_loader import parametrize_dir
 
         def my_reader(path):
             return lambda f: f.read().upper()
 
-        @parametrize_dir("data", ["dir1", "dir2"], file_reader_func=my_reader)
+        @parametrize_dir("data", ["dir1", "dir2"], reader=my_reader)
         def test_func(data):
             assert data in ("ALPHA", "BETA", "GAMMA", "DELTA")
         """)

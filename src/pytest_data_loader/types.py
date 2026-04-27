@@ -23,6 +23,7 @@ P = ParamSpec("P")
 Func = TypeVar("Func", bound=Callable[..., Any])
 JsonType: TypeAlias = str | int | float | bool | None | list["JsonType"] | dict[str, "JsonType"]
 LoadedDataType: TypeAlias = JsonType | bytes | tuple[str, JsonType] | object | Iterable["LoadedDataType"]
+PytestMarkType: TypeAlias = MarkDecorator | Collection[MarkDecorator | Mark]
 
 
 class HashableDict(dict[str, Any]):
@@ -121,14 +122,38 @@ class DataLoaderType(StrEnum):
 
 
 class DataLoaderFunctionType(StrEnum):
-    FILE_READER_FUNC = auto()
     ONLOAD_FUNC = auto()
     PARAMETRIZER_FUNC = auto()
     FILTER_FUNC = auto()
     PROCESS_FUNC = auto()
+    READER_FUNC = auto()
+    READ_OPTIONS_FUNC = auto()
     MARKER_FUNC = auto()
     ID_FUNC = auto()
-    READ_OPTION_FUNC = auto()
+
+    @property
+    def public_name(self) -> str:
+        """Return the public-facing name for this enum member"""
+        return _LOADER_FUNC_PUBLIC_NAMES[self]
+
+    @classmethod
+    def _validate(cls) -> None:
+        missing = [member for member in cls if member not in _LOADER_FUNC_PUBLIC_NAMES]
+        if missing:
+            raise RuntimeError(f"Missing public name mapping for: {missing}")
+
+
+_LOADER_FUNC_PUBLIC_NAMES = {
+    DataLoaderFunctionType.ONLOAD_FUNC: "onload",
+    DataLoaderFunctionType.PARAMETRIZER_FUNC: "parametrizer",
+    DataLoaderFunctionType.FILTER_FUNC: "filter",
+    DataLoaderFunctionType.PROCESS_FUNC: "processor",
+    DataLoaderFunctionType.MARKER_FUNC: "marks",
+    DataLoaderFunctionType.ID_FUNC: "ids",
+    DataLoaderFunctionType.READER_FUNC: "reader",
+    DataLoaderFunctionType.READ_OPTIONS_FUNC: "read_options",
+}
+DataLoaderFunctionType._validate()
 
 
 @dataclass(frozen=True, kw_only=True, slots=True, repr=False)
@@ -208,16 +233,17 @@ class DataLoaderLoadAttrs:
     path: Path | tuple[Path, ...]
     lazy_loading: bool = True
     recursive: bool = False
-    file_reader: Callable[..., Iterable[Any] | object] | None = None
-    file_reader_func: Callable[[Path], Callable[..., Iterable[Any] | object]] | None = None
+    reader: Callable[..., Iterable[Any] | object] | None = None
+    read_options: HashableDict = field(default_factory=HashableDict)
     onload_func: Callable[..., Any] | None = None
     parametrizer_func: Callable[..., Iterable[Any]] | None = None
     filter_func: Callable[..., bool] | None = None
     process_func: Callable[..., Any] | None = None
-    marker_func: Callable[..., MarkDecorator | Collection[MarkDecorator | Mark] | None] | None = None
+    reader_func: Callable[[Path], Callable[..., Iterable[Any] | object]] | None = None
+    read_options_func: Callable[[Path], ReadOptions] | None = None
+    marker_func: Callable[..., PytestMarkType | None] | None = None
     id_func: Callable[..., Any] | None = None
-    read_option_func: Callable[[Path], dict[str, Any]] | None = None
-    read_options: HashableDict = field(default_factory=HashableDict)
+    ids: tuple[Any, ...] | None = None
 
     def __post_init__(self) -> None:
         from pytest_data_loader.loaders.reader import FileReader
@@ -225,7 +251,8 @@ class DataLoaderLoadAttrs:
         self._validate_fixture_names()
         self._validate_path()
         self._validate_loader_func()
-        FileReader.validate(self.file_reader, self.read_options)
+        FileReader.validate(self.reader, self.read_options)
+        self._modify_value("read_options", HashableDict(self.read_options or {}))
 
     @property
     def requires_file_path(self) -> bool:
@@ -234,7 +261,7 @@ class DataLoaderLoadAttrs:
     def _validate_fixture_names(self) -> None:
         orig_value = self.fixture_names
         if not isinstance(orig_value, (str, tuple)):
-            raise TypeError(f"fixture_names: Expected a string or tuple, but got {type(orig_value).__name__!r}")
+            raise TypeError(f"fixture_names: Expected a string or tuple, but got {type(orig_value).__name__}")
         if isinstance(orig_value, tuple) and not all(isinstance(x, str) for x in orig_value):
             raise TypeError(
                 f"fixture_names: Expected a tuple of strings, but got {type(orig_value).__name__} "
@@ -277,7 +304,7 @@ class DataLoaderLoadAttrs:
         else:
             # Single path case
             if not isinstance(orig_value, Path | str):
-                raise TypeError(f"path: Expected a string or pathlib.Path, but got {type(orig_value).__name__!r}")
+                raise TypeError(f"path: Expected a string or pathlib.Path, but got {type(orig_value).__name__}")
 
             path = Path(orig_value)
             self._validate_single_path(path)
@@ -316,30 +343,28 @@ class DataLoaderLoadAttrs:
 
     def _validate_loader_func(self) -> None:
         for f, func_type in [
-            (self.file_reader_func, DataLoaderFunctionType.FILE_READER_FUNC),
             (self.onload_func, DataLoaderFunctionType.ONLOAD_FUNC),
             (self.parametrizer_func, DataLoaderFunctionType.PARAMETRIZER_FUNC),
             (self.filter_func, DataLoaderFunctionType.FILTER_FUNC),
             (self.process_func, DataLoaderFunctionType.PROCESS_FUNC),
             (self.marker_func, DataLoaderFunctionType.MARKER_FUNC),
             (self.id_func, DataLoaderFunctionType.ID_FUNC),
-            (self.read_option_func, DataLoaderFunctionType.READ_OPTION_FUNC),
+            (self.reader_func, DataLoaderFunctionType.READER_FUNC),
+            (self.read_options_func, DataLoaderFunctionType.READ_OPTIONS_FUNC),
         ]:
             if f is not None:
                 if not callable(f):
-                    raise TypeError(f"{func_type}: Must be a callable, not {type(f).__name__!r}")
+                    raise TypeError(f"{func_type.public_name}: Must be a callable, not {type(f).__name__}")
                 with_file_path_only = not self.loader.is_file_loader and func_type in (
-                    DataLoaderFunctionType.FILE_READER_FUNC,
                     DataLoaderFunctionType.FILTER_FUNC,
                     DataLoaderFunctionType.MARKER_FUNC,
                     DataLoaderFunctionType.ID_FUNC,
-                    DataLoaderFunctionType.READ_OPTION_FUNC,
+                    DataLoaderFunctionType.READER_FUNC,
+                    DataLoaderFunctionType.READ_OPTIONS_FUNC,
                 )
                 self._modify_value(
                     func_type,
-                    validate_loader_func_args_and_normalize(
-                        f, func_type=func_type, with_file_path_only=with_file_path_only
-                    ),
+                    validate_loader_func_args_and_normalize(f, func_type, with_file_path_only=with_file_path_only),
                 )
 
     def _modify_value(self, field_name: str, new_value: Any) -> None:
@@ -353,3 +378,6 @@ class FileReadOptions(TypedDict, total=False):
         "strict", "ignore", "replace", "surrogateescape", "xmlcharrefreplace", "backslashreplace", "namereplace", None
     ]
     newline: Literal["", "\n", "\r", "\r\n", None]
+
+
+ReadOptions: TypeAlias = FileReadOptions | dict[str, Any]

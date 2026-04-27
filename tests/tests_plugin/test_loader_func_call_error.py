@@ -1,4 +1,5 @@
 from dataclasses import dataclass, field
+from typing import cast
 
 import pytest
 from pytest import ExitCode, Pytester, RunResult
@@ -28,7 +29,7 @@ class Case:
 CASES = (
     Case(
         func_type=DataLoaderFunctionType.ONLOAD_FUNC,
-        loader=load,
+        loader=cast(DataLoader, load),
         func_params="d",
         file_name="data",
         file_content='{"key": "value"}',
@@ -38,7 +39,7 @@ CASES = (
     ),
     Case(
         func_type=DataLoaderFunctionType.PARAMETRIZER_FUNC,
-        loader=parametrize,
+        loader=cast(DataLoader, parametrize),
         func_params="d",
         file_name="data",
         file_content="foo\nbar",
@@ -48,7 +49,7 @@ CASES = (
     ),
     Case(
         func_type=DataLoaderFunctionType.FILTER_FUNC,
-        loader=parametrize,
+        loader=cast(DataLoader, parametrize),
         func_params="d",
         file_name="data",
         file_content="foo\nbar",
@@ -58,7 +59,7 @@ CASES = (
     ),
     Case(
         func_type=DataLoaderFunctionType.PROCESS_FUNC,
-        loader=parametrize,
+        loader=cast(DataLoader, parametrize),
         func_params="d",
         file_name="data",
         file_content="foo\nbar",
@@ -68,7 +69,7 @@ CASES = (
     ),
     Case(
         func_type=DataLoaderFunctionType.ID_FUNC,
-        loader=parametrize,
+        loader=cast(DataLoader, parametrize),
         func_params="p, d",
         file_name="data",
         file_content="foo\nbar",
@@ -78,7 +79,7 @@ CASES = (
     ),
     Case(
         func_type=DataLoaderFunctionType.MARKER_FUNC,
-        loader=parametrize,
+        loader=cast(DataLoader, parametrize),
         func_params="p, d",
         file_name="data",
         file_content="foo\nbar",
@@ -87,8 +88,8 @@ CASES = (
         expected_exit_lazy=ExitCode.INTERRUPTED,
     ),
     Case(
-        func_type=DataLoaderFunctionType.READ_OPTION_FUNC,
-        loader=parametrize_dir,
+        func_type=DataLoaderFunctionType.READ_OPTIONS_FUNC,
+        loader=cast(DataLoader, parametrize_dir),
         func_params="p",
         file_name="file1",
         file_content="hello",
@@ -111,7 +112,10 @@ class TestLoaderFuncCallError:
         output = str(result.stdout)
         assert result.ret == expected_exit
         assert "ValueError: loader func error" in output
-        assert f"Error while processing {case.func_type} for {case.file_name + case.file_ext!r}" in output
+        assert (
+            f"Error while processing '{case.func_type.public_name}' callable for {case.file_name + case.file_ext!r}"
+            in output
+        )
 
 
 def _run_test(pytester: Pytester, case: Case, lazy_loading: bool) -> RunResult:
@@ -130,7 +134,7 @@ def _run_test(pytester: Pytester, case: Case, lazy_loading: bool) -> RunResult:
     def f({case.func_params}):
         raise ValueError("loader func error")
 
-    @{case.loader.__name__}("data", "{case.data_path}", lazy_loading={lazy_loading}, {case.func_type}=f)
+    @{case.loader.__name__}("data", "{case.data_path}", lazy_loading={lazy_loading}, {case.func_type.public_name}=f)
     def test_func(data):
         pass
     """)
