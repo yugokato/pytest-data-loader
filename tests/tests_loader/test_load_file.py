@@ -51,6 +51,19 @@ def test_load_text_file_with_id(request: FixtureRequest, data: str) -> None:
     assert request.node.name.endswith("[foo]")
 
 
+@load("data", PATH_TEXT_FILE, marks=pytest.mark.foo)
+def test_load_text_file_with_marks(request: FixtureRequest, data: str) -> None:
+    """Test @load loader with the marks option using text file"""
+    assert "foo" in {m.name for m in request.node.own_markers}
+
+
+@load("data", PATH_TEXT_FILE, id="foo", marks=pytest.mark.bar)
+def test_load_text_file_with_id_and_marks(request: FixtureRequest, data: str) -> None:
+    """Test that @load loader supports id and marks together"""
+    assert request.node.name.endswith("[foo]")
+    assert "bar" in {m.name for m in request.node.own_markers}
+
+
 # JSON file
 @load("data", PATH_JSON_FILE_OBJECT)
 def test_load_json_file_with_no_options(data: dict[str, Any]) -> None:
@@ -79,6 +92,14 @@ def test_load_json_file_with_id(request: FixtureRequest, data: dict[str, Any]) -
     assert request.node.name.endswith("[foo]")
 
 
+@load("data", PATH_JSON_FILE_OBJECT, marks=[pytest.mark.foo, pytest.mark.bar])
+def test_load_json_file_with_marks_collection(request: FixtureRequest, data: dict[str, Any]) -> None:
+    """Test @load loader with a collection of marks using JSON file"""
+    mark_names = {m.name for m in request.node.own_markers}
+    assert "foo" in mark_names
+    assert "bar" in mark_names
+
+
 # Binary file
 @load("data", PATH_JPEG_FILE)
 def test_load_binary_file_with_no_options(data: bytes) -> None:
@@ -105,3 +126,9 @@ def test_load_binary_file_with_onload_func(data: bytes) -> None:
 def test_load_binary_file_with_id(request: FixtureRequest, data: bytes) -> None:
     """Test @load loader with the id option using binary file"""
     assert request.node.name.endswith("[foo]")
+
+
+@load("data", PATH_JPEG_FILE, marks=pytest.mark.foo)
+def test_load_binary_file_with_marks(request: FixtureRequest, data: bytes) -> None:
+    """Test @load loader with the marks option using binary file"""
+    assert "foo" in {m.name for m in request.node.own_markers}

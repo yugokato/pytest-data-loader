@@ -45,6 +45,7 @@ def load(
     file_reader: Callable[..., Iterable[Any] | object] | None = None,
     onload_func: Callable[..., Any] | None = None,
     id: str | None = None,
+    marks: MarkDecorator | Collection[MarkDecorator | Mark] | None = None,
     **read_options: Unpack[FileReadOptions],
 ) -> Callable[[Func], Func]:
     """A file loader that loads the file content and passes it to the test function.
@@ -67,6 +68,7 @@ def load(
     :param onload_func: A function to transform or preprocess loaded data before passing it to the test function.
                         NOTE: .json files will always be automatically parsed during the plugin-managed onload process
     :param id: Explicitly specify the parameter ID for the loaded data. Defaults to the relative or absolute file path
+    :param marks: Pytest mark(s) to apply to the loaded data. Accepts a single mark or a collection of marks
     :param read_options: File read options the plugin passes to `open()` when reading the file. Supports only mode,
                          encoding, errors, and newline options.
 
@@ -92,6 +94,7 @@ def load(
         file_reader=file_reader,
         onload_func=onload_func,
         id_func=(lambda _: id) if id is not None else None,
+        marker_func=(lambda _: marks) if marks is not None else None,
         **read_options,
     )
 

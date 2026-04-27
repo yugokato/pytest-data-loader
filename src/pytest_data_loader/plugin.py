@@ -154,7 +154,6 @@ def _generate_parameterset(
         if load_attrs.marker_func is None:
             return default_markers
         else:
-            assert load_attrs.loader.requires_parametrization
             if isinstance(loaded_data, LazyLoadedPartData):
                 # When marker_func is provided for the @parametrize loader, marks are generated when
                 # LazyLoadedPartData is created
