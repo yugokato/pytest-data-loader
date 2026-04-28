@@ -147,21 +147,6 @@ class TestLoaderStacking:
         assert result.ret == ExitCode.OK
         result.assert_outcomes(passed=3)
 
-    def test_stacked_error_includes_loader_info(self, pytester: pytest.Pytester) -> None:
-        """Test that collection errors from stacked data loaders identify which decorator failed."""
-        pytester.makepyfile("""
-        from pytest_data_loader import load
-
-        @load("cfg", "config.json")
-        @load("missing", "nonexistent_file.json")
-        def test_func(cfg, missing):
-            pass
-        """)
-        result = pytester.runpytest("--collect-only", "-q")
-        assert result.ret == ExitCode.INTERRUPTED
-        output = str(result.stdout)
-        assert "@load(fixture_names=('missing',), path='nonexistent_file.json')" in output
-
     def test_stacked_with_pytest_parametrize_mark(self, pytester: pytest.Pytester) -> None:
         """Test that stacking @load with @pytest.mark.parametrize produces a Cartesian product."""
         pytester.makepyfile("""

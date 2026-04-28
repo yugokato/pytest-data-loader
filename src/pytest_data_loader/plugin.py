@@ -20,7 +20,7 @@ from pytest_data_loader.types import (
     LoadedData,
     LoadedDataType,
 )
-from pytest_data_loader.utils import add_error_note
+from pytest_data_loader.utils import add_error_note, get_data_loader_source
 
 logger = logging.getLogger(__name__)
 
@@ -64,15 +64,15 @@ def pytest_generate_tests(metafunc: Metafunc) -> None:
     node_id = metafunc.definition.nodeid
     data_loader_option = metafunc.config.stash[STASH_KEY_DATA_LOADER_OPTION]
 
-    for idx, load_attrs in enumerate(reversed(load_attrs_list), start=1):
+    for idx, load_attrs in enumerate(reversed(load_attrs_list)):
         try:
             _apply_load_attrs(metafunc, load_attrs, data_loader_option)
         except Exception as e:
-            add_error_note(
-                e,
-                f"Location: {node_id}@{load_attrs.loader.__name__}(fixture_names={load_attrs.fixture_names}, "
-                f"path={str(load_attrs.path)!r})",
-            )
+            decorator_src = get_data_loader_source(test_func, idx, load_attrs.loader.__name__)
+            if decorator_src is None:
+                decorator_src = f"@{load_attrs.loader.__name__}"
+            add_error_note(e, f"- nodeid: {node_id}")
+            add_error_note(e, f"- data loader: {decorator_src}")
             raise
 
 

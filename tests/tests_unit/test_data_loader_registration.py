@@ -20,6 +20,7 @@ class TestDataLoaderRegistration:
         def new_loader() -> None: ...
 
         is_file_loader = loader_type is DataLoaderType.FILE
+        assert cast(DataLoader, new_loader).is_data_loader is True
         assert cast(DataLoader, new_loader).is_file_loader is is_file_loader
         assert cast(DataLoader, new_loader).requires_parametrization is (parametrize is True)
         assert cast(DataLoader, new_loader).should_split_data is bool(is_file_loader and parametrize)
