@@ -106,6 +106,7 @@ class DataLoaderOption:
 
 @runtime_checkable
 class DataLoader(Protocol):
+    is_data_loader: bool
     is_file_loader: bool
     requires_parametrization: bool
     should_split_data: bool

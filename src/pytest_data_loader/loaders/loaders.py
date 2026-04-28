@@ -27,6 +27,7 @@ def loader(loader_type: DataLoaderType, /, *, parametrize: bool = False) -> Call
     """
 
     def wrapper(loader_func: Func) -> Func:
+        loader_func.is_data_loader = True  # type: ignore[attr-defined]
         loader_func.is_file_loader = DataLoaderType(loader_type) == DataLoaderType.FILE  # type: ignore[attr-defined]
         loader_func.requires_parametrization = parametrize is True  # type: ignore[attr-defined]
         loader_func.should_split_data = bool(loader_func.is_file_loader and loader_func.requires_parametrization)  # type: ignore[attr-defined]
