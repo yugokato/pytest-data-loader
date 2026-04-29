@@ -105,7 +105,7 @@ def _apply_load_attrs(
         | tuple[Path, LoadedDataType | LazyLoadedData | LazyLoadedPartData]
     ]
     if loaded_data:
-        values = (_generate_parameterset(load_attrs, x) for x in loaded_data)
+        values = [_generate_parameterset(load_attrs, x) for x in loaded_data]
     else:
         values = []
 
