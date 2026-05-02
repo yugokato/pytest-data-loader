@@ -14,12 +14,14 @@ from pytest_data_loader.loaders.impl import create_loaders
 from pytest_data_loader.loaders.loaders import load
 from pytest_data_loader.types import (
     DataLoader,
+    DataLoaderFunctionType,
     DataLoaderLoadAttrs,
     DataLoaderOption,
     HashableDict,
     LoadedData,
     ReadOptions,
 )
+from pytest_data_loader.validators import validate_loader_func, validate_path, validate_read_options, validate_reader
 
 if TYPE_CHECKING:
     from pytest_data_loader.loaders.impl import Loader
@@ -75,26 +77,29 @@ class DataLoaderFixture:
         :param read_options: File read options the plugin passes to open() when reading the file
         :param onload: A function to transform or preprocess loaded data before passing it to the test function
         """
-        if read_options is not None and not isinstance(read_options, dict):
-            raise TypeError(f"read_options: Expected a dict, but got {type(read_options).__name__}")
+        loader = cast(DataLoader, load)
+        validated_path = cast(Path, validate_path(path, loader=loader, recursive=False))
+        validate_reader(reader)
+        validate_read_options(read_options)
+        validate_loader_func(onload, loader=loader, func_type=DataLoaderFunctionType.ONLOAD_FUNC)
 
-        cache_key = (str(path), reader, onload, tuple(sorted((read_options or {}).items())))
+        hashable_read_options = HashableDict(read_options or {})
+        cache_key = (str(validated_path), reader, onload, tuple(sorted(hashable_read_options.items())))
         if cache_key in self._cache:
             return self._cache[cache_key]
 
-        path = Path(path)
         load_attrs = DataLoaderLoadAttrs(
-            loader=cast(DataLoader, load),
+            loader=loader,
             search_from=self._search_from,
             fixture_names=("_",),
-            path=path,
+            path=validated_path,
             lazy_loading=False,
             reader=reader,
-            read_options=HashableDict(read_options or {}),
+            read_options=hashable_read_options,
             onload_func=onload,
         )
 
-        (file_loader,) = create_loaders(path, load_attrs, self._data_loader_option)
+        (file_loader,) = create_loaders(validated_path, load_attrs, self._data_loader_option)
         file_loader.register_cleanup(self._request.module)
         loaded = file_loader.load()
         assert isinstance(loaded, LoadedData)

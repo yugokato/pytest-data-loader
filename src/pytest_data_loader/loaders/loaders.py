@@ -3,8 +3,6 @@ from collections.abc import Callable, Iterable, Sequence
 from pathlib import Path
 from typing import Any, cast
 
-from pytest import Mark, MarkDecorator
-
 from pytest_data_loader.constants import PYTEST_DATA_LOADER_ATTRS
 from pytest_data_loader.loaders.impl import loader
 from pytest_data_loader.types import (
@@ -15,6 +13,7 @@ from pytest_data_loader.types import (
     PytestMarkType,
     ReadOptions,
 )
+from pytest_data_loader.validators import validate_loader_options
 
 __all__ = ["load", "parametrize", "parametrize_dir"]
 
@@ -272,48 +271,30 @@ def _setup_data_loader(
     read_options_func: Callable[[Path], ReadOptions] | None = None,
 ) -> Callable[[Func], Func]:
     """Set up a test function and inject loader attributes that are used by pytest_generate_tests hook"""
-    if ids is not None and not (callable(ids) or isinstance(ids, Iterable)):
-        # String value is intentionally allowed to match @pytest.mark.parametrize() behavior
-        raise TypeError("ids: Must be a callable or an iterable")
-
-    if read_options is not None and not isinstance(read_options, dict):
-        raise TypeError(f"read_options: Expected a dict, but got {type(read_options).__name__}")
-
-    marks_func: Callable[..., PytestMarkType | None] | None
-    if marks is None or (callable(marks) and not isinstance(marks, (MarkDecorator, Mark))):
-        marks_func = marks
-    else:
-        marks_func = lambda _: marks  # noqa: E731
-
-    id_func = ids_seq = None
-    if callable(ids):
-        id_func = ids
-    elif isinstance(ids, Iterable):
-        # Intentionally allowing a string value and ignoring empty IDs here to match the
-        # current pytest.mark.parametrize() behavior
-        ids_seq = tuple(ids) or None
+    validated_options = validate_loader_options(
+        loader=loader,
+        fixture_names=fixture_names,
+        path=path,
+        lazy_loading=lazy_loading,
+        recursive=recursive,
+        read_options=read_options,
+        reader=reader,
+        onload_func=onload,
+        parametrizer_func=parametrizer,
+        filter_func=filter,
+        process_func=processor,
+        reader_func=reader_func,
+        read_options_func=read_options_func,
+        marks=marks,
+        ids=ids,
+    )
 
     def wrapper(test_func: Func) -> Func:
         """Add attributes to the test function. This supports stacking multiple data loaders"""
         load_attrs = DataLoaderLoadAttrs(
             loader=loader,
             search_from=Path(inspect.getabsfile(test_func)),
-            # fixture_names and path will be validated and normalized in __post_init__()
-            fixture_names=fixture_names,  # type: ignore
-            path=path,  # type: ignore
-            lazy_loading=lazy_loading,
-            recursive=recursive,
-            reader=reader,
-            read_options=read_options,  # type: ignore
-            onload_func=onload,
-            parametrizer_func=parametrizer,
-            filter_func=filter,
-            process_func=processor,
-            reader_func=reader_func,
-            read_options_func=read_options_func,
-            marker_func=marks_func,
-            id_func=id_func,
-            ids=ids_seq,
+            **validated_options,
         )
         existing_load_attrs: list[DataLoaderLoadAttrs] | None = getattr(test_func, PYTEST_DATA_LOADER_ATTRS, None)
         if existing_load_attrs is None:

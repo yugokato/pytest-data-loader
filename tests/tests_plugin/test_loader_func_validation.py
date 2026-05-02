@@ -81,9 +81,9 @@ class TestLoaderFuncValidation:
         if func_type == DataLoaderFunctionType.PARAMETRIZER_FUNC:
             assert "Parametrized data must be an iterable container" in output
         elif func_type == DataLoaderFunctionType.READER_FUNC:
-            assert f"{name}: Expected an iterable or a callable, but got " in output
+            assert f"{name}: Must be an iterable or a callable, but got " in output
         else:
-            assert f"{name}: Expected a dict, but got " in output
+            assert f"{name}: Must be a dict, but got " in output
 
     @pytest.mark.parametrize("loader", [load, parametrize])
     @pytest.mark.parametrize("invalid_value", ["not-a-dict", [1, 2], 123], ids=["str", "list", "int"])
@@ -105,7 +105,7 @@ class TestLoaderFuncValidation:
         result = pytester.runpytest()
         assert result.ret == ExitCode.INTERRUPTED
         result.assert_outcomes(errors=1)
-        assert "read_options: Expected a dict, but got" in str(result.stdout)
+        assert "read_options: Must be a dict, but got" in str(result.stdout)
 
     @pytest.mark.parametrize("loader", [parametrize_dir])
     def test_read_options_func_with_unsupported_option(self, test_context: TestContext) -> None:

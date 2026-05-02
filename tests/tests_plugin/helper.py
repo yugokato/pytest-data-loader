@@ -303,7 +303,7 @@ def run_pytest_with_context(
     import pytest
     from pytest_data_loader import {loader.__name__}
     from pytest_data_loader.types import DataLoaderFunctionType
-    from pytest_data_loader.utils import validate_loader_func_args_and_normalize
+    from pytest_data_loader.utils import normalize_loader_func
 
     data_dir = Path({str(test_context.data_dir)!r})
 
@@ -385,8 +385,8 @@ def _render_test_id_assertions_block(
             if has_ids:
                 ids = eval({ids_def!r})
                 if callable(ids):
-                    expected_id = validate_loader_func_args_and_normalize(
-                        ids, DataLoaderFunctionType.ID_FUNC
+                    expected_id = normalize_loader_func(
+                        {loader.__name__}, ids, DataLoaderFunctionType.ID_FUNC
                     )(file_path, data)
                 else:
                     expected_id = list(ids)[idx]
@@ -403,10 +403,10 @@ def _render_test_id_assertions_block(
             if has_ids:
                 ids = eval({ids_def!r})
                 if callable(ids):
-                    expected_id = validate_loader_func_args_and_normalize(
+                    expected_id = normalize_loader_func(
+                        {loader.__name__},
                         ids,
-                        DataLoaderFunctionType.ID_FUNC,
-                        with_file_path_only=True
+                        DataLoaderFunctionType.ID_FUNC
                     )(file_path, None)
                 else:
                     expected_id = list(ids)[idx]

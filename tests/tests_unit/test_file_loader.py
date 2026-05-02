@@ -101,20 +101,6 @@ class TestFileLoader:
                 assert isinstance(loaded_data, LoadedData)
                 assert loaded_data.file_path == abs_file_path
 
-    def test_data_loader_load_attrs_rejects_both_id_func_and_ids(self, tmp_path: Path) -> None:
-        """Test that DataLoaderLoadAttrs raises ValueError when both id_func and ids are set simultaneously."""
-        abs_file_path = tmp_path / "file.txt"
-        abs_file_path.write_text("hello")
-        with pytest.raises(ValueError, match="id_func and ids are mutually exclusive"):
-            DataLoaderLoadAttrs(
-                loader=load,
-                search_from=Path(__file__),
-                fixture_names=("data",),
-                path=abs_file_path,
-                id_func=repr,
-                ids=("a",),
-            )
-
     @pytest.mark.parametrize("data", ["test", b"\x00\x01\x02"])
     def test_read_mode_detection(self, tmp_path: Path, data: str | bytes) -> None:
         """Test that file loading can detect the file read mode"""

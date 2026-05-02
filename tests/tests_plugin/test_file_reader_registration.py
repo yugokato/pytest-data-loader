@@ -113,7 +113,7 @@ class TestFileReaderRegistration:
         self._create_test_for_negative_cases(pytester, rel_path)
         result = pytester.runpytest_subprocess()
         assert result.ret == ExitCode.USAGE_ERROR
-        assert "reader: Expected an iterable or a callable" in str(result.stderr)
+        assert "reader: Must be an iterable or a callable" in str(result.stderr)
 
     def test_file_reader_registration_with_invalid_read_options(self, pytester: Pytester) -> None:
         """Test that file read option is validated during registration"""

@@ -33,7 +33,8 @@ from pytest_data_loader.types import (
     LazyLoadedPartData,
     LoadedData,
 )
-from pytest_data_loader.utils import validate_loader_func_args_and_normalize
+from pytest_data_loader.utils import normalize_loader_func
+from pytest_data_loader.validators import validate_read_options, validate_reader
 
 P = ParamSpec("P")
 R = TypeVar("R")
@@ -237,8 +238,8 @@ class FileLoader(Loader):
     @requires_loader("parametrize")
     def parametrizer_func(self) -> Callable[..., Iterable[Any]]:
         """Returns a normalized parametrizer function that also validates the func result"""
-        f = self.load_attrs.parametrizer_func or validate_loader_func_args_and_normalize(
-            self._parametrizer_func, DataLoaderFunctionType.PARAMETRIZER_FUNC
+        f = self.load_attrs.parametrizer_func or normalize_loader_func(
+            self.loader, self._parametrizer_func, DataLoaderFunctionType.PARAMETRIZER_FUNC
         )
 
         @wraps(f)
@@ -549,12 +550,12 @@ class DirectoryLoader(Loader):
                         read_options = self.load_attrs.read_options_func(file_path)
                     if self.load_attrs.reader_func:
                         file_reader = self.load_attrs.reader_func(file_path)
-                    if file_reader or read_options:
-                        FileReader.validate(file_reader, read_options)
-                        if file_reader:
-                            file_loader.file_reader = file_reader
-                        if read_options:
-                            file_loader.read_options = HashableDict(read_options)
+                    if file_reader:
+                        validate_reader(file_reader)
+                        file_loader.file_reader = file_reader
+                    if read_options:
+                        validate_read_options(read_options)
+                        file_loader.read_options = HashableDict(read_options)
                     loaded_data = file_loader.load()
                     assert isinstance(loaded_data, LoadedData | LazyLoadedData), type(loaded_data)
                     self._file_loaders.append(file_loader)

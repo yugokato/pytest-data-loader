@@ -3,14 +3,16 @@ from __future__ import annotations
 import inspect
 import json
 from collections import defaultdict
-from collections.abc import Callable, Generator, Iterable
+from collections.abc import Callable, Generator
 from pathlib import Path
 from threading import RLock
 from typing import IO, Any, ClassVar
 
-from pytest_data_loader.types import FileReadOptions, HashableDict, ReadOptions
+from pytest_data_loader.types import HashableDict, ReadOptions
+from pytest_data_loader.validators import validate_read_options, validate_reader
 
 __all__ = ["register_reader"]
+
 
 _LOCK = RLock()
 
@@ -19,9 +21,9 @@ class FileReader:
     # Store registered readers by conftest paths
     _REGISTERED_READERS: ClassVar[dict[Path, dict[str, FileReader]]] = defaultdict(dict)
 
-    def __init__(self, reader: Callable[..., Any] | None = None, read_options: HashableDict | None = None) -> None:
+    def __init__(self, reader: Callable[..., Any] | None = None, read_options: ReadOptions | None = None) -> None:
         self.reader = reader
-        self.read_options = read_options or HashableDict()
+        self.read_options = HashableDict(read_options or {})
 
     @staticmethod
     def register(
@@ -37,10 +39,11 @@ class FileReader:
         if not ext.startswith("."):
             raise ValueError("File extension must start with '.'")
 
-        FileReader.validate(reader, read_options)
+        validate_reader(reader)
+        validate_read_options(read_options)
 
         with _LOCK:
-            file_reader = FileReader(reader, read_options=HashableDict(read_options or {}))
+            file_reader = FileReader(reader, read_options=read_options)
             FileReader._REGISTERED_READERS[conftest_path][ext] = file_reader
         return file_reader
 
@@ -77,26 +80,6 @@ class FileReader:
                     if reader := FileReader._REGISTERED_READERS[conftest_path].get(ext):
                         break
             return reader or _DEFAULT_READERS.get(ext)
-
-    @staticmethod
-    def validate(file_reader: Any, read_options: Any) -> None:
-        """Validate file reader and read options
-
-        :param file_reader: File reader to validate
-        :param read_options: Read options to validate
-        """
-        if file_reader is not None:
-            if not ((isinstance(file_reader, type) and issubclass(file_reader, Iterable)) or callable(file_reader)):
-                got = file_reader if isinstance(file_reader, type) else type(file_reader)
-                raise TypeError(f"reader: Expected an iterable or a callable, but got {got.__name__}")
-
-        if read_options is not None:
-            if not isinstance(read_options, dict):
-                raise TypeError(f"read_options: Expected a dict, but got {type(read_options).__name__}")
-            if unsupported := set(read_options.keys()).difference(set(FileReadOptions.__annotations__.keys())):
-                raise ValueError(f"read_options: Unsupported read options: {', '.join(unsupported)}")
-            if (mode := read_options.get("mode")) and mode not in ("r", "rt", "rb"):
-                raise ValueError(f"read_options: Invalid read mode: {mode}")
 
 
 def register_reader(

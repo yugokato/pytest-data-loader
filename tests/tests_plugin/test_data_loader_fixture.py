@@ -82,7 +82,7 @@ class TestDataLoaderFixture:
         import pytest
 
         def test_load(data_loader):
-            with pytest.raises(TypeError, match="read_options: Expected a dict, but got"):
+            with pytest.raises(TypeError, match="read_options: Must be a dict, but got"):
                 data_loader("file.txt", read_options={invalid_value!r})
         """)
         result = pytester.runpytest("-v")
