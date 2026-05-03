@@ -24,7 +24,7 @@ class TestFileReaderRegistration:
                 pytester, "io.TextIOWrapper", ext=ext, read_options={"mode": "rb"}
             )
         if override:
-            reader_def = ", file_reader=io.BufferedReader"
+            reader_def = ", reader=io.BufferedReader"
         else:
             reader_def = ""
         pytester.makepyfile(f"""
@@ -113,7 +113,7 @@ class TestFileReaderRegistration:
         self._create_test_for_negative_cases(pytester, rel_path)
         result = pytester.runpytest_subprocess()
         assert result.ret == ExitCode.USAGE_ERROR
-        assert "file_reader: Expected an iterable or a callable" in str(result.stderr)
+        assert "reader: Must be an iterable or a callable" in str(result.stderr)
 
     def test_file_reader_registration_with_invalid_read_options(self, pytester: Pytester) -> None:
         """Test that file read option is validated during registration"""
@@ -151,14 +151,14 @@ class TestFileReaderRegistration:
         read_options: dict[str, Any] | None = None,
     ) -> None:
         if read_options:
-            read_option_def = ", ".join(f"{k}={v!r}" for k, v in read_options.items())
+            read_option_def = f", read_options={read_options!r}"
         else:
             read_option_def = ""
         pytester.makeconftest(f"""
         import io
         import pytest_data_loader
 
-        pytest_data_loader.register_reader({ext!r}, {reader_def}, {read_option_def})
+        pytest_data_loader.register_reader({ext!r}, {reader_def}{read_option_def})
         """)
 
     @staticmethod

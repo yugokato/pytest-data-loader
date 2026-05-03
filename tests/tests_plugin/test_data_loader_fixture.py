@@ -31,28 +31,28 @@ class TestDataLoaderFixture:
         assert result.ret == ExitCode.OK
         result.assert_outcomes(passed=1)
 
-    def test_load_with_file_reader(self, pytester: Pytester, data_dir: Path) -> None:
-        """Test that data_loader passes file_reader to the underlying FileLoader."""
+    def test_load_with_reader(self, pytester: Pytester, data_dir: Path) -> None:
+        """Test that data_loader passes reader to the underlying FileLoader."""
         (data_dir / "file.json").write_text(json.dumps({"k": "v"}))
 
         pytester.makepyfile("""
         import json
 
         def test_load(data_loader):
-            data = data_loader("file.json", file_reader=json.load)
+            data = data_loader("file.json", reader=json.load)
             assert data == {"k": "v"}
         """)
         result = pytester.runpytest("-v")
         assert result.ret == ExitCode.OK
         result.assert_outcomes(passed=1)
 
-    def test_load_with_onload_func(self, pytester: Pytester, data_dir: Path) -> None:
-        """Test that data_loader applies the onload_func to the loaded data."""
+    def test_load_with_onload(self, pytester: Pytester, data_dir: Path) -> None:
+        """Test that data_loader applies the onload function to the loaded data."""
         (data_dir / "file.txt").write_text("hello")
 
         pytester.makepyfile("""
         def test_load(data_loader):
-            data = data_loader("file.txt", onload_func=lambda d: d.upper())
+            data = data_loader("file.txt", onload=lambda d: d.upper())
             assert data == "HELLO"
         """)
         result = pytester.runpytest("-v")
@@ -66,8 +66,24 @@ class TestDataLoaderFixture:
 
         pytester.makepyfile(f"""
         def test_load(data_loader):
-            data = data_loader("file.bin", mode="rb")
+            data = data_loader("file.bin", read_options={{"mode": "rb"}})
             assert data == b"{data}"
+        """)
+        result = pytester.runpytest("-v")
+        assert result.ret == ExitCode.OK
+        result.assert_outcomes(passed=1)
+
+    @pytest.mark.parametrize("invalid_value", ["not-a-dict", [1, 2], 123], ids=["str", "list", "int"])
+    def test_load_with_invalid_read_options_type(self, pytester: Pytester, data_dir: Path, invalid_value: str) -> None:
+        """Test that passing a non-dict value to read_options raises a clear TypeError."""
+        (data_dir / "file.txt").write_text("hello")
+
+        pytester.makepyfile(f"""
+        import pytest
+
+        def test_load(data_loader):
+            with pytest.raises(TypeError, match="read_options: Must be a dict, but got"):
+                data_loader("file.txt", read_options={invalid_value!r})
         """)
         result = pytester.runpytest("-v")
         assert result.ret == ExitCode.OK

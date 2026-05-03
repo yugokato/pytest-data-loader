@@ -10,12 +10,7 @@ from pytest_data_loader.constants import ROOT_DIR
 from pytest_data_loader.types import DataLoader
 from tests.paths import ABS_PATH_LOADER_DIR
 
-from .helper import (
-    TestContext,
-    create_test_context,
-    create_test_data_in_data_dir,
-    run_pytest_with_context,
-)
+from .helper import TestContext, create_test_context, create_test_data_in_data_dir, run_pytest_with_context
 
 pytestmark = pytest.mark.plugin
 
@@ -136,7 +131,7 @@ class TestLoaderDataPath:
         elif path.is_absolute():
             if path.exists():
                 assert (
-                    f"Invalid path: @{loader.__name__} loader must take a "
+                    f"Invalid path type: @{loader.__name__} loader must take a "
                     f"{'file' if loader.is_file_loader and path.is_dir() else 'directory'} path, not '{path}'"
                 ) in stdout
             else:

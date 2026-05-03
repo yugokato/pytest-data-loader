@@ -6,12 +6,10 @@ import keyword
 import sys
 from collections.abc import Callable
 from functools import lru_cache, wraps
-from inspect import Parameter
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, ParamSpec, TypeVar
+from typing import Any, ParamSpec, TypeVar
 
-if TYPE_CHECKING:
-    from pytest_data_loader.types import DataLoaderFunctionType
+from pytest_data_loader.types import DataLoader, DataLoaderFunctionType
 
 R = TypeVar("R")
 P = ParamSpec("P")
@@ -25,15 +23,31 @@ def is_valid_fixture_name(name: str) -> bool:
     return name.isidentifier() and not keyword.iskeyword(name)
 
 
-def validate_loader_func_args_and_normalize(
-    loader_func: Callable[..., Any], func_type: DataLoaderFunctionType | None = None, with_file_path_only: bool = False
-) -> Callable[..., Any]:
-    """Validates the loader function definition and returns a normalized function that can take 2 arguments but call
-    the original function it with the right argument(s)
+@lru_cache
+def get_max_allowed_loader_func_args(loader: DataLoader, func_type: DataLoaderFunctionType) -> int:
+    with_file_path_only = not loader.is_file_loader and func_type in (
+        DataLoaderFunctionType.FILTER_FUNC,
+        DataLoaderFunctionType.MARKER_FUNC,
+        DataLoaderFunctionType.ID_FUNC,
+        DataLoaderFunctionType.READER_FUNC,
+        DataLoaderFunctionType.READ_OPTIONS_FUNC,
+    )
+    return 1 if with_file_path_only else 2
 
-    :param loader_func: Loader function
-    :param func_type: Loader function type
-    :param with_file_path_only: The loader function must take only file path
+
+def normalize_loader_func(
+    loader: DataLoader,
+    loader_func: Callable[..., Any],
+    func_type: DataLoaderFunctionType,
+    *,
+    num_args: int | None = None,
+) -> Callable[..., Any]:
+    """Normalize the given loader function to a standard signature and inject error context on exceptions.
+
+    :param loader: The data loader the function is associated with
+    :param loader_func: The pre-validated loader function to normalize
+    :param func_type: Type of the loader function
+    :param num_args: Parameter count of loader_func. When provided, the signature inspection is skipped
     """
 
     def inject_error_context(file_path: Path) -> Callable[[Callable[P, R]], Callable[P, R]]:
@@ -45,7 +59,10 @@ def validate_loader_func_args_and_normalize(
                 try:
                     return f(*args, **kwargs)
                 except Exception as e:
-                    err = f"Error while processing {func_type} for '{file_path.name}' ({file_path})"
+                    err = (
+                        f"Error while processing '{func_type.public_name}' callable for "
+                        f"'{file_path.name}' ({file_path})"
+                    )
                     add_error_note(e, err)
                     raise
 
@@ -53,27 +70,12 @@ def validate_loader_func_args_and_normalize(
 
         return decorator
 
-    try:
-        sig = inspect.signature(loader_func)
-    except ValueError as e:
-        raise ValueError(f"Unsupported loader_func: {loader_func!r}") from e
-
-    parameters = sig.parameters
-    len_func_args = len(parameters)
-
-    max_allowed_args = 1 if with_file_path_only else 2
-    err = None
-    if not 0 < len_func_args < max_allowed_args + 1:
-        err = f"It must take up to {max_allowed_args} arguments. Got {len_func_args}"
-    elif not all(p.kind in (Parameter.POSITIONAL_ONLY, Parameter.POSITIONAL_OR_KEYWORD) for p in parameters.values()):
-        err = "Only positional arguments are allowed"
-    if err:
-        f_type = f"{func_type} " if func_type else ""
-        raise TypeError(f"Detected invalid {f_type}loader function definition. {err}")
-
-    if len_func_args == 2:
+    if num_args is None:
+        num_args = len(inspect.signature(loader_func).parameters)
+    max_allowed_args = get_max_allowed_loader_func_args(loader, func_type)
+    if num_args == 2:
         return wraps(loader_func)(lambda file_path, data: inject_error_context(file_path)(loader_func)(file_path, data))
-    elif with_file_path_only:
+    elif max_allowed_args == 1:
         return wraps(loader_func)(lambda file_path, *_: inject_error_context(file_path)(loader_func)(file_path))
     else:
         return wraps(loader_func)(lambda file_path, data: inject_error_context(file_path)(loader_func)(data))

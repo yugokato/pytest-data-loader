@@ -23,20 +23,41 @@ from pytest_data_loader.paths import (
 )
 from pytest_data_loader.types import (
     DataLoader,
+    DataLoaderFunctionType,
     DataLoaderLoadAttrs,
     DataLoaderOption,
+    DataLoaderType,
+    Func,
     HashableDict,
     LazyLoadedData,
     LazyLoadedPartData,
     LoadedData,
 )
-from pytest_data_loader.utils import validate_loader_func_args_and_normalize
+from pytest_data_loader.utils import normalize_loader_func
+from pytest_data_loader.validators import validate_read_options, validate_reader
 
 P = ParamSpec("P")
 R = TypeVar("R")
 T = TypeVar("T", bound="FileLoader")
 
 logger = logging.getLogger(__name__)
+
+
+def loader(loader_type: DataLoaderType, /, *, parametrize: bool = False) -> Callable[[Func], Func]:
+    """Decorator to register a decorated function as a data loader
+
+    :param loader_type: A type of the loader. file or directory
+    :param parametrize: Whether the loader needs to perform parametrization or not
+    """
+
+    def wrapper(loader_func: Func) -> Func:
+        loader_func.is_data_loader = True  # type: ignore[attr-defined]
+        loader_func.is_file_loader = DataLoaderType(loader_type) == DataLoaderType.FILE  # type: ignore[attr-defined]
+        loader_func.requires_parametrization = parametrize is True  # type: ignore[attr-defined]
+        loader_func.should_split_data = bool(loader_func.is_file_loader and loader_func.requires_parametrization)  # type: ignore[attr-defined]
+        return loader_func
+
+    return wrapper
 
 
 def create_loaders(
@@ -158,7 +179,7 @@ class FileLoader(Loader):
         super().__init__(*args, **kwargs)
         if not self.path.is_file():
             raise ValueError(f"path must be a file path: {self.path}")
-        self.file_reader = self.load_attrs.file_reader
+        self.file_reader = self.load_attrs.reader
         self.read_options = self.load_attrs.read_options
         if not self.file_reader:
             if registered_reader := FileReader.get_registered_reader(self.load_attrs.search_from, self.path.suffix):
@@ -217,14 +238,16 @@ class FileLoader(Loader):
     @requires_loader("parametrize")
     def parametrizer_func(self) -> Callable[..., Iterable[Any]]:
         """Returns a normalized parametrizer function that also validates the func result"""
-        f = self.load_attrs.parametrizer_func or validate_loader_func_args_and_normalize(self._parametrizer_func)
+        f = self.load_attrs.parametrizer_func or normalize_loader_func(
+            self.loader, self._parametrizer_func, DataLoaderFunctionType.PARAMETRIZER_FUNC
+        )
 
         @wraps(f)
         def _parametrizer_func(*args: Any, **kwargs: Any) -> Iterable[Any]:
             parametrized_data: Any = f(*args, **kwargs)
             if not isinstance(parametrized_data, Iterable) or isinstance(parametrized_data, str | bytes):
                 t = parametrized_data if isinstance(parametrized_data, type) else type(parametrized_data)
-                raise ValueError(f"Parametrized data must be an iterable container, not {t.__name__!r}")
+                raise ValueError(f"Parametrized data must be an iterable container, not {t.__name__}")
             return parametrized_data
 
         return _parametrizer_func
@@ -523,16 +546,16 @@ class DirectoryLoader(Loader):
                         strip_trailing_whitespace=self.strip_trailing_whitespace,
                     )
                     file_reader = read_options = None
-                    if self.load_attrs.read_option_func:
-                        read_options = self.load_attrs.read_option_func(file_path)
-                    if self.load_attrs.file_reader_func:
-                        file_reader = self.load_attrs.file_reader_func(file_path)
-                    if file_reader or read_options:
-                        FileReader.validate(file_reader, read_options)
-                        if file_reader:
-                            file_loader.file_reader = file_reader
-                        if read_options:
-                            file_loader.read_options = HashableDict(read_options)
+                    if self.load_attrs.read_options_func:
+                        read_options = self.load_attrs.read_options_func(file_path)
+                    if self.load_attrs.reader_func:
+                        file_reader = self.load_attrs.reader_func(file_path)
+                    if file_reader:
+                        validate_reader(file_reader)
+                        file_loader.file_reader = file_reader
+                    if read_options:
+                        validate_read_options(read_options)
+                        file_loader.read_options = HashableDict(read_options)
                     loaded_data = file_loader.load()
                     assert isinstance(loaded_data, LoadedData | LazyLoadedData), type(loaded_data)
                     self._file_loaders.append(file_loader)

@@ -17,7 +17,7 @@ def yaml_file_reader(f: TextIOWrapper) -> ConfigParser:
     return parser
 
 
-@load("data", PATH_INI_FILE, file_reader=yaml_file_reader)
+@load("data", PATH_INI_FILE, reader=yaml_file_reader)
 def test_load_ini_file_with_reader(data: ConfigParser) -> None:
     """Test @load loader with INI file reader"""
     assert isinstance(data, ConfigParser)
@@ -27,15 +27,15 @@ def test_load_ini_file_with_reader(data: ConfigParser) -> None:
 @load(
     "data",
     PATH_INI_FILE,
-    file_reader=yaml_file_reader,
-    onload_func=lambda parser: {s: dict(parser.items(s)) for s in parser.sections()},
+    reader=yaml_file_reader,
+    onload=lambda parser: {s: dict(parser.items(s)) for s in parser.sections()},
 )
-def test_load_ini_file_with_reader_and_onload_func(data: dict[str, Any]) -> None:
-    """Test @load loader with INI file reader and onload_func"""
+def test_load_ini_file_with_reader_and_onload(data: dict[str, Any]) -> None:
+    """Test @load loader with INI file reader and onload"""
     assert isinstance(data, dict)
 
 
-@parametrize("data", PATH_INI_FILE, file_reader=yaml_file_reader)
+@parametrize("data", PATH_INI_FILE, reader=yaml_file_reader)
 def test_parametrize_ini_file_with_reader(data: tuple[str, Any]) -> None:
     """Test @parametrize loader with INI file reader"""
     assert isinstance(data, tuple)
@@ -44,7 +44,7 @@ def test_parametrize_ini_file_with_reader(data: tuple[str, Any]) -> None:
     assert isinstance(section_data, SectionProxy)
 
 
-@parametrize_dir("data", PATH_INI_FILE_DIR, file_reader_func=lambda _: yaml_file_reader)
+@parametrize_dir("data", PATH_INI_FILE_DIR, reader=lambda _: yaml_file_reader)
 def test_parametrize_dir_with_init_reader(data: ConfigParser) -> None:
     """Test @parametrize_dir loader with INI file reader"""
     assert isinstance(data, ConfigParser)

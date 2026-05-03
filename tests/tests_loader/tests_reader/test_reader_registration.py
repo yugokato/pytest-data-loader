@@ -24,11 +24,11 @@ def test_reader_registration(with_read_options: bool) -> None:
     fake_conftest_path = Path(".").resolve()
     assert FileReader.get_registered_reader(fake_conftest_path, ext) is None
 
-    read_options = {}
     if with_read_options:
         read_options = {"mode": "rb"}
-        file_reader = FileReader.register(fake_conftest_path, ext, TextIOWrapper, **read_options)
+        file_reader = FileReader.register(fake_conftest_path, ext, TextIOWrapper, read_options=read_options)
     else:
+        read_options = {}
         file_reader = FileReader.register(fake_conftest_path, ext, TextIOWrapper)
     assert file_reader is not None
     assert file_reader.reader == TextIOWrapper

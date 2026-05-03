@@ -31,40 +31,57 @@ def test_parametrize_dir_with_no_options_binary(file_path: Path, data: LoadedDat
     assert data == file_path.read_bytes()
 
 
-@parametrize_dir(("file_path", "data"), SOME_DIR, read_option_func=lambda x: {"mode": "rb"})
+@parametrize_dir(("file_path", "data"), SOME_DIR, read_options=lambda x: {"mode": "rb"})
 def test_parametrize_dir_in_binary_mode(file_path: Path, data: LoadedDataType) -> None:
     """Test @parametrize_dir loader in binary mode"""
     assert isinstance(data, bytes)
     assert data == file_path.read_bytes()
 
 
-@parametrize_dir(("file_path", "data"), SOME_DIR, filter_func=lambda x: int(x.stem) % 2 == 1)
-def test_parametrize_dir_with_filter_func(file_path: Path, data: LoadedDataType) -> None:
-    """Test @parametrize_dir loader with the filter_func option"""
+@parametrize_dir(("file_path", "data"), SOME_DIR, filter=lambda x: int(x.stem) % 2 == 1)
+def test_parametrize_dir_with_filter(file_path: Path, data: LoadedDataType) -> None:
+    """Test @parametrize_dir loader with the filter option"""
     assert int(file_path.stem) % 2 == 1
 
 
-@parametrize_dir(("file_path", "data"), SOME_DIR, process_func=lambda x: "# " + x)
-def test_parametrize_dir_with_process_func(file_path: Path, data: LoadedDataType) -> None:
-    """Test @parametrize_dir loader with the process_func option"""
+@parametrize_dir(("file_path", "data"), SOME_DIR, processor=lambda x: "# " + x)
+def test_parametrize_dir_with_processor(file_path: Path, data: LoadedDataType) -> None:
+    """Test @parametrize_dir loader with the processor option"""
     assert data == "# " + file_path.read_text()
 
 
-@parametrize_dir(
-    ("file_path", "data"),
-    IMAGE_DIR,
-    marker_func=lambda x: getattr(pytest.mark, x.suffix[1:]),
-)
-def test_parametrize_dir_with_marker_func(request: FixtureRequest, file_path: Path, data: LoadedDataType) -> None:
-    """Test @parametrize_dir loader with the marker_func option"""
-    marker = request.node.get_closest_marker(file_path.suffix[1:])
-    assert marker
+@parametrize_dir(("file_path", "data"), IMAGE_DIR, marks=lambda x: getattr(pytest.mark, x.suffix[1:]))
+def test_parametrize_dir_with_marks_callable(request: FixtureRequest, file_path: Path, data: LoadedDataType) -> None:
+    """Test @parametrize_dir loader with the marks option (callable)"""
+    assert request.node.get_closest_marker(file_path.suffix[1:])
 
 
-@parametrize_dir(("file_path", "data"), SOME_DIR, id_func=lambda x: x.stem)
-def test_parametrize_dir_with_id_func(request: FixtureRequest, file_path: Path, data: LoadedDataType) -> None:
-    """Test @parametrize_dir loader with the id_func option"""
+@parametrize_dir(("file_path", "data"), SOME_DIR, marks=pytest.mark.foo)
+def test_parametrize_dir_with_marks_single(request: FixtureRequest, file_path: Path, data: LoadedDataType) -> None:
+    """Test @parametrize_dir loader with the marks option (single mark applied to all)"""
+    assert request.node.get_closest_marker("foo")
+
+
+@parametrize_dir(("file_path", "data"), SOME_DIR, marks=[pytest.mark.foo, pytest.mark.bar])
+def test_parametrize_dir_with_marks_multi(request: FixtureRequest, file_path: Path, data: LoadedDataType) -> None:
+    """Test @parametrize_dir loader with the marks option (a collection of marks applied to all)"""
+    mark_names = {m.name for m in request.node.own_markers}
+    assert "foo" in mark_names
+    assert "bar" in mark_names
+
+
+@parametrize_dir(("file_path", "data"), SOME_DIR, ids=lambda x: x.stem)
+def test_parametrize_dir_with_ids_callable(request: FixtureRequest, file_path: Path, data: LoadedDataType) -> None:
+    """Test @parametrize_dir loader with the ids option (callable)"""
     assert request.node.nodeid.endswith(f"[{file_path.stem}]")
+
+
+@parametrize_dir(("file_path", "data"), SOME_DIR, ids=["a", "b", "c"])
+def test_parametrize_dir_with_ids_sequence(request: FixtureRequest, file_path: Path, data: LoadedDataType) -> None:
+    """Test @parametrize_dir loader with the ids option (a sequence of IDs)"""
+    idx = get_parametrized_test_idx(request, "data")
+    expected_ids = ["a", "b", "c"]
+    assert request.node.nodeid.endswith(f"[{expected_ids[idx]}]")
 
 
 @parametrize_dir(("file_path", "data"), SOME_DIR, recursive=True)
@@ -79,9 +96,9 @@ def test_parametrize_dir_recursive(request: FixtureRequest, file_path: Path, dat
     assert data == f"data{idx}"
 
 
-@parametrize_dir(("file_path", "_"), SOME_DIR, recursive=True, filter_func=lambda x: int(x.stem) % 2 == 1)
-def test_parametrize_dir_recursive_and_filter_func(file_path: Path, _: LoadedDataType) -> None:
-    """Test @parametrize_dir loader with recursive and filter_func option"""
+@parametrize_dir(("file_path", "_"), SOME_DIR, recursive=True, filter=lambda x: int(x.stem) % 2 == 1)
+def test_parametrize_dir_recursive_and_filter(file_path: Path, _: LoadedDataType) -> None:
+    """Test @parametrize_dir loader with recursive and filter option"""
     assert int(file_path.stem) % 2 == 1
 
 

@@ -16,7 +16,7 @@ read_options = dict(encoding="utf-8-sig", newline="")
 DELIMITER = {"comma": ",", "semicolon": ";"}
 
 
-@load(("file_path", "data"), PATH_CSV_FILE, file_reader=csv.reader, **read_options)
+@load(("file_path", "data"), PATH_CSV_FILE, reader=csv.reader, read_options=read_options)
 def test_load_csv_file_with_reader(file_path: Path, data: Iterator[list[str]]) -> None:
     """Test @load loader with CSV file reader"""
     assert isinstance(data, Iterator)
@@ -32,8 +32,8 @@ def test_load_csv_file_with_reader(file_path: Path, data: Iterator[list[str]]) -
 @load(
     ("file_path", "data"),
     PATH_CSV_FILE_SEMICOLON,
-    file_reader=lambda f: csv.reader(f, delimiter=DELIMITER[PATH_CSV_FILE_SEMICOLON.stem]),
-    **read_options,
+    reader=lambda f: csv.reader(f, delimiter=DELIMITER[PATH_CSV_FILE_SEMICOLON.stem]),
+    read_options=read_options,
 )
 def test_load_csv_file_with_reader_options(file_path: Path, data: Iterator[list[str]]) -> None:
     """Test @load loader with CSV file reader and reader options"""
@@ -47,7 +47,7 @@ def test_load_csv_file_with_reader_options(file_path: Path, data: Iterator[list[
     assert len(rows) == len(expected_data)
 
 
-@load(("file_path", "data"), PATH_CSV_FILE, file_reader=csv.DictReader, **read_options)
+@load(("file_path", "data"), PATH_CSV_FILE, reader=csv.DictReader, read_options=read_options)
 def test_load_csv_file_with_dict_reader(file_path: Path, data: Iterator[dict[str, str]]) -> None:
     """Test @load loader with CSV DictReader reader"""
     assert isinstance(data, Iterator)
@@ -61,7 +61,7 @@ def test_load_csv_file_with_dict_reader(file_path: Path, data: Iterator[dict[str
     assert len(rows) == len(expected_data) - 1
 
 
-@parametrize(("file_path", "data"), PATH_CSV_FILE, file_reader=csv.reader, **read_options)
+@parametrize(("file_path", "data"), PATH_CSV_FILE, reader=csv.reader, read_options=read_options)
 def test_parametrize_csv_file_with_reader(request: FixtureRequest, file_path: Path, data: list[str]) -> None:
     """Test @parametrize loader with CSV file reader"""
     assert isinstance(data, list)
@@ -70,7 +70,7 @@ def test_parametrize_csv_file_with_reader(request: FixtureRequest, file_path: Pa
     assert DELIMITER[file_path.stem].join(data) == expected_data[idx]
 
 
-@parametrize(("file_path", "data"), PATH_CSV_FILE, file_reader=csv.DictReader, **read_options)
+@parametrize(("file_path", "data"), PATH_CSV_FILE, reader=csv.DictReader, read_options=read_options)
 def test_parametrize_csv_file_with_dict_reader(request: FixtureRequest, file_path: Path, data: dict[str, str]) -> None:
     """Test @parametrize loader with CSV DictReader reader"""
     assert isinstance(data, dict)
@@ -83,8 +83,8 @@ def test_parametrize_csv_file_with_dict_reader(request: FixtureRequest, file_pat
 @parametrize_dir(
     ("file_path", "data"),
     PATH_CSV_FILE_DIR,
-    file_reader_func=lambda p: lambda f: csv.reader(f, delimiter=DELIMITER[p.stem]),
-    read_option_func=lambda f: read_options,
+    reader=lambda p: lambda f: csv.reader(f, delimiter=DELIMITER[p.stem]),
+    read_options=lambda f: read_options,
 )
 def test_parametrize_dir_with_csv_reader(file_path: Path, data: Iterator[list[str]]) -> None:
     """Test @parametrize_dir loader with CSV file reader"""

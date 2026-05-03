@@ -201,15 +201,15 @@ def run_pytest_with_context(
     data_loader_root_dir: Path | None = None,
     path: Path | str | None = None,
     lazy_loading: bool | None = True,
-    onload_func_def: str | None = None,
-    parametrizer_func_def: str | None = None,
-    filter_func_def: str | None = None,
-    process_func_def: str | None = None,
-    marker_func_def: str | None = None,
+    onload_def: str | None = None,
+    parametrizer_def: str | None = None,
+    filter_def: str | None = None,
+    processor_def: str | None = None,
+    marks_def: str | None = None,
     id_: str | None = None,
-    id_func_def: str | None = None,
-    file_reader_func_def: str | None = None,
-    read_option_func_def: str | None = None,
+    ids_def: str | None = None,
+    reader_def: str | None = None,
+    read_options_def: str | None = None,
     collect_only: bool = False,
     check_test_id: bool = False,
     **other_loader_options: Any,
@@ -224,15 +224,15 @@ def run_pytest_with_context(
     :param data_loader_root_dir: When set, asserts the resolved file paths are under this directory.
     :param path: Override the path from ``test_context``.
     :param lazy_loading: ``None`` uses the loader default; ``False`` forces eager loading.
-    :param onload_func_def: Python expression string for the ``onload_func`` argument.
-    :param parametrizer_func_def: Python expression string for the ``parametrizer_func`` argument.
-    :param filter_func_def: Python expression string for the ``filter_func`` argument.
-    :param process_func_def: Python expression string for the ``process_func`` argument.
-    :param marker_func_def: Python expression string for the ``marker_func`` argument.
+    :param onload_def: Python expression string for the ``onload`` argument.
+    :param parametrizer_def: Python expression string for the ``parametrizer`` argument.
+    :param filter_def: Python expression string for the ``filter`` argument.
+    :param processor_def: Python expression string for the ``processor`` argument.
+    :param marks_def: Python expression string for the ``marks`` argument.
     :param id_: Explicit id string for the ``@load`` decorator.
-    :param id_func_def: Python expression string for the ``id_func`` argument.
-    :param file_reader_func_def: Python expression string for the ``file_reader_func`` argument.
-    :param read_option_func_def: Python expression string for the ``read_option_func`` argument.
+    :param ids_def: Python expression string for the ``ids`` argument.
+    :param reader_def: Python expression string for the ``reader`` argument.
+    :param read_options_def: Python expression string for the ``read_options`` argument.
     :param collect_only: When True run with ``--collect-only`` instead of ``-vs``.
     :param check_test_id: When True, append assertions about the pytest node ID into the inner test body.
     :param other_loader_options: Additional keyword arguments forwarded verbatim to the loader decorator.
@@ -251,18 +251,21 @@ def run_pytest_with_context(
     if lazy_loading is False:
         loader_options.append(f"lazy_loading={lazy_loading}")
     func_defs = {
-        DataLoaderFunctionType.ONLOAD_FUNC: onload_func_def,
-        DataLoaderFunctionType.PARAMETRIZER_FUNC: parametrizer_func_def,
-        DataLoaderFunctionType.FILTER_FUNC: filter_func_def,
-        DataLoaderFunctionType.PROCESS_FUNC: process_func_def,
-        DataLoaderFunctionType.MARKER_FUNC: marker_func_def,
-        DataLoaderFunctionType.ID_FUNC: id_func_def,
-        DataLoaderFunctionType.FILE_READER_FUNC: file_reader_func_def,
-        DataLoaderFunctionType.READ_OPTION_FUNC: read_option_func_def,
+        DataLoaderFunctionType.ONLOAD_FUNC: onload_def,
+        DataLoaderFunctionType.PARAMETRIZER_FUNC: parametrizer_def,
+        DataLoaderFunctionType.FILTER_FUNC: filter_def,
+        DataLoaderFunctionType.PROCESS_FUNC: processor_def,
+        DataLoaderFunctionType.MARKER_FUNC: marks_def,
+        DataLoaderFunctionType.ID_FUNC: ids_def,
     }
     for func_type, func_def in func_defs.items():
         if func_def is not None:
-            loader_options.append(f"{func_type}={func_def}")
+            loader_options.append(f"{func_type.public_name}={func_def}")
+    # reader and read_options use public kwarg names that differ from internal field names
+    if reader_def is not None:
+        loader_options.append(f"reader={reader_def}")
+    if read_options_def is not None:
+        loader_options.append(f"read_options={read_options_def}")
     if id_ is not None:
         loader_options.append(f"id={id_!r}")
     if other_loader_options:
@@ -299,7 +302,8 @@ def run_pytest_with_context(
 
     import pytest
     from pytest_data_loader import {loader.__name__}
-    from pytest_data_loader.utils import validate_loader_func_args_and_normalize
+    from pytest_data_loader.types import DataLoaderFunctionType
+    from pytest_data_loader.utils import normalize_loader_func
 
     data_dir = Path({str(test_context.data_dir)!r})
 
@@ -338,7 +342,7 @@ def run_pytest_with_context(
 
     if check_test_id:
         assert len(fixtures) == 2, "This test requires to give 2 fixture names"
-        test_code += _render_test_id_assertions_block(loader, fixtures, id_, id_func_def, is_abs_path, lazy_loading)
+        test_code += _render_test_id_assertions_block(loader, fixtures, id_, ids_def, is_abs_path, lazy_loading)
 
     pytester.makepyfile(test_code)
     cmd_options = ["--collect-only", "-q"] if collect_only else ["-vs"]
@@ -349,7 +353,7 @@ def _render_test_id_assertions_block(
     loader: DataLoader,
     fixtures: list[str],
     id_: str | None,
-    id_func_def: str | None,
+    ids_def: str | None,
     is_abs_path: bool,
     lazy_loading: bool | None,
 ) -> str:
@@ -358,16 +362,17 @@ def _render_test_id_assertions_block(
     :param loader: The loader decorator under test.
     :param fixtures: List of fixture name strings (must have length 2).
     :param id_: Explicit id string for the ``@load`` decorator, or None.
-    :param id_func_def: Python expression string for the ``id_func`` argument, or None.
+    :param ids_def: Python expression string for the ``ids`` argument, or None.
     :param is_abs_path: Whether the path argument is absolute.
     :param lazy_loading: The lazy_loading option value used for the inner test.
     """
     return f"""
         has_id = {bool(id_)}
-        has_id_func = {bool(id_func_def)}
+        has_ids = {bool(ids_def)}
         is_lazy_loading = {bool(lazy_loading)}
         is_abs_path = {bool(is_abs_path)}
         node_id = request.node.nodeid.encode("utf-8").decode("unicode_escape")  # normalized for windows
+        idx = request.node.callspec.indices['{fixtures[-1]}']
         if {loader.__name__}.__name__ == 'load':
             if has_id:
                 assert node_id.endswith("[{id_}]")
@@ -377,13 +382,17 @@ def _render_test_id_assertions_block(
                 else:
                     assert node_id.endswith(f"[{{file_path.relative_to(data_dir)}}]")
         elif {loader.__name__}.__name__ == 'parametrize':
-            if has_id_func:
-                id_func = eval({id_func_def!r})
-                expected_id = validate_loader_func_args_and_normalize(id_func)(file_path, data)
+            if has_ids:
+                ids = eval({ids_def!r})
+                if callable(ids):
+                    expected_id = normalize_loader_func(
+                        {loader.__name__}, ids, DataLoaderFunctionType.ID_FUNC
+                    )(file_path, data)
+                else:
+                    expected_id = list(ids)[idx]
                 assert node_id.endswith(f"[{{expected_id}}]")
             else:
                 if is_lazy_loading:
-                    idx = request.node.callspec.indices['{fixtures[-1]}']
                     if is_abs_path:
                         assert node_id.endswith(f"[{{file_path}}:part{{idx+1}}]")
                     else:
@@ -391,11 +400,16 @@ def _render_test_id_assertions_block(
                 else:
                     assert node_id.endswith(f"[{{data!r}}]")
         else:
-            if has_id_func:
-                id_func = eval({id_func_def!r})
-                expected_id = validate_loader_func_args_and_normalize(id_func, with_file_path_only=True)(
-                    file_path, None
-                )
+            if has_ids:
+                ids = eval({ids_def!r})
+                if callable(ids):
+                    expected_id = normalize_loader_func(
+                        {loader.__name__},
+                        ids,
+                        DataLoaderFunctionType.ID_FUNC
+                    )(file_path, None)
+                else:
+                    expected_id = list(ids)[idx]
                 assert node_id.endswith(f"[{{expected_id}}]")
             elif is_abs_path:
                 assert node_id.endswith(f"[{{file_path}}]")

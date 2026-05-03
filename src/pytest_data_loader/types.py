@@ -1,28 +1,26 @@
 from __future__ import annotations
 
-import glob
 import os
-import warnings
 from abc import ABC, abstractmethod
 from collections.abc import Callable, Collection, Iterable, Mapping
 from dataclasses import dataclass, field
 from enum import auto
 from pathlib import Path
-from typing import Any, Literal, ParamSpec, Protocol, TypeAlias, TypedDict, TypeVar, runtime_checkable
+from typing import Any, Literal, ParamSpec, Protocol, TypeAlias, TypedDict, TypeVar, Union, runtime_checkable
 
 import pytest
 from pytest import Config, Mark, MarkDecorator
 
 from pytest_data_loader.compat import StrEnum
-from pytest_data_loader.constants import ROOT_DIR
-from pytest_data_loader.paths import check_circular_symlink, has_env_vars
-from pytest_data_loader.utils import is_valid_fixture_name, validate_loader_func_args_and_normalize
+from pytest_data_loader.paths import has_env_vars
 
 T = TypeVar("T")
 P = ParamSpec("P")
 Func = TypeVar("Func", bound=Callable[..., Any])
 JsonType: TypeAlias = str | int | float | bool | None | list["JsonType"] | dict[str, "JsonType"]
 LoadedDataType: TypeAlias = JsonType | bytes | tuple[str, JsonType] | object | Iterable["LoadedDataType"]
+PytestMarkType: TypeAlias = MarkDecorator | Collection[MarkDecorator | Mark]
+ReadOptions: TypeAlias = Union["FileReadOptions", dict[str, Any]]
 
 
 class HashableDict(dict[str, Any]):
@@ -113,6 +111,7 @@ class DataLoader(Protocol):
     __name__: str
 
     def __call__(self, *args: Any, **kwargs: Any) -> Any: ...
+    def __hash__(self) -> int: ...
 
 
 class DataLoaderType(StrEnum):
@@ -121,14 +120,38 @@ class DataLoaderType(StrEnum):
 
 
 class DataLoaderFunctionType(StrEnum):
-    FILE_READER_FUNC = auto()
     ONLOAD_FUNC = auto()
     PARAMETRIZER_FUNC = auto()
     FILTER_FUNC = auto()
     PROCESS_FUNC = auto()
+    READER_FUNC = auto()
+    READ_OPTIONS_FUNC = auto()
     MARKER_FUNC = auto()
     ID_FUNC = auto()
-    READ_OPTION_FUNC = auto()
+
+    @property
+    def public_name(self) -> str:
+        """Return the public-facing name for this enum member"""
+        return _LOADER_FUNC_PUBLIC_NAMES[self]
+
+    @classmethod
+    def _validate(cls) -> None:
+        missing = [member for member in cls if member not in _LOADER_FUNC_PUBLIC_NAMES]
+        if missing:
+            raise RuntimeError(f"Missing public name mapping for: {missing}")
+
+
+_LOADER_FUNC_PUBLIC_NAMES = {
+    DataLoaderFunctionType.ONLOAD_FUNC: "onload",
+    DataLoaderFunctionType.PARAMETRIZER_FUNC: "parametrizer",
+    DataLoaderFunctionType.FILTER_FUNC: "filter",
+    DataLoaderFunctionType.PROCESS_FUNC: "processor",
+    DataLoaderFunctionType.MARKER_FUNC: "marks",
+    DataLoaderFunctionType.ID_FUNC: "ids",
+    DataLoaderFunctionType.READER_FUNC: "reader",
+    DataLoaderFunctionType.READ_OPTIONS_FUNC: "read_options",
+}
+DataLoaderFunctionType._validate()
 
 
 @dataclass(frozen=True, kw_only=True, slots=True, repr=False)
@@ -208,142 +231,44 @@ class DataLoaderLoadAttrs:
     path: Path | tuple[Path, ...]
     lazy_loading: bool = True
     recursive: bool = False
-    file_reader: Callable[..., Iterable[Any] | object] | None = None
-    file_reader_func: Callable[[Path], Callable[..., Iterable[Any] | object]] | None = None
+    reader: Callable[..., Iterable[Any] | object] | None = None
+    read_options: HashableDict = field(default_factory=HashableDict)
     onload_func: Callable[..., Any] | None = None
     parametrizer_func: Callable[..., Iterable[Any]] | None = None
     filter_func: Callable[..., bool] | None = None
     process_func: Callable[..., Any] | None = None
-    marker_func: Callable[..., MarkDecorator | Collection[MarkDecorator | Mark] | None] | None = None
+    reader_func: Callable[[Path], Callable[..., Iterable[Any] | object]] | None = None
+    read_options_func: Callable[[Path], ReadOptions] | None = None
+    marker_func: Callable[..., PytestMarkType | None] | None = None
     id_func: Callable[..., Any] | None = None
-    read_option_func: Callable[[Path], dict[str, Any]] | None = None
-    read_options: HashableDict = field(default_factory=HashableDict)
-
-    def __post_init__(self) -> None:
-        from pytest_data_loader.loaders.reader import FileReader
-
-        self._validate_fixture_names()
-        self._validate_path()
-        self._validate_loader_func()
-        FileReader.validate(self.file_reader, self.read_options)
+    ids: tuple[Any, ...] | None = None
 
     @property
     def requires_file_path(self) -> bool:
+        """Return True if two fixture names are configured, meaning the file path is passed as a separate fixture."""
         return len(self.fixture_names) == 2
 
-    def _validate_fixture_names(self) -> None:
-        orig_value = self.fixture_names
-        if not isinstance(orig_value, (str, tuple)):
-            raise TypeError(f"fixture_names: Expected a string or tuple, but got {type(orig_value).__name__!r}")
-        if isinstance(orig_value, tuple) and not all(isinstance(x, str) for x in orig_value):
-            raise TypeError(
-                f"fixture_names: Expected a tuple of strings, but got {type(orig_value).__name__} "
-                f"with element types {[type(v).__name__ for v in orig_value]}."
-            )
+    def __post_init__(self) -> None:
+        from pytest_data_loader.utils import normalize_loader_func
+        from pytest_data_loader.validators import validate_loader_func
 
-        if isinstance(orig_value, str):  # type: ignore
-            normalized_names = tuple(x.strip() for x in orig_value.split(","))  # type: ignore
-        else:
-            normalized_names = tuple(orig_value)
-
-        err = "Invalid fixture_names value"
-        if not all(is_valid_fixture_name(x) for x in normalized_names):
-            raise ValueError(f"{err}: One or more values are illegal: {orig_value!r}")
-
-        len_names = len(normalized_names)
-        if not 0 < len(normalized_names) < 3:
-            raise ValueError(f"{err}: It must be either 1 or 2 fixture names. Got {len_names}: {orig_value!r}")
-
-        self._modify_value("fixture_names", normalized_names)
-
-    def _validate_path(self) -> None:
-        orig_value = self.path
-
-        # Multi-path case: list or tuple of path-like values (only supported by @parametrize and @parametrize_dir)
-        if isinstance(orig_value, list | tuple):
-            if not self.loader.requires_parametrization:
-                raise ValueError(f"Multi-path is not supported for @{self.loader.__name__} loader")
-            if len(orig_value) == 0:
-                raise ValueError("path: Multi-path list must not be empty")
-            if not all(isinstance(p, Path | str) for p in orig_value):
-                raise TypeError(
-                    f"path: Expected a list of strings or pathlib.Path objects, "
-                    f"but got element types {[type(p).__name__ for p in orig_value]}"
-                )
-            paths = tuple(Path(p) for p in orig_value)
-            for p in paths:
-                self._validate_single_path(p)
-            self._modify_value("path", paths)
-        else:
-            # Single path case
-            if not isinstance(orig_value, Path | str):
-                raise TypeError(f"path: Expected a string or pathlib.Path, but got {type(orig_value).__name__!r}")
-
-            path = Path(orig_value)
-            self._validate_single_path(path)
-            self._modify_value("path", path)
-
-    def _validate_single_path(self, path: Path) -> None:
-        """Validate a single path value.
-
-        :param path: The path to validate
-        """
-        if path in (Path("."), Path(".."), Path(ROOT_DIR)):
-            raise ValueError(f"Invalid path value: '{path}'")
-        if glob.has_magic(str(path)):
-            if not self.loader.requires_parametrization:
-                raise ValueError(f"@{self.loader.__name__} loader does not support glob pattern: '{path}'")
-            # existence of matching items is checked at path resolution time
-            if self.recursive is True and "**" not in str(path):
-                warnings.warn(
-                    f"The 'recursive' option is ignored for the glob pattern {str(path)!r}. Use '**' in the pattern to "
-                    f"enable recursive matching",
-                    UserWarning,
-                    stacklevel=6,  # The @parametrize_dir(...) def in the test (for Python >=3.11)
-                )
-            return
-        if path.is_absolute():
-            if path.is_symlink():
-                check_circular_symlink(path)
-            if not path.exists():
-                raise FileNotFoundError(f"The provided path does not exist: '{path}'")
-            if path.is_dir() and self.loader.is_file_loader:
-                raise ValueError(f"Invalid path: @{self.loader.__name__} loader must take a file path, not '{path}'")
-            if path.is_file() and not self.loader.is_file_loader:
-                raise ValueError(
-                    f"Invalid path: @{self.loader.__name__} loader must take a directory path, not '{path}'"
-                )
-
-    def _validate_loader_func(self) -> None:
         for f, func_type in [
-            (self.file_reader_func, DataLoaderFunctionType.FILE_READER_FUNC),
             (self.onload_func, DataLoaderFunctionType.ONLOAD_FUNC),
             (self.parametrizer_func, DataLoaderFunctionType.PARAMETRIZER_FUNC),
             (self.filter_func, DataLoaderFunctionType.FILTER_FUNC),
             (self.process_func, DataLoaderFunctionType.PROCESS_FUNC),
+            (self.reader_func, DataLoaderFunctionType.READER_FUNC),
+            (self.read_options_func, DataLoaderFunctionType.READ_OPTIONS_FUNC),
             (self.marker_func, DataLoaderFunctionType.MARKER_FUNC),
             (self.id_func, DataLoaderFunctionType.ID_FUNC),
-            (self.read_option_func, DataLoaderFunctionType.READ_OPTION_FUNC),
         ]:
             if f is not None:
-                if not callable(f):
-                    raise TypeError(f"{func_type}: Must be a callable, not {type(f).__name__!r}")
-                with_file_path_only = not self.loader.is_file_loader and func_type in (
-                    DataLoaderFunctionType.FILE_READER_FUNC,
-                    DataLoaderFunctionType.FILTER_FUNC,
-                    DataLoaderFunctionType.MARKER_FUNC,
-                    DataLoaderFunctionType.ID_FUNC,
-                    DataLoaderFunctionType.READ_OPTION_FUNC,
-                )
-                self._modify_value(
+                len_func_args = validate_loader_func(f, loader=self.loader, func_type=func_type)
+                object.__setattr__(
+                    self,
                     func_type,
-                    validate_loader_func_args_and_normalize(
-                        f, func_type=func_type, with_file_path_only=with_file_path_only
-                    ),
+                    normalize_loader_func(self.loader, f, func_type, num_args=len_func_args),
                 )
-
-    def _modify_value(self, field_name: str, new_value: Any) -> None:
-        object.__setattr__(self, field_name, new_value)
 
 
 class FileReadOptions(TypedDict, total=False):

@@ -98,6 +98,10 @@ def _apply_load_attrs(
             elif loaded:
                 loaded_data.extend(loaded)
 
+    ids = load_attrs.ids
+    if ids is not None and len(ids) != len(loaded_data):
+        raise ValueError(f"ids: Length ({len(ids)}) does not match number of parameter sets ({len(loaded_data)})")
+
     values: Iterable[
         LoadedDataType
         | LazyLoadedData
@@ -105,7 +109,7 @@ def _apply_load_attrs(
         | tuple[Path, LoadedDataType | LazyLoadedData | LazyLoadedPartData]
     ]
     if loaded_data:
-        values = [_generate_parameterset(load_attrs, x) for x in loaded_data]
+        values = [_generate_parameterset(load_attrs, x, id_=ids[i] if ids else None) for i, x in enumerate(loaded_data)]
     else:
         values = []
 
@@ -126,28 +130,33 @@ def pytest_fixture_setup(request: SubRequest) -> None:
 
 
 def _generate_parameterset(
-    load_attrs: DataLoaderLoadAttrs, loaded_data: LoadedData | LazyLoadedData | LazyLoadedPartData
+    load_attrs: DataLoaderLoadAttrs, loaded_data: LoadedData | LazyLoadedData | LazyLoadedPartData, *, id_: Any = None
 ) -> ParameterSet:
     """Generate Pytest ParameterSet object for the loaded data.
 
     :param load_attrs: The load attributes
     :param loaded_data: The loaded data
+    :param id_: Explicit ID value from a sequence-based ids argument
     """
 
     def generate_param_id() -> Any:
-        if load_attrs.id_func is None:
+        if id_ is not None:
+            return id_
+
+        if load_attrs.id_func:
+            if isinstance(loaded_data, LazyLoadedPartData):
+                # When `ids` callable is provided for the @parametrize loader, parameter ID is generated when
+                # LazyLoadedPartData is created
+                return loaded_data.meta["id"] or repr(loaded_data)
+            return load_attrs.id_func(loaded_data.file_path, loaded_data.data)
+        else:
+            # Default ID
             if load_attrs.lazy_loading or not (
                 load_attrs.loader.is_file_loader and load_attrs.loader.requires_parametrization
             ):
                 return repr(loaded_data)
             else:
                 return repr(loaded_data.data)
-        else:
-            if isinstance(loaded_data, LazyLoadedPartData):
-                # When id_func is provided for the @parametrize loader, parameter ID is generated when
-                # LazyLoadedPartData is created
-                return loaded_data.meta["id"] or repr(loaded_data)
-            return load_attrs.id_func(loaded_data.file_path, loaded_data.data)
 
     def generate_param_marks() -> MarkDecorator | Collection[MarkDecorator | Mark]:
         default_markers: tuple[()] = ()
@@ -155,7 +164,7 @@ def _generate_parameterset(
             return default_markers
         else:
             if isinstance(loaded_data, LazyLoadedPartData):
-                # When marker_func is provided for the @parametrize loader, marks are generated when
+                # When `marks` callable is provided for the @parametrize loader, marks are generated when
                 # LazyLoadedPartData is created
                 marks = loaded_data.meta["marks"]
             else:

@@ -228,9 +228,9 @@ class TestLoaderStacking:
         from pytest_data_loader import load, parametrize, parametrize_dir
 
         # Adding encoding option to differentiate the actual open v.s. sampling
-        @load("columns", "columns.txt", encoding="utf-8")
-        @parametrize("row", "rows.txt", encoding="utf-8")
-        @parametrize_dir("item", "items", read_option_func=lambda x: {"encoding": "utf-8"})
+        @load("columns", "columns.txt", read_options={"encoding": "utf-8"})
+        @parametrize("row", "rows.txt", read_options={"encoding": "utf-8"})
+        @parametrize_dir("item", "items", read_options=lambda _: {"encoding": "utf-8"})
         def test_func(columns, row, item):
             ...
 

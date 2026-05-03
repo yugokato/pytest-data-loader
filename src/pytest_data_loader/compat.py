@@ -5,7 +5,6 @@ from enum import Enum
 from typing import Any
 
 if sys.version_info < (3, 11):
-    from typing_extensions import Unpack
 
     class StrEnum(str, Enum):
         @staticmethod
@@ -16,4 +15,3 @@ if sys.version_info < (3, 11):
             return str(self.value)
 else:
     from enum import StrEnum  # noqa: F401
-    from typing import Unpack  # noqa: F401

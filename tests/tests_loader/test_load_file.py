@@ -31,16 +31,16 @@ def test_load_text_file_with_no_options(data: str) -> None:
     assert data == (ABS_PATH_LOADER_DIR / PATH_TEXT_FILE).read_text()
 
 
-@load("data", PATH_TEXT_FILE, mode="rb")
+@load("data", PATH_TEXT_FILE, read_options={"mode": "rb"})
 def test_load_text_file_in_binary_mode(data: bytes) -> None:
     """Test @load loader in binary mode using text file"""
     assert isinstance(data, bytes)
     assert data == (ABS_PATH_LOADER_DIR / PATH_TEXT_FILE).read_bytes()
 
 
-@load("data", PATH_TEXT_FILE, onload_func=lambda d: "# foo\n" + d)
+@load("data", PATH_TEXT_FILE, onload=lambda d: "# foo\n" + d)
 def test_load_text_file_with_onload_func(data: str) -> None:
-    """Test @load loader with the onload_func option using text file"""
+    """Test @load loader with the onload option using text file"""
     assert isinstance(data, str)
     assert data == "# foo\n" + (ABS_PATH_LOADER_DIR / PATH_TEXT_FILE).read_text()
 
@@ -72,18 +72,18 @@ def test_load_json_file_with_no_options(data: dict[str, Any]) -> None:
     assert data == json.loads((ABS_PATH_LOADER_DIR / PATH_JSON_FILE_OBJECT).read_text())
 
 
-@load("data", PATH_JSON_FILE_OBJECT, mode="rb")
+@load("data", PATH_JSON_FILE_OBJECT, read_options={"mode": "rb"})
 def test_load_json_file_with_force_binary(data: dict[str, Any]) -> None:
     """Test @load loader in binary mode using JSON file"""
     assert isinstance(data, dict)
     assert data == json.loads((ABS_PATH_LOADER_DIR / PATH_JSON_FILE_OBJECT).read_bytes())
 
 
-@load("data", PATH_JSON_FILE_NESTED_OBJECT, onload_func=lambda d: d["dev"])
+@load("data", PATH_JSON_FILE_NESTED_OBJECT, onload=lambda d: d["dev"])
 def test_load_json_file_with_onload_func(data: dict[str, Any]) -> None:
-    """Test @load loader with the onload_func option using JSON file"""
+    """Test @load loader with the onload option using JSON file"""
     assert isinstance(data, dict)
-    assert data == json.loads((ABS_PATH_LOADER_DIR / PATH_JSON_FILE_NESTED_OBJECT).read_bytes())["dev"]
+    assert data == json.loads((ABS_PATH_LOADER_DIR / PATH_JSON_FILE_NESTED_OBJECT).read_text())["dev"]
 
 
 @load("data", PATH_JSON_FILE_OBJECT, id="foo")
@@ -108,16 +108,16 @@ def test_load_binary_file_with_no_options(data: bytes) -> None:
     assert data == (ABS_PATH_LOADER_DIR / PATH_JPEG_FILE).read_bytes()
 
 
-@load("data", PATH_JPEG_FILE, mode="rb")
+@load("data", PATH_JPEG_FILE, read_options={"mode": "rb"})
 def test_load_binary_file_with_force_binary(data: bytes) -> None:
     """Test @load loader in binary mode using binary file"""
     assert isinstance(data, bytes)
     assert data == (ABS_PATH_LOADER_DIR / PATH_JPEG_FILE).read_bytes()
 
 
-@load("data", PATH_JPEG_FILE, onload_func=lambda d: b"# foo" + d)
+@load("data", PATH_JPEG_FILE, onload=lambda d: b"# foo" + d)
 def test_load_binary_file_with_onload_func(data: bytes) -> None:
-    """Test @load loader with the onload_func option using binary file"""
+    """Test @load loader with the onload option using binary file"""
     assert isinstance(data, bytes)
     assert data == b"# foo" + (ABS_PATH_LOADER_DIR / PATH_JPEG_FILE).read_bytes()
 

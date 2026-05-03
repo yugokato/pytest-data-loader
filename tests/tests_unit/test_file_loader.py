@@ -149,14 +149,14 @@ class TestFileLoaderCaching:
         loader: DataLoader,
         path: Path,
         lazy_loading: bool = True,
-        parametrizer_func: Callable[..., Any] | None = None,
+        parametrizer: Callable[..., Any] | None = None,
     ) -> DataLoaderLoadAttrs:
         """Create a minimal DataLoaderLoadAttrs for testing.
 
         :param loader: The data loader to use
         :param path: Relative path to the test data file
         :param lazy_loading: Whether to use lazy loading
-        :param parametrizer_func: Optional parametrizer function (e.g. for binary files)
+        :param parametrizer: Optional parametrizer function (e.g. for binary files)
         """
         return DataLoaderLoadAttrs(
             loader=loader,
@@ -164,7 +164,7 @@ class TestFileLoaderCaching:
             fixture_names=("file_path", "data"),
             path=path,
             lazy_loading=lazy_loading,
-            parametrizer_func=parametrizer_func,
+            parametrizer_func=parametrizer,
         )
 
     @pytest.mark.parametrize("path", [*PATHS_TEXT_FILES, *PATHS_BINARY_FILES])
@@ -172,8 +172,8 @@ class TestFileLoaderCaching:
     def test_lazy_loading_cache_state_transitions(self, loader: DataLoader, path: Path) -> None:
         """Test that lazy loading correctly transitions cache state before and after resolve and clear_cache."""
         abs_file_path = ABS_PATH_LOADER_DIR / path
-        parametrizer_func: Callable[..., Any] | None = (lambda x: [x]) if path in PATHS_BINARY_FILES else None
-        load_attrs = self._make_load_attrs(loader, path, lazy_loading=True, parametrizer_func=parametrizer_func)
+        parametrizer: Callable[..., Any] | None = (lambda x: [x]) if path in PATHS_BINARY_FILES else None
+        load_attrs = self._make_load_attrs(loader, path, lazy_loading=True, parametrizer=parametrizer)
         file_loader = FileLoader(
             abs_file_path, load_attrs, load_from=ABS_PATH_LOADER_DIR, strip_trailing_whitespace=True
         )
