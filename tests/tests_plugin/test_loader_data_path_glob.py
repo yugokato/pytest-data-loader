@@ -1,5 +1,4 @@
 import re
-import sys
 from pathlib import Path
 
 import pytest
@@ -490,7 +489,7 @@ class TestParametrizeDirWithGlobPath:
                         rf"\s+{re.escape(str(p))}:\d: UserWarning: The 'recursive' option is ignored for the glob "
                         rf"pattern '{pattern_regex}'\. Use '\*\*' in the pattern to enable recursive matching"
                     ),
-                    rf"\s+{re.escape(loader_def)}" if sys.version_info >= (3, 11) else r"\s+def test_func.+",
+                    rf"\s+{re.escape(loader_def)}",
                 ],
                 consecutive=True,
             )
