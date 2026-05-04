@@ -111,6 +111,17 @@ def has_env_vars(path: Path | str) -> bool:
     return bool(re.search(pattern, str(path)))
 
 
+def expand_env_vars(value: Path | str) -> str:
+    """Expand environment variables in the given path-like value.
+
+    :param value: The path value possibly containing env-var references
+    """
+    expanded = os.path.expandvars(str(value))
+    if has_env_vars(expanded):
+        raise ValueError(f"Unable to resolve environment variable(s) in the path: {expanded!r}")
+    return expanded
+
+
 def check_circular_symlink(path: Path) -> None:
     """Detect a circular symlink resolution loops (ELOOP)
 

@@ -1,9 +1,11 @@
 import os
+import re
+import sys
 from pathlib import Path
 from typing import Any
 
 import pytest
-from pytest import ExitCode, Pytester, RunResult
+from pytest import ExitCode, MonkeyPatch, Pytester, RunResult
 
 from pytest_data_loader import parametrize_dir
 from pytest_data_loader.constants import ROOT_DIR
@@ -11,6 +13,11 @@ from pytest_data_loader.types import DataLoader
 from tests.paths import ABS_PATH_LOADER_DIR
 
 from .helper import TestContext, create_test_context, create_test_data_in_data_dir, run_pytest_with_context
+
+if sys.platform == "win32":
+    ENV_VAR = "%FOO%"
+else:
+    ENV_VAR = "${FOO}"
 
 pytestmark = pytest.mark.plugin
 
@@ -119,6 +126,55 @@ class TestLoaderDataPath:
             assert "Detected a circular symlink" in str(result.stdout)
         else:
             assert result.ret == ExitCode.OK
+
+    @pytest.mark.parametrize("collect_only", [True, False])
+    @pytest.mark.parametrize("is_abs_path", [False, True])
+    @pytest.mark.parametrize(
+        "env_var",
+        [ENV_VAR, pytest.param("$FOO", marks=pytest.mark.skipif(sys.platform == "win32", reason="Not for windows"))],
+    )
+    def test_env_var_in_path(
+        self,
+        test_context: TestContext,
+        monkeypatch: MonkeyPatch,
+        env_var: str,
+        collect_only: bool,
+        is_abs_path: bool,
+    ) -> None:
+        """Test that env-var references in an absolute/relative path are expanded before the loader resolves it."""
+        loader = test_context.loader
+        subdir = "subdir"
+        env_var_name = re.sub(r"\W", "", env_var)
+        file_path = create_test_data_in_data_dir(
+            test_context.pytester,
+            Path(test_context.data_dir).name,
+            Path(subdir, f"file{test_context.test_file_ext}"),
+            data=test_context.test_file_content,
+            return_abs_path=is_abs_path,
+        )
+        if loader.is_file_loader:
+            monkeypatch.setenv(env_var_name, str(file_path.parent))
+            path = f"{env_var}{os.sep}{file_path.name}"
+            num_tests = test_context.num_expected_tests
+        else:
+            dir_path = file_path.parent
+            path = f"{env_var}{os.sep}{dir_path.name}"
+            monkeypatch.setenv(env_var_name, str(dir_path.parent))
+            num_tests = 1
+
+        result = run_pytest_with_context(test_context, path=path, collect_only=collect_only)
+        assert result.ret == ExitCode.OK
+        if not collect_only:
+            result.assert_outcomes(passed=num_tests)
+
+    @pytest.mark.parametrize("collect_only", [True, False])
+    def test_unresolved_env_var_in_path(self, test_context: TestContext, collect_only: bool) -> None:
+        """Test that an unresolved env-var reference in a path raises a clear error."""
+        path = f"{ENV_VAR}{os.sep}file.txt"
+        result = run_pytest_with_context(test_context, path=path, collect_only=collect_only)
+        assert result.ret == ExitCode.INTERRUPTED
+        result.assert_outcomes(errors=1)
+        assert "Unable to resolve environment variable(s) in the path" in str(result.stdout)
 
     @staticmethod
     def _check_result_with_invalid_path(result: RunResult, loader: DataLoader, invalid_path: Path | str) -> None:
