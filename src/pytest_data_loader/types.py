@@ -12,7 +12,7 @@ import pytest
 from pytest import Config, Mark, MarkDecorator
 
 from pytest_data_loader.compat import StrEnum
-from pytest_data_loader.paths import has_env_vars
+from pytest_data_loader.paths import expand_env_vars, has_env_vars
 
 T = TypeVar("T")
 P = ParamSpec("P")
@@ -76,9 +76,7 @@ class DataLoaderOption:
                 if v == "":
                     return pytest_rootdir
                 if has_env_vars(v):
-                    v = os.path.expandvars(v)
-                    if has_env_vars(v):
-                        raise ValueError(f"Unable to resolve environment variable(s) in the path: {v!r}")
+                    v = expand_env_vars(v)
                 v = Path(os.path.expanduser(v))
                 if not v.is_absolute():
                     v = v.resolve()

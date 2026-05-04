@@ -11,7 +11,7 @@ from typing import Any
 from pytest import Mark, MarkDecorator
 
 from pytest_data_loader.constants import ROOT_DIR
-from pytest_data_loader.paths import check_circular_symlink
+from pytest_data_loader.paths import check_circular_symlink, expand_env_vars, has_env_vars
 from pytest_data_loader.types import DataLoader, DataLoaderFunctionType, FileReadOptions, HashableDict, PytestMarkType
 from pytest_data_loader.utils import get_max_allowed_loader_func_args, is_valid_fixture_name
 
@@ -153,13 +153,15 @@ def validate_path(
                 f"path: Each path must a be a string or pathlib.Path object, but got "
                 f"{[_get_type_name(p) for p in value]}"
             )
-        paths = tuple(Path(p) for p in value)
+        paths = tuple(Path(expand_env_vars(p) if has_env_vars(p) else p) for p in value)
         for p in paths:
             _validate_single_path(p, loader=loader, recursive=recursive)
         return paths
     else:
         if not isinstance(value, Path | str):
             raise TypeError(f"path: Must be a string or pathlib.Path object, but got {_get_type_name(value)}")
+        if has_env_vars(value):
+            value = expand_env_vars(value)
         path = Path(value)
         _validate_single_path(path, loader=loader, recursive=recursive)
         return path

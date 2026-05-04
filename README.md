@@ -57,6 +57,7 @@ Each data loader requires two positional arguments:
   that contains the target file or directory
   - For `@parametrize` and `@parametrize_dir`, this can also be a list of paths, a glob pattern, or a list that combines 
 both to aggregate data from multiple sources
+  - Environment variables are supported using the `${VAR}` or `$VAR` (or `%VAR%` on Windows) syntax
 
 > [!NOTE]
 > If your data path is dynamic and unknown until runtime, use the `data_loader` fixture as a programmatic alternative to 

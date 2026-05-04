@@ -72,7 +72,9 @@ class DataLoaderFixture:
     ) -> Any:
         """Load a single file and return its parsed data.
 
-        :param path: Absolute path or a path relative to a data directory
+        :param path: Absolute path or a path relative to a data directory.
+                     Environment variables are supported using the ``${VAR}`` or ``$VAR``
+                     (or ``%VAR%`` for Windows) syntax.
         :param reader: A file reader the plugin should use to read the file data
         :param read_options: File read options the plugin passes to open() when reading the file
         :param onload: A function to transform or preprocess loaded data before passing it to the test function

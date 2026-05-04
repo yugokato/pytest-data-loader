@@ -40,6 +40,7 @@ def load(
     :param path: Path to the file to load. It can be either an absolute path or a path relative to one of the base data
                  directories. When a relative path is provided, the loader searches for the nearest data directory
                  containing a matching file and loads the data from there.
+                 Environment variables are supported using the ``${VAR}`` or ``$VAR`` (or ``%VAR%`` for Windows) syntax.
     :param lazy_loading: If True, the plugin will defer the timing of file loading to the test setup phase. If False,
                          the data will be loaded during the test collection phase, which could cause a performance issue
     :param reader: A file reader the plugin should use to read the file data.
@@ -108,6 +109,7 @@ def parametrize(
                  loads the data from there.
                  When the provided path represents multiple files, the plugin loads and splits each file independently,
                  then concatenates all parametrized data into a single parameter list.
+                 Environment variables are supported using the ``${VAR}`` or ``$VAR`` (or ``%VAR%`` for Windows) syntax.
     :param lazy_loading: If True, the plugin will defer the timing of file loading to the test setup phase. Note that
                          unlike other loaders, the plugin still needs to inspect the file data during the collection
                          phase to determine the total number of parametrized tests. The inspection is done in one of
@@ -206,6 +208,7 @@ def parametrize_dir(
                  matching directory and loads files from there.
                  When the provided path represents multiple directories, the loader concatenates files from all
                  directories in the order provided.
+                 Environment variables are supported using the ``${VAR}`` or ``$VAR`` (or ``%VAR%`` for Windows) syntax.
     :param lazy_loading: If True, the plugin will defer the timing of file loading to the test setup phase. If False,
                          the data will be loaded during the test collection phase, which could cause a performance issue
     :param recursive: Recursively load files from all subdirectories of the given directory. Defaults to False.
