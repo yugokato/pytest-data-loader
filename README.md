@@ -136,7 +136,8 @@ tests/test_something.py::test_something2[data2.txt] PASSED                      
 ================================= 2 passed in 0.01s ==================================
 ```
 
-> [!NOTE] For dynamic paths, use the `data_loader` fixture instead. See [The data_loader Fixture](#the-data_loader-fixture)
+> [!NOTE] 
+> For dynamic paths, use the `data_loader` fixture instead. See [The data_loader Fixture](#the-data_loader-fixture)
 
 
 ### 2. Parametrize file data — `@parametrize`
