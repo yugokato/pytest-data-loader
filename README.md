@@ -83,17 +83,20 @@ Given the following project structure:
 │       ├── image.gif
 │       ├── image.jpg
 │       └── image.png
-├── tests1/
-│   └── test_something.py
-└── tests2/
+└── tests/
     ├── data/           # local data directory
     │   ├── data1.txt
     │   ├── data2.txt
     │   └── logos/
     │       ├── logo.jpg
     │       └── logo.png
-    └── test_something_else.py
+    └── test_something.py
 ```
+
+> [!NOTE]
+> - Relative paths are resolved to the **nearest** `data` directory from the test file
+> - In this example, the `tests/data/` directory takes precedence over the shared `data/` directory when both contain the same file
+> - This path resolution rule applies to all data loaders
 
 ### 1. Load file data — `@load`
 `@load` is a file loader that loads the file content and passes it to the test function.
@@ -107,7 +110,7 @@ from pytest_data_loader import load
 @load("data", "data1.json")
 def test_something1(data):
     """
-    data1.json: '{"foo": 1, "bar": 2}'
+    data/data1.json: '{"foo": 1, "bar": 2}'
     """
     assert data == {"foo": 1, "bar": 2}
 
@@ -115,29 +118,25 @@ def test_something1(data):
 @load(("file_path", "data"), "data2.txt")
 def test_something2(file_path, data):
     """
-    data2.txt: "line1\nline2\nline3"
+    tests/data/data2.txt: "line1\nline2\nline3"
     """
     assert file_path.name == "data2.txt"
     assert data == "line1\nline2\nline3"
 ```
 
 ```shell
-$ pytest tests1/test_something.py -v
+$ pytest -v
 ================================ test session starts =================================
 <snip>
 collected 2 items                                                                              
 
-tests1/test_something.py::test_something1[data1.json] PASSED                    [ 50%]
-tests1/test_something.py::test_something2[data2.txt] PASSED                     [100%]
+tests/test_something.py::test_something1[data1.json] PASSED                     [ 50%]
+tests/test_something.py::test_something2[data2.txt] PASSED                      [100%]
 
 ================================= 2 passed in 0.01s ==================================
 ```
 
-> [!NOTE]
-> - If both test files load `data1.json` and `data2.txt` using the same relative paths, the former is loaded from the 
-> shared data directory, while the latter is resolved from each test file's **nearest** `data` directory. 
-> This behavior applies to all loaders
-> - For dynamic paths, use the `data_loader` fixture instead. See [The data_loader Fixture](#the-data_loader-fixture)
+> [!NOTE] For dynamic paths, use the `data_loader` fixture instead. See [The data_loader Fixture](#the-data_loader-fixture)
 
 
 ### 2. Parametrize file data — `@parametrize`
@@ -153,7 +152,7 @@ from pytest_data_loader import parametrize
 @parametrize("data", "data1.json")
 def test_something1(data):
     """
-    data1.json: '{"foo": 1, "bar": 2}'
+    data/data1.json: '{"foo": 1, "bar": 2}'
     """
     # parametrized as key–value pairs
     assert data in [("foo", 1), ("bar", 2)]
@@ -162,7 +161,7 @@ def test_something1(data):
 @parametrize(("file_path", "data"), "data2.txt")
 def test_something2(file_path, data):
     """
-    data2.txt: "line1\nline2\nline3"
+    tests/data/data2.txt: "line1\nline2\nline3"
     """
     # parametrized as lines
     assert file_path.name == "data2.txt"
@@ -170,16 +169,16 @@ def test_something2(file_path, data):
 ```
 
 ```shell
-$ pytest tests1/test_something.py -v
+$ pytest -v
 ================================ test session starts =================================
 <snip>
 collected 5 items                                                                              
 
-tests1/test_something.py::test_something1[data1.json:part1] PASSED              [ 20%]
-tests1/test_something.py::test_something1[data1.json:part2] PASSED              [ 40%]
-tests1/test_something.py::test_something2[data2.txt:part1] PASSED               [ 60%]
-tests1/test_something.py::test_something2[data2.txt:part2] PASSED               [ 80%]
-tests1/test_something.py::test_something2[data2.txt:part3] PASSED               [100%]
+tests/test_something.py::test_something1[data1.json:part1] PASSED               [ 20%]
+tests/test_something.py::test_something1[data1.json:part2] PASSED               [ 40%]
+tests/test_something.py::test_something2[data2.txt:part1] PASSED                [ 60%]
+tests/test_something.py::test_something2[data2.txt:part2] PASSED                [ 80%]
+tests/test_something.py::test_something2[data2.txt:part3] PASSED                [100%]
 
 ================================= 5 passed in 0.01s ==================================
 ```
@@ -202,7 +201,7 @@ You can pass a list of file paths, a glob pattern, or a list that combines both 
 concatenate data from multiple files into a single parameter list:
 
 ```python
-# test_something_else.py
+# test_something.py
 
 from pytest_data_loader import parametrize
 
@@ -211,22 +210,22 @@ from pytest_data_loader import parametrize
 def test_something(data):
     """
     The glob pattern matches: 
-      data1.txt: "line1\nline2"
-      data2.txt: "line3\nline4"
+      tests/data/data1.txt: "line1\nline2"
+      tests/data/data2.txt: "line3\nline4"
     """
     assert data in ["line1", "line2", "line3", "line4"]
 ```
 
 ```shell
-$ pytest tests2/test_something_else.py -v
+$ pytest -v
 ================================ test session starts =================================
 <snip>
 collected 4 items
 
-tests2/test_something_else.py::test_something[data1.txt:part1] PASSED           [ 25%]
-tests2/test_something_else.py::test_something[data1.txt:part2] PASSED           [ 50%]
-tests2/test_something_else.py::test_something[data2.txt:part1] PASSED           [ 75%]
-tests2/test_something_else.py::test_something[data2.txt:part2] PASSED           [100%]
+tests/test_something.py::test_something[data1.txt:part1] PASSED                 [ 25%]
+tests/test_something.py::test_something[data1.txt:part2] PASSED                 [ 50%]
+tests/test_something.py::test_something[data2.txt:part1] PASSED                 [ 75%]
+tests/test_something.py::test_something[data2.txt:part2] PASSED                 [100%]
 
 ================================= 4 passed in 0.01s ==================================
 ```
@@ -246,21 +245,21 @@ from pytest_data_loader import parametrize_dir
 @parametrize_dir("data", "images")
 def test_something(data):
     """
-    images dir: contains 3 image files
+    data/images/: contains 3 image files
     """
     # parametrized as files
     assert isinstance(data, bytes)
 ```
 
 ```shell
-$ pytest tests1/test_something.py -v
+$ pytest -v
 ================================ test session starts =================================
 <snip>
 collected 3 items                                                                              
 
-tests1/test_something.py::test_something[images/image.gif] PASSED               [ 33%]
-tests1/test_something.py::test_something[images/image.jpg] PASSED               [ 66%]
-tests1/test_something.py::test_something[images/image.png] PASSED               [100%]
+tests/test_something.py::test_something[images/image.gif] PASSED                [ 33%]
+tests/test_something.py::test_something[images/image.jpg] PASSED                [ 66%]
+tests/test_something.py::test_something[images/image.png] PASSED                [100%]
 
 ================================= 3 passed in 0.01s ==================================
 ```
@@ -278,7 +277,7 @@ You can pass a list of directory paths, a glob pattern, or a list that combines 
 and concatenate files from multiple directories into a single parameter list:
 
 ```python
-# test_something_else.py
+# test_something.py
 
 from pytest_data_loader import parametrize_dir
 
@@ -286,23 +285,23 @@ from pytest_data_loader import parametrize_dir
 @parametrize_dir("data", ["images", "logos"])
 def test_something(data):
     """
-    images dir: contains 3 image files
-    logos dir: contains 2 logo files
+    data/images/: contains 3 image files
+    tests/data/logos/: contains 2 logo files
     """
     assert isinstance(data, bytes)
 ```
 
 ```shell
-$ pytest tests2/test_something_else.py -v
+$ pytest -v
 ================================ test session starts =================================
 <snip>
 collected 5 items
 
-tests2/test_something_else.py::test_something[images/image.gif] PASSED          [ 20%]
-tests2/test_something_else.py::test_something[images/image.jpg] PASSED          [ 40%]
-tests2/test_something_else.py::test_something[images/image.png] PASSED          [ 60%]
-tests2/test_something_else.py::test_something[logos/logo.jpg] PASSED            [ 80%]
-tests2/test_something_else.py::test_something[logos/logo.png] PASSED            [100%]
+tests/test_something.py::test_something[images/image.gif] PASSED                [ 20%]
+tests/test_something.py::test_something[images/image.jpg] PASSED                [ 40%]
+tests/test_something.py::test_something[images/image.png] PASSED                [ 60%]
+tests/test_something.py::test_something[logos/logo.jpg] PASSED                  [ 80%]
+tests/test_something.py::test_something[logos/logo.png] PASSED                  [100%]
 
 ================================= 5 passed in 0.01s ==================================
 ```
