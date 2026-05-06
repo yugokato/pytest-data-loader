@@ -11,16 +11,27 @@ pytestmark = pytest.mark.unittest
 class TestDataLoaderRegistration:
     """Tests for loader registration using the @loader decorator."""
 
-    @pytest.mark.parametrize("parametrize", [None, False, True])
     @pytest.mark.parametrize("loader_type", DataLoaderType)
-    def test_data_loader_registration(self, loader_type: DataLoaderType, parametrize: bool) -> None:
-        """Test loader registration using the @loader decorator"""
+    def test_data_loader_registration(self, loader_type: DataLoaderType) -> None:
+        """Test that @loader stamps the expected attributes derived from the function name"""
 
-        @loader(loader_type, parametrize=parametrize)
         def new_loader() -> None: ...
 
-        is_file_loader = loader_type is DataLoaderType.FILE
-        assert cast(DataLoader, new_loader).is_data_loader is True
-        assert cast(DataLoader, new_loader).is_file_loader is is_file_loader
-        assert cast(DataLoader, new_loader).requires_parametrization is (parametrize is True)
-        assert cast(DataLoader, new_loader).should_split_data is bool(is_file_loader and parametrize)
+        new_loader.__name__ = loader_type.value
+        decorated = cast(DataLoader, loader(new_loader))
+
+        assert decorated.is_data_loader is True
+        assert decorated.type is loader_type
+        assert decorated.is_file_loader is (loader_type in (DataLoaderType.LOAD, DataLoaderType.PARAMETRIZE))
+        assert decorated.requires_parametrization is (
+            loader_type in (DataLoaderType.PARAMETRIZE, DataLoaderType.PARAMETRIZE_DIR)
+        )
+        assert decorated.should_split_data is (loader_type is DataLoaderType.PARAMETRIZE)
+
+    def test_data_loader_registration_invalid_name(self) -> None:
+        """Test that @loader rejects a function whose name is not a valid DataLoaderType"""
+
+        def not_a_loader() -> None: ...
+
+        with pytest.raises(ValueError):
+            loader(not_a_loader)

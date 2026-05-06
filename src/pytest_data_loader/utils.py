@@ -9,7 +9,7 @@ from functools import lru_cache, wraps
 from pathlib import Path
 from typing import Any, ParamSpec, TypeVar
 
-from pytest_data_loader.types import DataLoader, DataLoaderFunctionType
+from pytest_data_loader.types import DataLoader, DataLoaderFunctionType, DataLoaderType
 
 R = TypeVar("R")
 P = ParamSpec("P")

@@ -38,26 +38,19 @@ from pytest_data_loader.validators import validate_read_options, validate_reader
 
 P = ParamSpec("P")
 R = TypeVar("R")
-T = TypeVar("T", bound="FileLoader")
+T = TypeVar("T", bound="Loader")
 
 logger = logging.getLogger(__name__)
 
 
-def loader(loader_type: DataLoaderType, /, *, parametrize: bool = False) -> Callable[[Func], Func]:
-    """Decorator to register a decorated function as a data loader
-
-    :param loader_type: A type of the loader. file or directory
-    :param parametrize: Whether the loader needs to perform parametrization or not
-    """
-
-    def wrapper(loader_func: Func) -> Func:
-        loader_func.is_data_loader = True  # type: ignore[attr-defined]
-        loader_func.is_file_loader = DataLoaderType(loader_type) == DataLoaderType.FILE  # type: ignore[attr-defined]
-        loader_func.requires_parametrization = parametrize is True  # type: ignore[attr-defined]
-        loader_func.should_split_data = bool(loader_func.is_file_loader and loader_func.requires_parametrization)  # type: ignore[attr-defined]
-        return loader_func
-
-    return wrapper
+def loader(f: Func) -> Func:
+    """Decorator to register a decorated function as a data loader"""
+    f.is_data_loader = True  # type: ignore[attr-defined]
+    f.type = DataLoaderType(f.__name__)  # type: ignore[attr-defined]
+    f.is_file_loader = f.type in [DataLoaderType.LOAD, DataLoaderType.PARAMETRIZE]  # type: ignore[attr-defined]
+    f.requires_parametrization = f.type in [DataLoaderType.PARAMETRIZE, DataLoaderType.PARAMETRIZE_DIR]  # type: ignore[attr-defined]
+    f.should_split_data = f.type == DataLoaderType.PARAMETRIZE  # type: ignore[attr-defined]
+    return f
 
 
 def create_loaders(
@@ -108,7 +101,9 @@ def create_loaders(
     ]
 
 
-def requires_loader(*loaders_names: str) -> Callable[[Callable[Concatenate[T, P], R]], Callable[Concatenate[T, P], R]]:
+def requires_loader(
+    *data_loaders: DataLoaderType,
+) -> Callable[[Callable[Concatenate[T, P], R]], Callable[Concatenate[T, P], R]]:
     """Limit the function usage to the explicitly specified loaders so that it won't be accidentally used for
     unintended flows
     """
@@ -116,8 +111,8 @@ def requires_loader(*loaders_names: str) -> Callable[[Callable[Concatenate[T, P]
     def decorator(f: Callable[Concatenate[T, P], R]) -> Callable[Concatenate[T, P], R]:
         @wraps(f)
         def wrapper(self: T, *args: P.args, **kwargs: P.kwargs) -> R:
-            if self.loader.__name__ not in loaders_names:
-                raise NotImplementedError(f"{f.__name__}() is not supported for @{self.loader.__name__} loader")
+            if self.loader.type not in data_loaders:
+                raise NotImplementedError(f"{f.__name__}() is not supported for @{self.loader.type} loader")
             return f(self, *args, **kwargs)
 
         return wrapper
@@ -235,7 +230,7 @@ class FileLoader(Loader):
         return self._is_streamable
 
     @cached_property
-    @requires_loader("parametrize")
+    @requires_loader(DataLoaderType.PARAMETRIZE)
     def parametrizer_func(self) -> Callable[..., Iterable[Any]]:
         """Returns a normalized parametrizer function that also validates the func result"""
         f = self.load_attrs.parametrizer_func or normalize_loader_func(
@@ -263,7 +258,7 @@ class FileLoader(Loader):
         """Clear cache associated with this file loader"""
         _clear_file_loader_caches(self._cached_file_objects, self._cached_file_loaders, self._cached_reader_split)
 
-    @requires_loader("parametrize")
+    @requires_loader(DataLoaderType.PARAMETRIZE)
     def _parametrizer_func(self, data: Any) -> Iterable[Any]:
         """Default parametrizer function to apply to loaded data when parametrization is needed
 
@@ -329,7 +324,7 @@ class FileLoader(Loader):
                 data = self.load_attrs.process_func(self.path, data)
             return LoadedData(file_path=self.path, loaded_from=self.load_from, data=data)
 
-    @requires_loader("parametrize")
+    @requires_loader(DataLoaderType.PARAMETRIZE)
     def _load_part_data_now(self, pos: int, /, *, close: bool = True) -> LoadedData:
         """Load part data for the specified position now
 
@@ -419,7 +414,7 @@ class FileLoader(Loader):
         f.seek(0)
         return f
 
-    @requires_loader("parametrize")
+    @requires_loader(DataLoaderType.PARAMETRIZE)
     def _scan_text_file(self) -> Generator[tuple[int, Any, Any]]:
         """Scan file and returns metadata for each part data that should be loaded.
 
@@ -500,7 +495,7 @@ class FileLoader(Loader):
         with open(self.path, **read_options) as f:
             return f.read()
 
-    @requires_loader("parametrize")
+    @requires_loader(DataLoaderType.PARAMETRIZE)
     def _read_reader_and_split(self, file_reader: Callable[..., Iterable[Any] | object], f: IO[Any]) -> list[Any]:
         """Read full data from the file reader and split into parts, caching the result per reader.
 

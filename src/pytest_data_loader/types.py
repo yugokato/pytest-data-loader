@@ -43,6 +43,12 @@ class HashableDict(dict[str, Any]):
             return obj
 
 
+class DataLoaderType(StrEnum):
+    LOAD = auto()
+    PARAMETRIZE = auto()
+    PARAMETRIZE_DIR = auto()
+
+
 class DataLoaderIniOption(StrEnum):
     DATA_LOADER_DIR_NAME = auto()
     DATA_LOADER_ROOT_DIR = auto()
@@ -103,6 +109,7 @@ class DataLoaderOption:
 @runtime_checkable
 class DataLoader(Protocol):
     is_data_loader: bool
+    type: DataLoaderType
     is_file_loader: bool
     requires_parametrization: bool
     should_split_data: bool
@@ -112,7 +119,7 @@ class DataLoader(Protocol):
     def __hash__(self) -> int: ...
 
 
-class DataLoaderType(StrEnum):
+class DataLoaderSource(StrEnum):
     FILE = auto()
     DIRECTORY = auto()
 

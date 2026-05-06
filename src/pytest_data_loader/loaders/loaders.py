@@ -8,7 +8,6 @@ from pytest_data_loader.loaders.impl import loader
 from pytest_data_loader.types import (
     DataLoader,
     DataLoaderLoadAttrs,
-    DataLoaderType,
     Func,
     PytestMarkType,
     ReadOptions,
@@ -18,7 +17,7 @@ from pytest_data_loader.validators import validate_loader_options
 __all__ = ["load", "parametrize", "parametrize_dir"]
 
 
-@loader(DataLoaderType.FILE)
+@loader
 def load(
     fixture_names: str | tuple[str, str],
     path: Path | str,
@@ -80,7 +79,7 @@ def load(
     )
 
 
-@loader(DataLoaderType.FILE, parametrize=True)
+@loader
 def parametrize(
     fixture_names: str | tuple[str, str],
     path: Path | str | Sequence[Path | str],
@@ -180,7 +179,7 @@ def parametrize(
     )
 
 
-@loader(DataLoaderType.DIRECTORY, parametrize=True)
+@loader
 def parametrize_dir(
     fixture_names: str | tuple[str, str],
     path: Path | str | Sequence[Path | str],
