@@ -387,7 +387,7 @@ def _render_test_id_assertions_block(
                 if callable(ids):
                     expected_id = normalize_loader_func(
                         {loader.__name__}, ids, DataLoaderFunctionType.ID_FUNC
-                    )(file_path, data)
+                    )(idx, file_path, data)
                 else:
                     expected_id = list(ids)[idx]
                 assert node_id.endswith(f"[{{expected_id}}]")
@@ -407,7 +407,7 @@ def _render_test_id_assertions_block(
                         {loader.__name__},
                         ids,
                         DataLoaderFunctionType.ID_FUNC
-                    )(file_path, None)
+                    )(idx, file_path, None)
                 else:
                     expected_id = list(ids)[idx]
                 assert node_id.endswith(f"[{{expected_id}}]")

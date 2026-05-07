@@ -116,7 +116,7 @@ class TestDirectoryLoaderCaching:
         # Each child has an lru_cache wrapper registered in _cached_file_loaders at load time
         assert len(dir_loader._file_loaders) == _NUM_FILES_IN_SOME_DIR
         for child in dir_loader._file_loaders:
-            assert len(child._cached_file_loaders) == 1
+            assert len(child._cached_functions) == 1
 
         # Resolve all lazy data to exercise the lru_cache wrappers
         for lazy_data in loaded_files:
@@ -133,9 +133,9 @@ class TestDirectoryLoaderCaching:
 
         # All children's caches are also cleared
         for child in child_loaders:
-            assert child._cached_file_loaders == set()
+            assert child._cached_functions == set()
             assert child._cached_file_objects == {}
-            assert child._cached_reader_split == {}
+            assert child._cached_reader_and_split == {}
 
     def test_directory_loader_weakref_finalize(self) -> None:
         """Test that GC-ing a DirectoryLoader triggers the weakref finalizer, clearing child caches"""
@@ -158,6 +158,6 @@ class TestDirectoryLoaderCaching:
 
         # Finalizer should have called clear_cache() on each child
         for child in child_loaders:
-            assert child._cached_file_loaders == set()
+            assert child._cached_functions == set()
             assert child._cached_file_objects == {}
-            assert child._cached_reader_split == {}
+            assert child._cached_reader_and_split == {}

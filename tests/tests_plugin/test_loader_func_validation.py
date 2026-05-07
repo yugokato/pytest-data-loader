@@ -269,7 +269,7 @@ class TestLoaderFuncArgValidation:
         [
             pytest.param("lambda x:x", True, id="1arg"),
             pytest.param("lambda x,y:y", True, id="2args"),
-            pytest.param("lambda x,y,z:True", False, id="3args"),
+            pytest.param("lambda x,y,z:z", True, id="3args"),
             pytest.param("lambda:True", False, id="0arg"),
             pytest.param("lambda *args:args", False, id="*args"),
             pytest.param("lambda **kwargs:kwargs", False, id="**kwargs"),
@@ -301,16 +301,16 @@ class TestLoaderFuncArgValidation:
         else:
             assert result.ret == ExitCode.INTERRUPTED
             result.assert_outcomes(errors=1)
-            _validate_arg_error(result, DataLoaderFunctionType.PROCESS_FUNC, loader_func_def, 2)
+            _validate_arg_error(result, DataLoaderFunctionType.PROCESS_FUNC, loader_func_def, 3)
 
     @pytest.mark.parametrize("collect_only", [True, False])
     @pytest.mark.parametrize(
         ("loader_func_def", "is_valid"),
         [
             pytest.param("lambda x:pytest.mark.foo", True, id="1arg"),
-            pytest.param("lambda x,y:pytest.mark.foo", True, id="2args"),  # for parametrize
-            pytest.param("lambda x,y:pytest.mark.foo", False, id="2args"),  # for parametrize_dir
-            pytest.param("lambda x,y,z:pytest.mark.foo", False, id="3args"),
+            pytest.param("lambda x,y:pytest.mark.foo", True, id="2args"),
+            pytest.param("lambda x,y,z:pytest.mark.foo", True, id="3args"),  # for parametrize
+            pytest.param("lambda x,y,z:pytest.mark.foo", False, id="3args"),  # for parametrize_dir
             pytest.param("lambda:pytest.mark.foo", False, id="0arg"),
             pytest.param("lambda *args:args", False, id="*args"),
             pytest.param("lambda **kwargs:kwargs", False, id="**kwargs"),
@@ -330,7 +330,7 @@ class TestLoaderFuncArgValidation:
         """Test validation around the marks parameter"""
         loader_func = eval(loader_func_def)
         num_args = get_num_func_args(loader_func)
-        if num_args == 2:
+        if num_args == 3:
             if (loader == parametrize and not is_valid) or (loader == parametrize_dir and is_valid):
                 pytest.skip("Not applicable")
 
@@ -344,7 +344,7 @@ class TestLoaderFuncArgValidation:
         else:
             assert result.ret == ExitCode.INTERRUPTED
             result.assert_outcomes(errors=1)
-            max_allowed = 1 if loader == parametrize_dir else 2
+            max_allowed = 2 if loader == parametrize_dir else 3
             _validate_arg_error(result, DataLoaderFunctionType.MARKER_FUNC, loader_func_def, max_allowed)
 
     @pytest.mark.parametrize("collect_only", [True, False])
@@ -352,9 +352,9 @@ class TestLoaderFuncArgValidation:
         ("loader_func_def", "is_valid"),
         [
             pytest.param("lambda x:x", True, id="1arg"),
-            pytest.param("lambda x,y:y", True, id="2args"),  # for parametrize
-            pytest.param("lambda x,y:y", False, id="2args"),  # for parametrize_dir
-            pytest.param("lambda x,y,z:True", False, id="3args"),
+            pytest.param("lambda x,y:y", True, id="2args"),
+            pytest.param("lambda x,y,z:'id'", True, id="3args"),  # for parametrize
+            pytest.param("lambda x,y,z:'id'", False, id="3args"),  # for parametrize_dir
             pytest.param("lambda:True", False, id="0arg"),
             pytest.param("lambda *args:args", False, id="*args"),
             pytest.param("lambda **kwargs:kwargs", False, id="**kwargs"),
@@ -376,9 +376,13 @@ class TestLoaderFuncArgValidation:
         num_args = get_num_func_args(loader_func)
         if num_args == 1 and is_valid and loader == parametrize_dir:
             # For parametrize_dir, ids receives a file path; lambda x:x returns a Path object which
-            # is not a valid pytest ID string. Valid runtime behaviour is covered by integration tests.
+            # is not a valid pytest ID string. Valid runtime behavior is covered by integration tests.
             pytest.skip("Not applicable")
-        elif num_args == 2:
+        elif num_args == 2 and is_valid and loader == parametrize_dir:
+            # For parametrize_dir with 2-arg ids, the callable receives (idx, file_path);
+            # lambda x,y:y returns a Path which is not a valid pytest ID string.
+            pytest.skip("Not applicable")
+        elif num_args == 3:
             if (loader == parametrize and not is_valid) or (loader == parametrize_dir and is_valid):
                 pytest.skip("Not applicable")
 
@@ -392,7 +396,7 @@ class TestLoaderFuncArgValidation:
         else:
             assert result.ret == ExitCode.INTERRUPTED
             result.assert_outcomes(errors=1)
-            max_allowed = 1 if loader == parametrize_dir else 2
+            max_allowed = 2 if loader == parametrize_dir else 3
             _validate_arg_error(result, DataLoaderFunctionType.ID_FUNC, loader_func_def, max_allowed)
 
     @pytest.mark.parametrize("collect_only", [True, False])
@@ -400,7 +404,7 @@ class TestLoaderFuncArgValidation:
         ("loader_func_def", "is_valid"),
         [
             pytest.param("lambda x:{}", True, id="1arg"),
-            pytest.param("lambda x,y:{}", False, id="2args"),
+            pytest.param("lambda x,y:{}", True, id="2args"),
             pytest.param("lambda x,y,z:{}", False, id="3args"),
             pytest.param("lambda:{}", False, id="0arg"),
             pytest.param("lambda *args:{}", False, id="*args"),
@@ -429,15 +433,14 @@ class TestLoaderFuncArgValidation:
         else:
             assert result.ret == ExitCode.INTERRUPTED
             result.assert_outcomes(errors=1)
-            max_allowed = 1 if loader == parametrize_dir else 2
-            _validate_arg_error(result, DataLoaderFunctionType.READ_OPTIONS_FUNC, loader_func_def, max_allowed)
+            _validate_arg_error(result, DataLoaderFunctionType.READ_OPTIONS_FUNC, loader_func_def, 2)
 
     @pytest.mark.parametrize("collect_only", [True, False])
     @pytest.mark.parametrize(
         ("loader_func_def", "is_valid"),
         [
             pytest.param("lambda x:json.load", True, id="1arg"),
-            pytest.param("lambda x,y:json.load", False, id="2args"),
+            pytest.param("lambda x,y:json.load", True, id="2args"),
             pytest.param("lambda x,y,z:json.load", False, id="3args"),
             pytest.param("lambda:json.load", False, id="0arg"),
             pytest.param("lambda *args:json.load", False, id="*args"),
@@ -468,8 +471,7 @@ class TestLoaderFuncArgValidation:
         else:
             assert result.ret == ExitCode.INTERRUPTED
             result.assert_outcomes(errors=1)
-            max_allowed = 1 if loader == parametrize_dir else 2
-            _validate_arg_error(result, DataLoaderFunctionType.READER_FUNC, loader_func_def, max_allowed)
+            _validate_arg_error(result, DataLoaderFunctionType.READER_FUNC, loader_func_def, 2)
 
 
 def _validate_arg_error(
