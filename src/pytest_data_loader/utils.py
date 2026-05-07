@@ -25,14 +25,34 @@ def is_valid_fixture_name(name: str) -> bool:
 
 @lru_cache
 def get_max_allowed_loader_func_args(loader: DataLoader, func_type: DataLoaderFunctionType) -> int:
-    with_file_path_only = not loader.is_file_loader and func_type in (
-        DataLoaderFunctionType.FILTER_FUNC,
-        DataLoaderFunctionType.MARKER_FUNC,
-        DataLoaderFunctionType.ID_FUNC,
-        DataLoaderFunctionType.READER_FUNC,
-        DataLoaderFunctionType.READ_OPTIONS_FUNC,
-    )
-    return 1 if with_file_path_only else 2
+    """Return the maximum number of positional arguments allowed for the given loader function type.
+
+    :param loader: The data loader the function is associated with
+    :param func_type: Type of the loader function
+    """
+    if loader.type == DataLoaderType.PARAMETRIZE_DIR:
+        # @parametrize_dir
+        if func_type == DataLoaderFunctionType.FILTER_FUNC:
+            # (path)
+            return 1
+        elif func_type == DataLoaderFunctionType.PROCESS_FUNC:
+            # (idx, path, data)
+            return 3
+        else:
+            # (idx, path)
+            return 2
+    else:
+        # @load or @parametrize
+        if loader.type == DataLoaderType.PARAMETRIZE and func_type in (
+            DataLoaderFunctionType.MARKER_FUNC,
+            DataLoaderFunctionType.ID_FUNC,
+            DataLoaderFunctionType.PROCESS_FUNC,
+        ):
+            # (idx, path, data)
+            return 3
+        else:
+            # (path, data)
+            return 2
 
 
 def normalize_loader_func(
@@ -40,14 +60,14 @@ def normalize_loader_func(
     loader_func: Callable[..., Any],
     func_type: DataLoaderFunctionType,
     *,
-    num_args: int | None = None,
+    num_defined_args: int | None = None,
 ) -> Callable[..., Any]:
     """Normalize the given loader function to a standard signature and inject error context on exceptions.
 
     :param loader: The data loader the function is associated with
     :param loader_func: The pre-validated loader function to normalize
     :param func_type: Type of the loader function
-    :param num_args: Parameter count of loader_func. When provided, the signature inspection is skipped
+    :param num_defined_args: Parameter count of loader_func. When provided, the signature inspection is skipped
     """
 
     def inject_error_context(file_path: Path) -> Callable[[Callable[P, R]], Callable[P, R]]:
@@ -70,15 +90,42 @@ def normalize_loader_func(
 
         return decorator
 
-    if num_args is None:
-        num_args = len(inspect.signature(loader_func).parameters)
+    if num_defined_args is None:
+        num_defined_args = len(inspect.signature(loader_func).parameters)
     max_allowed_args = get_max_allowed_loader_func_args(loader, func_type)
-    if num_args == 2:
-        return wraps(loader_func)(lambda file_path, data: inject_error_context(file_path)(loader_func)(file_path, data))
-    elif max_allowed_args == 1:
-        return wraps(loader_func)(lambda file_path, *_: inject_error_context(file_path)(loader_func)(file_path))
+    no_data_arg = loader.type == DataLoaderType.PARAMETRIZE_DIR and func_type != DataLoaderFunctionType.PROCESS_FUNC
+    supports_idx = (no_data_arg and max_allowed_args >= 2) or (not no_data_arg and max_allowed_args >= 3)
+
+    @wraps(loader_func)
+    def normalized_func_with_idx(idx: int, file_path: Path, data: Any) -> Any:
+        wrapped = inject_error_context(file_path)(loader_func)
+        if no_data_arg:
+            if num_defined_args == 2:
+                return wrapped(idx, file_path)
+            else:
+                return wrapped(file_path)
+        else:
+            if num_defined_args == 3:
+                return wrapped(idx, file_path, data)
+            elif num_defined_args == 2:
+                return wrapped(file_path, data)
+            else:
+                return wrapped(data)
+
+    @wraps(loader_func)
+    def normalized_func_without_idx(file_path: Path, data: Any) -> Any:
+        wrapped = inject_error_context(file_path)(loader_func)
+        if num_defined_args == 2:
+            return wrapped(file_path, data)
+        elif max_allowed_args == 1:
+            return wrapped(file_path)
+        else:
+            return wrapped(data)
+
+    if supports_idx:
+        return normalized_func_with_idx
     else:
-        return wraps(loader_func)(lambda file_path, data: inject_error_context(file_path)(loader_func)(data))
+        return normalized_func_without_idx
 
 
 def get_data_loader_source(test_func: Callable[..., Any], position: int, data_loader_name: str) -> str | None:

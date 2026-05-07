@@ -1,5 +1,6 @@
 import logging
 from collections.abc import Collection, Iterable
+from itertools import count
 from pathlib import Path
 from typing import Any
 
@@ -15,6 +16,7 @@ from pytest_data_loader.types import (
     DataLoaderIniOption,
     DataLoaderLoadAttrs,
     DataLoaderOption,
+    DataLoaderType,
     LazyLoadedData,
     LazyLoadedPartData,
     LoadedData,
@@ -88,8 +90,11 @@ def _apply_load_attrs(
     paths = load_attrs.path if isinstance(load_attrs.path, tuple) else (load_attrs.path,)
     loaded_data: list[LoadedData | LazyLoadedData | LazyLoadedPartData] = []
 
+    # One shared counter per data loader invocation. Stacked loaders each get their own independent counter
+    idx_counter = count()
+
     for path in paths:
-        for loader in create_loaders(path, load_attrs, data_loader_option):
+        for loader in create_loaders(path, load_attrs, data_loader_option, idx_counter=idx_counter):
             loader.register_cleanup(metafunc.module)
 
             loaded = loader.load()
@@ -109,7 +114,11 @@ def _apply_load_attrs(
         | tuple[Path, LoadedDataType | LazyLoadedData | LazyLoadedPartData]
     ]
     if loaded_data:
-        values = [_generate_parameterset(load_attrs, x, id_=ids[i] if ids else None) for i, x in enumerate(loaded_data)]
+        values = [
+            # i matches the idx drawn from idx_counter during scan/load: one draw per item, in the same order
+            _generate_parameterset(load_attrs, x, idx=i, id_=ids[i] if ids else None)
+            for i, x in enumerate(loaded_data)
+        ]
     else:
         values = []
 
@@ -130,12 +139,17 @@ def pytest_fixture_setup(request: SubRequest) -> None:
 
 
 def _generate_parameterset(
-    load_attrs: DataLoaderLoadAttrs, loaded_data: LoadedData | LazyLoadedData | LazyLoadedPartData, *, id_: Any = None
+    load_attrs: DataLoaderLoadAttrs,
+    loaded_data: LoadedData | LazyLoadedData | LazyLoadedPartData,
+    *,
+    idx: int,
+    id_: Any = None,
 ) -> ParameterSet:
     """Generate Pytest ParameterSet object for the loaded data.
 
     :param load_attrs: The load attributes
     :param loaded_data: The loaded data
+    :param idx: Post-filter position of this item within the entire parameters
     :param id_: Explicit ID value from a sequence-based ids argument
     """
 
@@ -147,13 +161,17 @@ def _generate_parameterset(
             if isinstance(loaded_data, LazyLoadedPartData):
                 # When `ids` callable is provided for the @parametrize loader, parameter ID is generated when
                 # LazyLoadedPartData is created
-                return loaded_data.meta["id"] or repr(loaded_data)
-            return load_attrs.id_func(loaded_data.file_path, loaded_data.data)
+                param_id = loaded_data.meta["id"]
+                if param_id is not None:
+                    return param_id
+                return repr(loaded_data)
+            if load_attrs.loader.requires_parametrization:
+                return load_attrs.id_func(idx, loaded_data.file_path, loaded_data.data)
+            else:
+                return load_attrs.id_func(loaded_data.file_path, loaded_data.data)
         else:
             # Default ID
-            if load_attrs.lazy_loading or not (
-                load_attrs.loader.is_file_loader and load_attrs.loader.requires_parametrization
-            ):
+            if load_attrs.lazy_loading or not (load_attrs.loader.type == DataLoaderType.PARAMETRIZE):
                 return repr(loaded_data)
             else:
                 return repr(loaded_data.data)
@@ -168,12 +186,10 @@ def _generate_parameterset(
                 # LazyLoadedPartData is created
                 marks = loaded_data.meta["marks"]
             else:
-                func_args: tuple[Any, ...]
-                if load_attrs.loader.is_file_loader:
-                    func_args = (loaded_data.file_path, loaded_data.data)
+                if load_attrs.loader.requires_parametrization:
+                    marks = load_attrs.marker_func(idx, loaded_data.file_path, loaded_data.data)
                 else:
-                    func_args = (loaded_data.file_path,)
-                marks = load_attrs.marker_func(*func_args)
+                    marks = load_attrs.marker_func(loaded_data.file_path, loaded_data.data)
             return marks or default_markers
 
     args: tuple[Any, ...]

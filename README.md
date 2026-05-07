@@ -629,9 +629,9 @@ its return value becomes the data passed to `onload()`
 - `ids`: Parameter IDs for the loaded parts. Accepts an iterable of ID values or a function that returns an ID per part data
 
 > [!NOTE]
-> `onload`, `parametrizer`, `filter`, `processor`, `marks` and `ids` (in callable form) must take either one (data) or 
-> two (file path, data) arguments. When `reader` is provided, its return value becomes the data passed to these 
-> callables
+> - `onload`, `parametrizer`, and `filter` must take one `(data)` or two `(file_path, data)` arguments
+> - `processor`, `marks`, and `ids` (in callable form) additionally accept a three-argument form `(idx, file_path, data)`, where `idx` is the zero-based post-filter position of the item
+> - When `reader` is provided, its return value becomes the data passed to these callables
 
 
 ### @parametrize_dir
@@ -650,8 +650,9 @@ parameters
          matching file path
 
 > [!NOTE]
-> - `reader`, `read_options`, `filter`, `marks` and `ids` (in callable form) must take only one argument (file path)
-> - `processor` must take either one (data) or two (file path, data) arguments
+> - `filter` must take only one argument `(file_path)`
+> - `reader`, `read_options`, `marks`, and `ids` (in callable form) additionally accept a two-argument form `(idx, file_path)`, where `idx` is the zero-based post-filter position of the file
+> - `processor` may take one `(data)`, two `(file_path, data)`, or three `(idx, file_path, data)` arguments, where `idx` is the zero-based post-filter position of the file
 
 
 

@@ -148,9 +148,11 @@ def parametrize(
                 the part data itself is used.
 
     NOTE:
-        - onload, parametrizer, filter, processor, marks and ids (in callable form) must take either
-          one (data) or two (file path, data) arguments. When reader is provided, its return value becomes the data
-          passed to these callables
+        - onload, parametrizer, and filter must take either one (data) or two (file path, data) arguments.
+        - processor, marks, and ids (in callable form) additionally accept a three-argument form
+          (idx, file path, data), where idx is the zero-based post-filter position of the item,
+          counted continuously across all files matched by this data loader.
+        - When reader is provided, its return value becomes the data passed to these callables.
 
     Examples:
     >>> @parametrize("data", "data.txt")
@@ -225,8 +227,13 @@ def parametrize_dir(
                 for matching file paths. Defaults to the relative or absolute file path when not provided.
 
     NOTE:
-        - reader, filter, read_options, marks and ids (in callable form) must take only one argument (file path)
-        - processor must take either one (data) or two (file path, data) arguments
+        - filter must take only one argument (file path).
+        - reader, read_options, marks, and ids (in callable form) additionally accept a two-argument form
+          (idx, file path), where idx is the zero-based post-filter position of the file, counted
+          continuously across all directories matched by this data loader.
+        - processor must take one (data), two (file path, data), or three (idx, file path, data) arguments,
+          where idx is the zero-based post-filter position of the file, counted continuously across all
+          directories matched by this data loader.
 
     Examples:
     >>> @parametrize_dir("data", "data_dir")

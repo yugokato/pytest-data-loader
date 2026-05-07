@@ -186,44 +186,47 @@ class TestFileLoaderCaching:
         # For streamable @parametrize files, no lru_cache wrapper is created at load time.
         # For all other cases, the file_loader is registered eagerly to ensure cleanup even if tests are skipped.
         if loader == parametrize and file_loader.is_streamable:
-            assert file_loader._cached_file_loaders == set()
+            assert file_loader._cached_functions == set()
         else:
-            assert len(file_loader._cached_file_loaders) == 1
-        assert file_loader._cached_reader_split == {}
+            assert len(file_loader._cached_functions) == 1
+        assert file_loader._cached_reader_and_split == {}
 
         if loader == parametrize:
             assert isinstance(lazy_loaded_data, list)
-            assert all(isinstance(x, LazyLoadedPartData) for x in lazy_loaded_data)
             for i, lazy_data in enumerate(lazy_loaded_data):
+                assert isinstance(lazy_data, LazyLoadedPartData)
                 lazy_data.resolve()
                 if file_loader.is_streamable:
-                    # The file object should be cached, but file loader should not be cached
-                    assert not hasattr(lazy_data.file_loader_func, "cache_info")
+                    # The file object should be cached, but resolver function should not be cached
                     assert len(file_loader._cached_file_objects) == 1
-                    assert lazy_data.file_loader_func not in file_loader._cached_file_loaders
+                    assert not hasattr(lazy_data.resolver, "cache_info")
+                    assert lazy_data.resolver not in file_loader._cached_functions
                     assert (abs_file_path, file_loader.read_options) in file_loader._cached_file_objects
                     if file_loader.file_reader:
                         # The result of _read_reader_and_split() should be cached per reader
-                        assert file_loader.file_reader in file_loader._cached_reader_split
+                        assert file_loader.file_reader in file_loader._cached_reader_and_split
                 else:
-                    # The file object should not be cached, but the file loader function should be cached
-                    assert hasattr(lazy_data.file_loader_func, "cache_info")
+                    # The file object and resolver should not be cached, but the file loader function used in resolver
+                    # should be cached
                     assert len(file_loader._cached_file_objects) == 0
-                    assert lazy_data.file_loader_func in file_loader._cached_file_loaders
-                    self.check_lru_cache_result(lazy_data.file_loader_func, i, 1, 1, 1)
+                    assert not hasattr(lazy_data.resolver, "cache_info")
+                    assert len(file_loader._cached_functions) == 1
+                    file_loader_func = next(iter(file_loader._cached_functions))
+                    assert hasattr(file_loader_func, "cache_info")
+                    self.check_lru_cache_result(file_loader_func, i, 1, 1, 1)
         else:
             assert isinstance(lazy_loaded_data, LazyLoadedData)
-            assert hasattr(lazy_loaded_data.file_loader_func, "cache_info")
+            assert hasattr(lazy_loaded_data.resolver, "cache_info")
             lazy_loaded_data.resolve()
             # The file loader function should be cached for reuse across stacked parametrize calls
-            assert lazy_loaded_data.file_loader_func in file_loader._cached_file_loaders
-            self.check_lru_cache_result(lazy_loaded_data.file_loader_func, 0, 1, 1, 1)
+            assert lazy_loaded_data.resolver in file_loader._cached_functions
+            self.check_lru_cache_result(lazy_loaded_data.resolver, 0, 1, 1, 1)
 
         # Clear cache
         file_loader.clear_cache()
         assert file_loader._cached_file_objects == {}
-        assert file_loader._cached_file_loaders == set()
-        assert file_loader._cached_reader_split == {}
+        assert file_loader._cached_functions == set()
+        assert file_loader._cached_reader_and_split == {}
 
     def test_eager_loading_has_no_data_cache(self) -> None:
         """Test that eager loading does not populate lru_cache or reader_split caches for a plain text file"""
@@ -236,8 +239,8 @@ class TestFileLoaderCaching:
 
         file_loader.load()
 
-        assert file_loader._cached_file_loaders == set()
-        assert file_loader._cached_reader_split == {}
+        assert file_loader._cached_functions == set()
+        assert file_loader._cached_reader_and_split == {}
         assert file_loader._cached_file_objects == {}
 
     def test_eager_loading_with_file_reader_caches_file_obj(self) -> None:
@@ -251,8 +254,8 @@ class TestFileLoaderCaching:
 
         file_loader.load()
 
-        assert file_loader._cached_file_loaders == set()
-        assert file_loader._cached_reader_split == {}
+        assert file_loader._cached_functions == set()
+        assert file_loader._cached_reader_and_split == {}
         assert len(file_loader._cached_file_objects) == 1
         assert (abs_file_path, file_loader.read_options) in file_loader._cached_file_objects
 
@@ -277,11 +280,11 @@ class TestFileLoaderCaching:
         call_count = 0
         original_load_now = file_loader._load_now
 
-        def counting_load_now() -> LoadedData | list[LoadedData]:
+        def counting_load_now(*args: Any, **kwargs: Any) -> LoadedData | list[LoadedData]:
             """Counting wrapper around the original _load_now."""
             nonlocal call_count
             call_count += 1
-            return original_load_now()
+            return original_load_now(*args, **kwargs)
 
         file_loader._load_now = counting_load_now
 
@@ -290,8 +293,8 @@ class TestFileLoaderCaching:
         assert isinstance(lazy_parts, list)
         assert len(lazy_parts) > 1
         assert call_count == 1, "Expected exactly one _load_now call during collection"
-        assert len(file_loader._cached_file_loaders) == 1
-        cached_loader = next(iter(file_loader._cached_file_loaders))
+        assert len(file_loader._cached_functions) == 1
+        cached_loader = next(iter(file_loader._cached_functions))
         # lru_cache wrapper has not been invoked yet (0 hits, 0 misses)
         self.check_lru_cache_result(cached_loader, 0, 0, 1, 0)
 
@@ -324,17 +327,17 @@ class TestFileLoaderCaching:
         assert len(lazy_parts) > 1
 
         # No cached split before any resolve
-        assert file_loader._cached_reader_split == {}
+        assert file_loader._cached_reader_and_split == {}
 
         # First resolve: file is read and the result list is cached in _cached_reader_split
         lazy_parts[0].resolve()
-        assert file_loader.file_reader in file_loader._cached_reader_split
-        first_list_id = id(file_loader._cached_reader_split[file_loader.file_reader])
+        assert file_loader.file_reader in file_loader._cached_reader_and_split
+        first_list_id = id(file_loader._cached_reader_and_split[file_loader.file_reader])
 
         # Second resolve: the same cached list object is reused (no re-read)
         lazy_parts[1].resolve()
-        assert file_loader.file_reader in file_loader._cached_reader_split
-        assert id(file_loader._cached_reader_split[file_loader.file_reader]) == first_list_id
+        assert file_loader.file_reader in file_loader._cached_reader_and_split
+        assert id(file_loader._cached_reader_and_split[file_loader.file_reader]) == first_list_id
 
         file_loader.clear_cache()
 
@@ -354,8 +357,8 @@ class TestFileLoaderCaching:
 
         # Capture references to the cache containers before deleting the loader
         cached_file_objects_ref = file_loader._cached_file_objects
-        cached_file_loaders_ref = file_loader._cached_file_loaders
-        cached_reader_split_ref = file_loader._cached_reader_split
+        cached_file_loaders_ref = file_loader._cached_functions
+        cached_reader_split_ref = file_loader._cached_reader_and_split
 
         del file_loader
         gc.collect()

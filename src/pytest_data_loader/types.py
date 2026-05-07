@@ -185,7 +185,7 @@ class LoadedData(LoadedDataABC):
 
 @dataclass(frozen=True, kw_only=True, slots=True, repr=False)
 class LazyLoadedDataABC(LoadedDataABC):
-    file_loader_func: Callable[[], LoadedData | Iterable[LoadedData]]
+    resolver: Callable[..., LoadedData | Iterable[LoadedData]]
 
     @property
     def data(self: T) -> T:
@@ -199,7 +199,7 @@ class LazyLoadedDataABC(LoadedDataABC):
 @dataclass(frozen=True, kw_only=True, slots=True, repr=False)
 class LazyLoadedData(LazyLoadedDataABC):
     def resolve(self) -> LoadedDataType:
-        loaded_data = self.file_loader_func()
+        loaded_data = self.resolver()
         assert isinstance(loaded_data, LoadedData), type(loaded_data)
         return loaded_data.data
 
@@ -216,14 +216,9 @@ class LazyLoadedPartData(LazyLoadedDataABC):
         return str(parent_dir / f"{self.file_name}:part{self.idx + 1}")
 
     def resolve(self) -> LoadedDataType:
-        loaded_data = self.file_loader_func()
-        if isinstance(loaded_data, LoadedData):
-            part_data = loaded_data
-        else:
-            assert isinstance(loaded_data, list), type(loaded_data)
-            part_data = loaded_data[self.idx]
-            assert isinstance(part_data, LoadedData), type(part_data)
-        return part_data.data
+        loaded_data = self.resolver()
+        assert isinstance(loaded_data, LoadedData)
+        return loaded_data.data
 
 
 @dataclass(frozen=True, kw_only=True, slots=True)
@@ -242,8 +237,8 @@ class DataLoaderLoadAttrs:
     parametrizer_func: Callable[..., Iterable[Any]] | None = None
     filter_func: Callable[..., bool] | None = None
     process_func: Callable[..., Any] | None = None
-    reader_func: Callable[[Path], Callable[..., Iterable[Any] | object]] | None = None
-    read_options_func: Callable[[Path], ReadOptions] | None = None
+    reader_func: Callable[..., Callable[..., Iterable[Any] | object]] | None = None
+    read_options_func: Callable[..., ReadOptions] | None = None
     marker_func: Callable[..., PytestMarkType | None] | None = None
     id_func: Callable[..., Any] | None = None
     ids: tuple[Any, ...] | None = None
@@ -270,9 +265,7 @@ class DataLoaderLoadAttrs:
             if f is not None:
                 len_func_args = validate_loader_func(f, loader=self.loader, func_type=func_type)
                 object.__setattr__(
-                    self,
-                    func_type,
-                    normalize_loader_func(self.loader, f, func_type, num_args=len_func_args),
+                    self, func_type, normalize_loader_func(self.loader, f, func_type, num_defined_args=len_func_args)
                 )
 
 
