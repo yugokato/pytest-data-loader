@@ -91,7 +91,10 @@ def normalize_loader_func(
         return decorator
 
     if num_defined_args is None:
-        num_defined_args = len(inspect.signature(loader_func).parameters)
+        from pytest_data_loader.validators import validate_loader_func
+
+        num_defined_args = validate_loader_func(loader_func, loader=loader, func_type=func_type)
+
     max_allowed_args = get_max_allowed_loader_func_args(loader, func_type)
     no_data_arg = loader.type == DataLoaderType.PARAMETRIZE_DIR and func_type != DataLoaderFunctionType.PROCESS_FUNC
     supports_idx = (no_data_arg and max_allowed_args >= 2) or (not no_data_arg and max_allowed_args >= 3)

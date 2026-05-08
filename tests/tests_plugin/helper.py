@@ -77,12 +77,15 @@ def is_valid_fixture_names(args: str | tuple[str, ...]) -> bool:
 
 
 def get_num_func_args(loader_func: Callable[..., Any]) -> int:
-    """Return the number of positional parameters accepted by ``loader_func``.
+    """Return the number of explicit positional parameters accepted by ``loader_func``.
+
+    VAR_POSITIONAL (*args) parameters are excluded from the count.
 
     :param loader_func: The callable to inspect.
     """
     sig = inspect.signature(loader_func)
-    return len(sig.parameters)
+    positional_kinds = (inspect.Parameter.POSITIONAL_ONLY, inspect.Parameter.POSITIONAL_OR_KEYWORD)
+    return sum(1 for p in sig.parameters.values() if p.kind in positional_kinds)
 
 
 def create_test_data_in_data_dir(
