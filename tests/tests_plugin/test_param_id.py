@@ -25,7 +25,7 @@ class TestParamId:
     @pytest.mark.parametrize("is_abs_path", [False, True], indirect=True)
     @pytest.mark.parametrize("lazy_loading", [False, True])
     @pytest.mark.parametrize("value_type", ["callable", "sequence", "generator", None])
-    @pytest.mark.parametrize("file_extension", [".txt", ".json"])
+    @pytest.mark.parametrize("file_extension", [".txt", ".yml"])
     @pytest.mark.parametrize("loader", [parametrize])
     def test_id_generation_for_parametrize_loader(
         self,
@@ -39,7 +39,7 @@ class TestParamId:
         """Check test ID generation for load parametrize loader
 
         NOTE: When lazy loading, the code path for generating ID with id_func changes whether the file reading is
-              streamable (eg. .txt) or not (eg. .json)
+              streamable (eg. .txt) or not (eg. .yml)
         """
         if value_type == "callable":
             ids_def = "lambda x: f'id-{x}'"

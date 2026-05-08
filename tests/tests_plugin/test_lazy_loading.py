@@ -16,7 +16,7 @@ class TestLazyLoading:
     """Tests for lazy loading behavior."""
 
     @pytest.mark.parametrize("collect_only", [True, False])
-    @pytest.mark.parametrize("file_extension", [".txt", ".json", ".jsonl", ".png"], indirect=True)
+    @pytest.mark.parametrize("file_extension", [".txt", ".json", ".jsonl", ".yml", ".png"], indirect=True)
     @pytest.mark.parametrize("lazy_loading", [False, True])
     def test_lazy_loading(
         self, test_context: TestContext, lazy_loading: bool, collect_only: bool, file_extension: str
@@ -35,41 +35,41 @@ class TestLazyLoading:
 
         if test_context.loader == parametrize:
             pytester.makeconftest(f"""
-        import pytest
-        from pytest_data_loader.types import LazyLoadedPartData
+            import pytest
+            from pytest_data_loader.types import LazyLoadedPartData
 
-        @pytest.hookimpl(tryfirst=True)
-        def pytest_fixture_setup(request) -> None:
-            assert request.fixturename in request.fixturenames
-            if request.fixturename == '{fixture_name}':
-                v = request.param
-                if {lazy_loading}:
-                    assert isinstance(v, {LazyLoadedPartData.__name__}), (
-                        f"Expected a {LazyLoadedPartData.__name__} instance, got {{type(v).__name__}}"
-                    )
-                    idx =  request.node.callspec.indices[request.fixturename]
-                    assert request.node.name.endswith(f"[{Path(test_context.path).name}:part{{idx+1}}]")
-                else:
-                    assert isinstance(v, type(v))
-                    assert request.node.name.endswith(f"[{{repr(v)}}]")
-        """)
+            @pytest.hookimpl(tryfirst=True)
+            def pytest_fixture_setup(request) -> None:
+                assert request.fixturename in request.fixturenames
+                if request.fixturename == '{fixture_name}':
+                    v = request.param
+                    if {lazy_loading}:
+                        assert isinstance(v, {LazyLoadedPartData.__name__}), (
+                            f"Expected a {LazyLoadedPartData.__name__} instance, got {{type(v).__name__}}"
+                        )
+                        idx =  request.node.callspec.indices[request.fixturename]
+                        assert request.node.name.endswith(f"[{Path(test_context.path).name}:part{{idx+1}}]")
+                    else:
+                        assert isinstance(v, type(v))
+                        assert request.node.name.endswith(f"[{{repr(v)}}]")
+            """)
         else:
             pytester.makeconftest(f"""
-        import pytest
-        from pytest_data_loader.types import LazyLoadedData
+            import pytest
+            from pytest_data_loader.types import LazyLoadedData
 
-        @pytest.hookimpl(tryfirst=True)
-        def pytest_fixture_setup(request) -> None:
-            assert request.fixturename in request.fixturenames
-            if request.fixturename == '{fixture_name}':
-                v = request.param
-                if {lazy_loading}:
-                    assert isinstance(v, {LazyLoadedData.__name__}), (
-                        f"Expected a {LazyLoadedData.__name__} instance, got {{type(v).__name__}}"
-                    )
-                else:
-                    assert isinstance(v, type(v))
-        """)
+            @pytest.hookimpl(tryfirst=True)
+            def pytest_fixture_setup(request) -> None:
+                assert request.fixturename in request.fixturenames
+                if request.fixturename == '{fixture_name}':
+                    v = request.param
+                    if {lazy_loading}:
+                        assert isinstance(v, {LazyLoadedData.__name__}), (
+                            f"Expected a {LazyLoadedData.__name__} instance, got {{type(v).__name__}}"
+                        )
+                    else:
+                        assert isinstance(v, type(v))
+            """)
 
         result = run_pytest_with_context(
             test_context, fixture_name, lazy_loading=lazy_loading, collect_only=collect_only
@@ -79,14 +79,14 @@ class TestLazyLoading:
             result.assert_outcomes(passed=test_context.num_expected_tests)
 
     @pytest.mark.parametrize("lazy_loading", [True, False])
-    @pytest.mark.parametrize("file_extension", [".txt", ".json", ".jsonl"], indirect=True)
+    @pytest.mark.parametrize("file_extension", [".txt", ".json", ".yml"], indirect=True)
     def test_lazy_loading_io_timing(self, test_context: TestContext, lazy_loading: bool, file_extension: str) -> None:
         """Test that file I/O actually occurs at the expected phase (collection vs setup).
 
         Expected behavior per loader:
           @load:            lazy_loading=True  -> collection=0, setup>0
           @load:            lazy_loading=False -> collection>0, setup=0
-          @parametrize:     lazy_loading=True  -> collection>0 (scan to count items), setup>0 (load data)
+          @parametrize:     lazy_loading=True  -> collection>0 (scan or load to count items), setup>0 (load data)
           @parametrize:     lazy_loading=False -> collection>0, setup=0
           @parametrize_dir: lazy_loading=True  -> collection=0, setup>0
           @parametrize_dir: lazy_loading=False -> collection>0, setup=0
@@ -158,7 +158,7 @@ class TestLazyLoading:
             assert setup_opens == 0
 
     @pytest.mark.parametrize("lazy_loading", [True, False])
-    @pytest.mark.parametrize("file_extension", [".txt", ".json", ".jsonl"], indirect=True)
+    @pytest.mark.parametrize("file_extension", [".txt", ".json", ".yml"], indirect=True)
     def test_lazy_loading_memory_usage(
         self, pytester: Pytester, loader: DataLoader, lazy_loading: bool, file_extension: str
     ) -> None:
@@ -167,22 +167,14 @@ class TestLazyLoading:
         With eager loading, pytest stores the full loaded data in callspec.params for the entire session.
         With lazy loading, it stores lightweight lazy objects that hold only a callable reference and metadata.
         """
-        # Generator-based readers (like .jsonl) always store a tiny generator object when used with @load or
-        # @parametrize_dir, regardless of lazy_loading — the memory distinction doesn't apply in those cases.
-        # Only @parametrize expands the data into a list of dicts during eager loading.
-        if file_extension == ".jsonl" and loader != parametrize:
-            pytest.skip(
-                "Memory assertion not applicable: .jsonl reader returns a generator for non-@parametrize loaders"
-            )
-
         # Generate large test data (~100KB) to make the memory difference measurable
         num_chars = 2048
         num_lines = 50
         if file_extension == ".txt":
             line = "x" * num_chars  # ~2KB per line
             file_content = "\n".join(line for _ in range(num_lines))
-        elif file_extension == ".jsonl":
-            file_content = "\n".join(json.dumps({"key": "x" * num_chars}) for _ in range(num_lines))
+        elif file_extension == ".yml":
+            file_content = "\n".join(f"k{i:02d}: {'x' * num_chars}" for i in range(num_lines))
         else:  # .json
             entries = {f"key{i:02d}": "x" * num_chars for i in range(num_lines)}
             file_content = json.dumps(entries)

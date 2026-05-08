@@ -118,8 +118,10 @@ def file_content(request: SubRequest, file_extension: str) -> str | bytes:
         ".txt": f"line1{NEW_LINE}line2{NEW_LINE}line3{TRAILING_WHITESPACE}{NEW_LINE}",
         ".json": json.dumps({"key1": "val1", "key2": "val2", "key3": "val3"}) + NEW_LINE,
         ".jsonl": NEW_LINE.join(jsonl_lines) + NEW_LINE,
+        ".yml": f"key1: value1{NEW_LINE}key2: value2{NEW_LINE}key3: value3",
         ".png": b"",  # will be filled when requested
     }
+    ext_content_map[".yaml"] = ext_content_map[".yml"]
     if file_extension not in ext_content_map:
         raise NotImplementedError(f"Not supported for {file_extension} file")
     if file_extension == ".png":
