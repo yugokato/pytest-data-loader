@@ -183,15 +183,15 @@ class TestLoaderDataPath:
         result.assert_outcomes(errors=1)
         path = Path(invalid_path)
         if str(path) in (".", "..", ROOT_DIR):
-            assert f"Invalid path value: '{path}'" in stdout
+            assert f"Invalid path value: {str(path)!r}" in stdout
         elif path.is_absolute():
             if path.exists():
                 assert (
                     f"Invalid path type: @{loader.__name__} loader must take a "
-                    f"{'file' if loader.is_file_loader and path.is_dir() else 'directory'} path, not '{path}'"
+                    f"{'file' if loader.is_file_loader and path.is_dir() else 'directory'} path, not {str(path)!r}"
                 ) in stdout
             else:
-                assert f"The provided path does not exist: '{path}'" in stdout
+                assert f"The provided path does not exist: {str(path)!r}" in stdout
         else:
             file_or_dir = "directory" if loader == parametrize_dir else "file"
-            assert f"Unable to locate the specified {file_or_dir} '{path}'" in stdout
+            assert f"Unable to locate the specified {file_or_dir} {str(path)!r}" in stdout

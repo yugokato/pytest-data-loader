@@ -84,7 +84,9 @@ def create_loaders(
                 base, pattern = split_glob_path(path)
                 file_or_dir_paths = get_matching_paths(base, pattern, "file" if is_file else "directory")
                 if not file_or_dir_paths:
-                    raise FileNotFoundError(f"Glob pattern '{path}' matched no {'files' if is_file else 'directories'}")
+                    raise FileNotFoundError(
+                        f"Glob pattern {str(path)!r} matched no {'files' if is_file else 'directories'}"
+                    )
         else:
             file_or_dir_paths = (path,)
     else:

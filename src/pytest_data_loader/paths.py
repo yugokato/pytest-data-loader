@@ -67,9 +67,11 @@ def resolve_relative_path(
     if data_dirs:
         listed_data_dirs = "\n".join(f"  - {x}" for x in data_dirs)
         if is_glob:
-            err = f"Glob pattern '{relative_path_to_search}' matched no {'files' if is_file else 'directories'}"
+            err = f"Glob pattern {str(relative_path_to_search)!r} matched no {'files' if is_file else 'directories'}"
         else:
-            err = f"Unable to locate the specified {'file' if is_file else 'directory'} '{relative_path_to_search}'"
+            err = (
+                f"Unable to locate the specified {'file' if is_file else 'directory'} {str(relative_path_to_search)!r}"
+            )
         err += f" under any of the following data directories:\n{listed_data_dirs}"
     else:
         err = f"Unable to find any data directory '{data_loader_dir_name}'"

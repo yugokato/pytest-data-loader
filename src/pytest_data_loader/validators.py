@@ -128,12 +128,7 @@ def validate_fixture_names(value: Any) -> tuple[str, ...]:
     return normalized_names
 
 
-def validate_path(
-    value: Any,
-    *,
-    loader: DataLoader,
-    recursive: bool,
-) -> Path | tuple[Path, ...]:
+def validate_path(value: Any, *, loader: DataLoader, recursive: bool) -> Path | tuple[Path, ...]:
     """Validate and normalize the path argument.
 
     Accepts a single path (str or Path) or a sequence of paths. Returns a normalized Path for single-path input,
@@ -153,49 +148,52 @@ def validate_path(
                 f"path: Each path must a be a string or pathlib.Path object, but got "
                 f"{[_get_type_name(p) for p in value]}"
             )
-        paths = tuple(Path(expand_env_vars(p) if has_env_vars(p) else p) for p in value)
-        for p in paths:
-            _validate_single_path(p, loader=loader, recursive=recursive)
-        return paths
+        result = []
+        # NOTE: Do NOT use a comprehension here. It affects the stacklevel set in warnings.warn for Python < 3.12
+        #       due to unsupported PEP 709
+        for p in value:
+            result.append(_validate_single_path(p, loader=loader, recursive=recursive))
+        return tuple(result)
     else:
         if not isinstance(value, Path | str):
             raise TypeError(f"path: Must be a string or pathlib.Path object, but got {_get_type_name(value)}")
-        if has_env_vars(value):
-            value = expand_env_vars(value)
-        path = Path(value)
-        _validate_single_path(path, loader=loader, recursive=recursive)
-        return path
+        return _validate_single_path(value, loader=loader, recursive=recursive)
 
 
-def _validate_single_path(path: Path, *, loader: DataLoader, recursive: bool) -> None:
+def _validate_single_path(path: Path | str, *, loader: DataLoader, recursive: bool) -> Path:
     """Validate a single path value.
 
     :param path: The path to validate
     :param loader: The data loader being configured
     :param recursive: Whether recursive directory loading is requested
     """
-    if path in (Path("."), Path(".."), Path(ROOT_DIR)):
-        raise ValueError(f"Invalid path value: '{path}'")
-    if glob.has_magic(str(path)):
+    if has_env_vars(path):
+        path = expand_env_vars(path)
+    path_ = Path(path)
+    if path_ in (Path("."), Path(".."), Path(ROOT_DIR)):
+        raise ValueError(f"Invalid path value: {str(path)!r}")
+    if glob.has_magic(str(path_)):
         if not loader.requires_parametrization:
-            raise ValueError(f"@{loader.__name__} loader does not support glob pattern: '{path}'")
-        if recursive is True and "**" not in str(path):
+            raise ValueError(f"@{loader.__name__} loader does not support glob pattern: {str(path)!r}")
+        if recursive is True and "**" not in str(path_):
             warnings.warn(
                 f"The 'recursive' option is ignored for the glob pattern {str(path)!r}. Use '**' in the pattern to "
                 f"enable recursive matching",
                 UserWarning,
-                stacklevel=6,  # The @parametrize_dir(...) def in the test (for Python >=3.11)
+                stacklevel=6,  # The @parametrize_dir(...) def in the test
             )
-        return
-    if path.is_absolute():
-        if path.is_symlink():
-            check_circular_symlink(path)
-        if not path.exists():
-            raise FileNotFoundError(f"The provided path does not exist: '{path}'")
-        if path.is_dir() and loader.is_file_loader:
-            raise ValueError(f"Invalid path type: @{loader.__name__} loader must take a file path, not '{path}'")
-        if path.is_file() and not loader.is_file_loader:
-            raise ValueError(f"Invalid path type: @{loader.__name__} loader must take a directory path, not '{path}'")
+    elif path_.is_absolute():
+        if path_.is_symlink():
+            check_circular_symlink(path_)
+        if not path_.exists():
+            raise FileNotFoundError(f"The provided path does not exist: {str(path)!r}")
+        if path_.is_dir() and loader.is_file_loader:
+            raise ValueError(f"Invalid path type: @{loader.__name__} loader must take a file path, not {str(path)!r}")
+        if path_.is_file() and not loader.is_file_loader:
+            raise ValueError(
+                f"Invalid path type: @{loader.__name__} loader must take a directory path, not {str(path)!r}"
+            )
+    return path_
 
 
 def validate_loader_func(loader_func: Any, *, loader: DataLoader, func_type: DataLoaderFunctionType) -> int | None:
