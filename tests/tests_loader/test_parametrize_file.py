@@ -12,6 +12,7 @@ from tests.paths import (
     PATH_JSON_FILE_OBJECT,
     PATH_JSON_FILE_SCALAR,
     PATH_TEXT_FILE,
+    PATH_YAML_FILE,
 )
 
 from .helper import get_parametrized_test_idx
@@ -20,9 +21,10 @@ pytestmark = pytest.mark.loaders
 
 # NOTE:
 # - lazy_loading option is separately tested in another test using pytester
-# - This file covers 3 types of data types the plugin handles differently:
-#   - text file (non-structured file)
-#   - json file (structured file)
+# - This file covers 4 types of data types the plugin handles differently:
+#   - text file (non-structured file, streamable)
+#   - json file (structured file, streamable via the default file reader)
+#   - yaml file (structured file, non-streamable)
 #   - binary file
 
 
@@ -202,16 +204,27 @@ def test_parametrize_json_with_ids_sequence(request: FixtureRequest, data: tuple
     assert request.node.name.endswith(f"[{expected_ids[idx]}]")
 
 
-@parametrize("data", [PATH_TEXT_FILE, PATH_JSON_FILE_ARRAY])
-def test_parametrize_multi_files(request: FixtureRequest, data: str) -> None:
-    """Test @parametrize loader with a list of file paths concatenates all parametrized data"""
+# YAML file
+@parametrize(
+    "data",
+    PATH_YAML_FILE,
+    processor=lambda i, *_: str(i),
+    marks=lambda i, *_: pytest.mark.foo if i % 2 else None,
+    ids=lambda i, *_: str(i),
+)
+def test_parametrize_yaml_file(request: FixtureRequest, data: str) -> None:
+    """Test @parametrize loader with YAML file"""
     assert isinstance(data, str)
     idx = get_parametrized_test_idx(request, "data")
-    all_expected = ["line0", "line1", "line2", "item0", "item1", "item2"]
-    assert data == all_expected[idx]
+    assert data == str(idx)
+    mark = request.node.get_closest_marker("foo")
+    if idx % 2:
+        assert mark is not None
+    else:
+        assert mark is None
 
 
-# Binary files
+# Binary file
 @parametrize("data", PATH_JPEG_FILE, parametrizer=lambda d: _split_jpeg(d))  # noqa: PLW0108
 def test_parametrize_binary_file_with_parametrizer(request: FixtureRequest, data: bytes) -> None:
     """Test @parametrize loader with the parametrizer using binary file"""
@@ -252,6 +265,15 @@ def test_parametrize_binary_file_with_ids(request: FixtureRequest, data: bytes) 
 def test_parametrize_binary_file_with_marks(request: FixtureRequest, data: bytes) -> None:
     """Test @parametrize loader with the marks using binary file"""
     assert request.node.get_closest_marker("foo")
+
+
+@parametrize("data", [PATH_TEXT_FILE, PATH_JSON_FILE_ARRAY])
+def test_parametrize_multi_files(request: FixtureRequest, data: str) -> None:
+    """Test @parametrize loader with a list of file paths concatenates all parametrized data"""
+    assert isinstance(data, str)
+    idx = get_parametrized_test_idx(request, "data")
+    all_expected = ["line0", "line1", "line2", "item0", "item1", "item2"]
+    assert data == all_expected[idx]
 
 
 def _truncate_binary(data: bytes, length: int = 5) -> bytes:

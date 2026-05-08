@@ -49,7 +49,7 @@ class TestFileLoader:
             lazy_loading=lazy_loading,
             parametrizer_func=(lambda x: [x]) if is_binary else None,
             # for @parametrize loader with lazy loading
-            id_func=repr,
+            id_func=lambda i, *_: str(i),
             marker_func=lambda _: marks,
         )
 
@@ -61,10 +61,10 @@ class TestFileLoader:
         if lazy_loading:
             if loader == parametrize:
                 assert isinstance(loaded_data, list)
-                for lazy_loaded_part in loaded_data:
+                for i, lazy_loaded_part in enumerate(loaded_data):
                     assert isinstance(lazy_loaded_part, LazyLoadedPartData)
                     assert lazy_loaded_part.file_path == abs_file_path
-                    assert lazy_loaded_part.idx >= 0
+                    assert lazy_loaded_part.idx == i
                     if file_loader.is_streamable:
                         assert lazy_loaded_part.pos is not None
                         assert lazy_loaded_part.pos >= 0
@@ -80,7 +80,7 @@ class TestFileLoader:
                             == f"{lazy_loaded_part.file_path_relative}:part{lazy_loaded_part.idx + 1}"
                         )
                     assert set(lazy_loaded_part.meta.keys()) == {"marks", "id"}
-                    assert lazy_loaded_part.meta["id"] > ""
+                    assert lazy_loaded_part.meta["id"] == str(i)
                     assert lazy_loaded_part.meta["marks"] == marks
             else:
                 assert isinstance(loaded_data, LazyLoadedData)

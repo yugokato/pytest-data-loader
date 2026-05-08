@@ -39,12 +39,13 @@ class TestContext:
                 elif self.test_file_ext == ".jsonl":
                     assert isinstance(self.test_file_content, str)
                     num_expected_tests = sum(1 for line in self.test_file_content.splitlines() if line.strip())
-                elif self.test_file_ext == ".txt":
+                elif self.test_file_ext in (".txt", ".yml", ".yaml"):
                     assert isinstance(self.test_file_content, str)
                     if self.strip_trailing_whitespace:
                         num_expected_tests = len(self.test_file_content.rstrip().splitlines())
                     else:
                         num_expected_tests = len(self.test_file_content.rstrip("\r\n").splitlines())
+
                 elif self.test_file_ext == ".png":
                     num_expected_tests = 1
                 else:
@@ -436,4 +437,6 @@ def _infer_data_type(file_ext: str, loader: DataLoader) -> str:
         return "dict" if loader is parametrize else "Iterator"
     if file_ext == ".png":
         return "bytes"
+    if file_ext in (".yml", ".yaml"):
+        return "str"
     raise NotImplementedError(f"Unsupported file type: {file_ext}")

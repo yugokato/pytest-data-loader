@@ -18,8 +18,8 @@ pytestmark = pytest.mark.loaders
 # NOTE:
 # - lazy_loading option is separately tested in another test using pytester
 # - This file covers 3 types of data types the plugin handles differently:
-#   - text file (non-structured file)
-#   - json file (structured file)
+#   - text file (no file reader)
+#   - json file (with default file reader)
 #   - binary file
 
 
