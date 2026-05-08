@@ -153,7 +153,9 @@ class TestLoaderFuncArgValidation:
             pytest.param("lambda x,y:y", True, id="2args"),
             pytest.param("lambda x,y,z:y", False, id="3args"),
             pytest.param("lambda:True", False, id="0arg"),
-            pytest.param("lambda *args:args", False, id="*args"),
+            pytest.param("lambda *args:args[-1]", True, id="*args"),
+            pytest.param("lambda x,*args:args[-1]", True, id="1arg+*args"),
+            pytest.param("lambda x,y,z,*_:y", False, id="3args+*args"),
             pytest.param("lambda **kwargs:kwargs", False, id="**kwargs"),
         ],
     )
@@ -189,7 +191,9 @@ class TestLoaderFuncArgValidation:
             pytest.param("lambda x,y:[y]", True, id="2args"),
             pytest.param("lambda x,y,z:[y]", False, id="3args"),
             pytest.param("lambda:[True]", False, id="0arg"),
-            pytest.param("lambda *args:args", False, id="*args"),
+            pytest.param("lambda *_:['x']", True, id="*args"),
+            pytest.param("lambda x,*_:['x']", True, id="1arg+*args"),
+            pytest.param("lambda x,y,z,*_:['x']", False, id="3args+*args"),
             pytest.param("lambda **kwargs:kwargs", False, id="**kwargs"),
         ],
     )
@@ -226,7 +230,11 @@ class TestLoaderFuncArgValidation:
             pytest.param("lambda x,y:True", False, id="2args"),  # for parametrize_dir
             pytest.param("lambda x,y,z:True", False, id="3args"),
             pytest.param("lambda:True", False, id="0arg"),
-            pytest.param("lambda *args:True", False, id="*args"),
+            pytest.param("lambda *_:True", True, id="*args"),
+            pytest.param("lambda x,*_:True", True, id="1arg+*args"),
+            pytest.param("lambda x,y,*_:True", True, id="2args+*args"),  # for parametrize
+            pytest.param("lambda x,y,*_:True", False, id="2args+*args"),  # for parametrize_dir
+            pytest.param("lambda x,y,z,*_:True", False, id="3args+*args"),
             pytest.param("lambda **kwargs:True", False, id="**kwargs"),
         ],
     )
@@ -271,7 +279,9 @@ class TestLoaderFuncArgValidation:
             pytest.param("lambda x,y:y", True, id="2args"),
             pytest.param("lambda x,y,z:z", True, id="3args"),
             pytest.param("lambda:True", False, id="0arg"),
-            pytest.param("lambda *args:args", False, id="*args"),
+            pytest.param("lambda *_:'x'", True, id="*args"),
+            pytest.param("lambda x,*_:'x'", True, id="1arg+*args"),
+            pytest.param("lambda x,y,z,w,*_:'x'", False, id="4args+*args"),
             pytest.param("lambda **kwargs:kwargs", False, id="**kwargs"),
         ],
     )
@@ -312,7 +322,11 @@ class TestLoaderFuncArgValidation:
             pytest.param("lambda x,y,z:pytest.mark.foo", True, id="3args"),  # for parametrize
             pytest.param("lambda x,y,z:pytest.mark.foo", False, id="3args"),  # for parametrize_dir
             pytest.param("lambda:pytest.mark.foo", False, id="0arg"),
-            pytest.param("lambda *args:args", False, id="*args"),
+            pytest.param("lambda *_:pytest.mark.foo", True, id="*args"),
+            pytest.param("lambda x,*_:pytest.mark.foo", True, id="1arg+*args"),
+            pytest.param("lambda x,y,z,*_:pytest.mark.foo", True, id="3args+*args"),  # for parametrize
+            pytest.param("lambda x,y,z,*_:pytest.mark.foo", False, id="3args+*args"),  # for parametrize_dir
+            pytest.param("lambda x,y,z,w,*_:pytest.mark.foo", False, id="4args+*args"),
             pytest.param("lambda **kwargs:kwargs", False, id="**kwargs"),
         ],
     )
@@ -356,7 +370,10 @@ class TestLoaderFuncArgValidation:
             pytest.param("lambda x,y,z:'id'", True, id="3args"),  # for parametrize
             pytest.param("lambda x,y,z:'id'", False, id="3args"),  # for parametrize_dir
             pytest.param("lambda:True", False, id="0arg"),
-            pytest.param("lambda *args:args", False, id="*args"),
+            pytest.param("lambda *_:'myid'", True, id="*args"),
+            pytest.param("lambda x,y,z,*_:'myid'", True, id="3args+*args"),  # for parametrize
+            pytest.param("lambda x,y,z,*_:'myid'", False, id="3args+*args"),  # for parametrize_dir
+            pytest.param("lambda x,y,z,w,*_:'myid'", False, id="4args+*args"),
             pytest.param("lambda **kwargs:kwargs", False, id="**kwargs"),
         ],
     )
@@ -407,7 +424,9 @@ class TestLoaderFuncArgValidation:
             pytest.param("lambda x,y:{}", True, id="2args"),
             pytest.param("lambda x,y,z:{}", False, id="3args"),
             pytest.param("lambda:{}", False, id="0arg"),
-            pytest.param("lambda *args:{}", False, id="*args"),
+            pytest.param("lambda *_:{}", True, id="*args"),
+            pytest.param("lambda x,*_:{}", True, id="1arg+*args"),
+            pytest.param("lambda x,y,z,*_:{}", False, id="3args+*args"),
             pytest.param("lambda **kwargs:{}", False, id="**kwargs"),
         ],
     )
@@ -443,7 +462,9 @@ class TestLoaderFuncArgValidation:
             pytest.param("lambda x,y:json.load", True, id="2args"),
             pytest.param("lambda x,y,z:json.load", False, id="3args"),
             pytest.param("lambda:json.load", False, id="0arg"),
-            pytest.param("lambda *args:json.load", False, id="*args"),
+            pytest.param("lambda *_:json.load", True, id="*args"),
+            pytest.param("lambda x,*_:json.load", True, id="1arg+*args"),
+            pytest.param("lambda x,y,z,*_:json.load", False, id="3args+*args"),
             pytest.param("lambda **kwargs:json.load", False, id="**kwargs"),
         ],
     )
@@ -479,7 +500,7 @@ def _validate_arg_error(
 ) -> None:
     err = f"Detected invalid '{func_type.public_name}' callable definition."
     output = str(result.stdout)
-    if "*" in func_def:
+    if "**" in func_def:
         assert f"{err} Only positional arguments are allowed" in output
     else:
         if max_allowed_args == 1:

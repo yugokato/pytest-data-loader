@@ -217,22 +217,28 @@ def validate_loader_func(loader_func: Any, *, loader: DataLoader, func_type: Dat
         raise ValueError(f"Unsupported '{func_type.public_name}' callable definition: {loader_func!r}") from e
 
     parameters = sig.parameters
-    len_func_args = len(parameters)
+
+    has_var_positional = any(p.kind == Parameter.VAR_POSITIONAL for p in parameters.values())
+    positional_kinds = (Parameter.POSITIONAL_ONLY, Parameter.POSITIONAL_OR_KEYWORD)
+    num_explicit = sum(1 for p in parameters.values() if p.kind in positional_kinds)
 
     max_allowed_args = get_max_allowed_loader_func_args(loader, func_type)
     err = None
-    if not 0 < len_func_args < max_allowed_args + 1:
+    if not all(p.kind in (*positional_kinds, Parameter.VAR_POSITIONAL) for p in parameters.values()):
+        err = "Only positional arguments are allowed"
+    elif (has_var_positional and num_explicit > max_allowed_args) or (
+        not has_var_positional and not 0 < num_explicit < max_allowed_args + 1
+    ):
         if max_allowed_args == 1:
             err = "It must take only 1 argument (file path)."
         else:
             err = f"It must take up to {max_allowed_args} arguments."
-        err += f" Got {len_func_args}"
-    elif not all(p.kind in (Parameter.POSITIONAL_ONLY, Parameter.POSITIONAL_OR_KEYWORD) for p in parameters.values()):
-        err = "Only positional arguments are allowed"
+        err += f" Got {num_explicit}"
+
     if err:
         raise TypeError(f"Detected invalid '{func_type.public_name}' callable definition. {err}")
 
-    return len_func_args
+    return max_allowed_args if has_var_positional else num_explicit
 
 
 def validate_reader(reader: Any) -> None:
