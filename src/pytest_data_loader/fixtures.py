@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from collections.abc import Callable, Generator, Iterable
+from collections.abc import Generator
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
@@ -17,8 +17,10 @@ from pytest_data_loader.types import (
     DataLoaderFunctionType,
     DataLoaderLoadAttrs,
     DataLoaderOption,
+    FileReader,
     HashableDict,
     LoadedData,
+    OnloadFunc,
     ReadOptions,
 )
 from pytest_data_loader.validators import validate_loader_func, validate_path, validate_read_options, validate_reader
@@ -66,9 +68,9 @@ class DataLoaderFixture:
         path: Path | str,
         /,
         *,
-        reader: Callable[..., Iterable[Any] | object] | None = None,
+        reader: FileReader | None = None,
         read_options: ReadOptions | None = None,
-        onload: Callable[..., Any] | None = None,
+        onload: OnloadFunc | None = None,
     ) -> Any:
         """Load a single file and return its parsed data.
 

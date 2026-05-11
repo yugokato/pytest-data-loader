@@ -6,7 +6,7 @@ from collections.abc import Callable, Collection, Iterable, Mapping
 from dataclasses import dataclass, field
 from enum import auto
 from pathlib import Path
-from typing import Any, Literal, ParamSpec, Protocol, TypeAlias, TypedDict, TypeVar, Union, runtime_checkable
+from typing import IO, Any, Literal, ParamSpec, Protocol, TypeAlias, TypedDict, TypeVar, Union, runtime_checkable
 
 import pytest
 from pytest import Config, Mark, MarkDecorator
@@ -21,6 +21,26 @@ JsonType: TypeAlias = str | int | float | bool | None | list["JsonType"] | dict[
 LoadedDataType: TypeAlias = JsonType | bytes | tuple[str, JsonType] | object | Iterable["LoadedDataType"]
 PytestMarkType: TypeAlias = MarkDecorator | Collection[MarkDecorator | Mark]
 ReadOptions: TypeAlias = Union["FileReadOptions", dict[str, Any]]
+
+# Loader callable option types
+FileReader: TypeAlias = Callable[[IO[Any]], Any]
+OnloadFunc: TypeAlias = Callable[[Any], Any] | Callable[[Path, Any], Any]
+ParametrizerFunc: TypeAlias = Callable[[Any], Iterable[Any]] | Callable[[Path, Any], Iterable[Any]]
+FilterFunc: TypeAlias = Callable[[Any], bool] | Callable[[Path, Any], bool]
+ProcessorFunc: TypeAlias = Callable[[Any], Any] | Callable[[Path, Any], Any] | Callable[[int, Path, Any], Any]
+MarkerFunc: TypeAlias = (
+    Callable[[Any], PytestMarkType | None]
+    | Callable[[Path, Any], PytestMarkType | None]
+    | Callable[[int, Path, Any], PytestMarkType | None]
+)
+IdFunc: TypeAlias = (
+    Callable[[Any], str | None] | Callable[[Path, Any], str | None] | Callable[[int, Path, Any], str | None]
+)
+ReaderFunc: TypeAlias = Callable[[Path], FileReader] | Callable[[int, Path], FileReader]
+ReadOptionsFunc: TypeAlias = Callable[[Path], ReadOptions] | Callable[[int, Path], ReadOptions]
+PathFilterFunc: TypeAlias = Callable[[Path], bool]
+PathMarkerFunc: TypeAlias = Callable[[Path], PytestMarkType | None] | Callable[[int, Path], PytestMarkType | None]
+PathIdFunc: TypeAlias = Callable[[Path], str | None] | Callable[[int, Path], str | None]
 
 
 class HashableDict(dict[str, Any]):
@@ -231,13 +251,13 @@ class DataLoaderLoadAttrs:
     path: Path | tuple[Path, ...]
     lazy_loading: bool = True
     recursive: bool = False
-    reader: Callable[..., Iterable[Any] | object] | None = None
+    reader: FileReader | None = None
     read_options: HashableDict = field(default_factory=HashableDict)
     onload_func: Callable[..., Any] | None = None
     parametrizer_func: Callable[..., Iterable[Any]] | None = None
     filter_func: Callable[..., bool] | None = None
     process_func: Callable[..., Any] | None = None
-    reader_func: Callable[..., Callable[..., Iterable[Any] | object]] | None = None
+    reader_func: Callable[..., FileReader] | None = None
     read_options_func: Callable[..., ReadOptions] | None = None
     marker_func: Callable[..., PytestMarkType | None] | None = None
     id_func: Callable[..., Any] | None = None
