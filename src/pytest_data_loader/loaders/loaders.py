@@ -8,9 +8,21 @@ from pytest_data_loader.loaders.impl import loader
 from pytest_data_loader.types import (
     DataLoader,
     DataLoaderLoadAttrs,
+    FileReader,
+    FilterFunc,
     Func,
+    IdFunc,
+    MarkerFunc,
+    OnloadFunc,
+    ParametrizerFunc,
+    PathFilterFunc,
+    PathIdFunc,
+    PathMarkerFunc,
+    ProcessorFunc,
     PytestMarkType,
+    ReaderFunc,
     ReadOptions,
+    ReadOptionsFunc,
 )
 from pytest_data_loader.validators import validate_loader_options
 
@@ -24,8 +36,8 @@ def load(
     /,
     *,
     lazy_loading: bool = True,
-    reader: Callable[..., Iterable[Any] | object] | None = None,
-    onload: Callable[..., Any] | None = None,
+    reader: FileReader | None = None,
+    onload: OnloadFunc | None = None,
     read_options: ReadOptions | None = None,
     marks: PytestMarkType | None = None,
     id: str | None = None,
@@ -86,14 +98,14 @@ def parametrize(
     /,
     *,
     lazy_loading: bool = True,
-    reader: Callable[..., Iterable[Any] | object] | None = None,
+    reader: FileReader | None = None,
     read_options: ReadOptions | None = None,
-    onload: Callable[..., Any] | None = None,
-    parametrizer: Callable[..., Iterable[Any]] | None = None,
-    filter: Callable[..., bool] | None = None,
-    processor: Callable[..., Any] | None = None,
-    marks: PytestMarkType | Callable[..., PytestMarkType | None] | None = None,
-    ids: Iterable[Any] | Callable[..., Any] | None = None,
+    onload: OnloadFunc | None = None,
+    parametrizer: ParametrizerFunc | None = None,
+    filter: FilterFunc | None = None,
+    processor: ProcessorFunc | None = None,
+    marks: PytestMarkType | MarkerFunc | None = None,
+    ids: Iterable[str] | IdFunc | None = None,
 ) -> Callable[[Func], Func]:
     """A file loader that dynamically parametrizes the decorated test function by splitting the loaded file content
     into logical parts.
@@ -189,12 +201,12 @@ def parametrize_dir(
     *,
     lazy_loading: bool = True,
     recursive: bool = False,
-    reader: Callable[[Path], Callable[..., Iterable[Any] | object]] | None = None,
-    filter: Callable[[Path], bool] | None = None,
-    processor: Callable[..., Any] | None = None,
-    read_options: Callable[[Path], ReadOptions] | None = None,
-    marks: PytestMarkType | Callable[[Path], PytestMarkType | None] | None = None,
-    ids: Iterable[Any] | Callable[[Path], Any] | None = None,
+    reader: ReaderFunc | None = None,
+    filter: PathFilterFunc | None = None,
+    processor: ProcessorFunc | None = None,
+    read_options: ReadOptionsFunc | None = None,
+    marks: PytestMarkType | PathMarkerFunc | None = None,
+    ids: Iterable[str] | PathIdFunc | None = None,
 ) -> Callable[[Func], Func]:
     """A file loader that dynamically parametrizes the decorated test function with the content of files stored in the
     specified directory.
@@ -268,7 +280,7 @@ def _setup_data_loader(
     *,
     lazy_loading: bool = True,
     recursive: bool = False,
-    reader: Callable[..., Iterable[Any] | object] | None = None,
+    reader: FileReader | None = None,
     read_options: ReadOptions | None = None,
     onload: Callable[..., Any] | None = None,
     parametrizer: Callable[..., Iterable[Any]] | None = None,
@@ -276,8 +288,8 @@ def _setup_data_loader(
     processor: Callable[..., Any] | None = None,
     marks: PytestMarkType | Callable[..., PytestMarkType | None] | None = None,
     ids: Iterable[Any] | Callable[..., Any] | None = None,
-    reader_func: Callable[[Path], Callable[..., Iterable[Any] | object]] | None = None,
-    read_options_func: Callable[[Path], ReadOptions] | None = None,
+    reader_func: Callable[..., FileReader] | None = None,
+    read_options_func: Callable[..., ReadOptions] | None = None,
 ) -> Callable[[Func], Func]:
     """Set up a test function and inject loader attributes that are used by pytest_generate_tests hook"""
     validated_options = validate_loader_options(

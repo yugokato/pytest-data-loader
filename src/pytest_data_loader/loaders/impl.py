@@ -28,7 +28,6 @@ from pytest_data_loader.types import (
     DataLoaderLoadAttrs,
     DataLoaderOption,
     DataLoaderType,
-    Func,
     HashableDict,
     LazyLoadedData,
     LazyLoadedPartData,
@@ -44,7 +43,7 @@ T = TypeVar("T", bound="Loader")
 logger = logging.getLogger(__name__)
 
 
-def loader(f: Func) -> Func:
+def loader(f: Callable[P, R]) -> Callable[P, R]:
     """Decorator to register a decorated function as a data loader"""
     f.is_data_loader = True  # type: ignore[attr-defined]
     f.type = DataLoaderType(f.__name__)  # type: ignore[attr-defined]
