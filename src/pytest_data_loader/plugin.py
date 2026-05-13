@@ -1,4 +1,5 @@
 import logging
+import warnings
 from collections.abc import Collection, Iterable
 from itertools import count
 from pathlib import Path
@@ -10,17 +11,20 @@ from _pytest.mark import ParameterSet
 from pytest import Config, Mark, MarkDecorator, Metafunc, Parser
 
 from pytest_data_loader.constants import DEFAULT_LOADER_DIR_NAME, PYTEST_DATA_LOADER_ATTRS, STASH_KEY_DATA_LOADER_OPTION
+from pytest_data_loader.exceptions import DataNotFound
 from pytest_data_loader.fixtures import _pytest_data_loader_cleanup, data_loader  # noqa: F401
 from pytest_data_loader.loaders.impl import create_loaders
 from pytest_data_loader.types import (
     DataLoaderIniOption,
     DataLoaderLoadAttrs,
+    DataLoaderOnMissingAction,
     DataLoaderOption,
     DataLoaderType,
     LazyLoadedData,
     LazyLoadedPartData,
     LoadedData,
     LoadedDataType,
+    MissingData,
 )
 from pytest_data_loader.utils import add_error_note, get_data_loader_source
 
@@ -50,6 +54,14 @@ def pytest_addoption(parser: Parser) -> None:
         default=True,
         help="[pytest-data-loader] Removes trailing whitespace characters when loading text data.",
     )
+    parser.addini(
+        DataLoaderIniOption.DATA_LOADER_ON_MISSING,
+        type="string",
+        default=DataLoaderOnMissingAction.RAISE.value,
+        help="[pytest-data-loader] The action to take when a data file or directory specified as path cannot be "
+        "located. Supported values: 'raise' (default, raise an error), 'skip' (skip the test), 'xfail' "
+        "(xfail the test without running it), 'warn' (emit a UserWarning and run the test with data=None).",
+    )
 
 
 def pytest_configure(config: Config) -> None:
@@ -68,7 +80,7 @@ def pytest_generate_tests(metafunc: Metafunc) -> None:
 
     for idx, load_attrs in enumerate(reversed(load_attrs_list)):
         try:
-            _apply_load_attrs(metafunc, load_attrs, data_loader_option)
+            _apply_load_attrs(idx, metafunc, load_attrs, data_loader_option)
         except Exception as e:
             decorator_src = get_data_loader_source(test_func, idx, load_attrs.loader.__name__)
             if decorator_src is None:
@@ -79,55 +91,72 @@ def pytest_generate_tests(metafunc: Metafunc) -> None:
 
 
 def _apply_load_attrs(
-    metafunc: Metafunc, load_attrs: DataLoaderLoadAttrs, data_loader_option: DataLoaderOption
+    loader_idx: int, metafunc: Metafunc, load_attrs: DataLoaderLoadAttrs, data_loader_option: DataLoaderOption
 ) -> None:
     """Apply a single DataLoaderLoadAttrs entry to metafunc, calling metafunc.parametrize once
 
+    :param loader_idx: index of the data loader decorator on a test function
     :param metafunc: The pytest Metafunc object for the current test function
     :param load_attrs: A single DataLoaderLoadAttrs describing one stacked decorator's configuration
     :param data_loader_option: Data loader options
     """
     paths = load_attrs.path if isinstance(load_attrs.path, tuple) else (load_attrs.path,)
-    loaded_data: list[LoadedData | LazyLoadedData | LazyLoadedPartData] = []
+    loaded_data: list[LoadedData | LazyLoadedData | LazyLoadedPartData | MissingData] = []
 
     # One shared counter per data loader invocation. Stacked loaders each get their own independent counter
-    idx_counter = count()
+    gidx_counter = count()
 
+    has_missing_data = False
     for path in paths:
-        for loader in create_loaders(path, load_attrs, data_loader_option, idx_counter=idx_counter):
-            loader.register_cleanup(metafunc.module)
+        try:
+            for loader in create_loaders(path, load_attrs, data_loader_option, gidx_counter=gidx_counter):
+                loader.register_cleanup(metafunc.module)
 
-            loaded = loader.load()
-            if isinstance(loaded, LoadedData | LazyLoadedData):
-                loaded_data.append(loaded)
-            elif loaded:
-                loaded_data.extend(loaded)
+                loaded = loader.load()
+                if isinstance(loaded, LoadedData | LazyLoadedData):
+                    loaded_data.append(loaded)
+                elif loaded:
+                    loaded_data.extend(loaded)
+        except DataNotFound as e:
+            if data_loader_option.on_missing == DataLoaderOnMissingAction.RAISE:
+                raise
+            has_missing_data = True
+            loaded_data.append(MissingData(file_path=path, error=e))
 
     ids = load_attrs.ids
     if ids is not None and len(ids) != len(loaded_data):
-        raise ValueError(f"ids: Length ({len(ids)}) does not match number of parameter sets ({len(loaded_data)})")
+        if has_missing_data and len(ids) > len(loaded_data):
+            # We don't know the total number of parametrization when data is missing.
+            ids = ()
+            msg = (
+                "Ignored the provided ids value. Unable to determine the number of parametrized items due to missing "
+                "data."
+            )
+            _emit_warning(msg, metafunc, loader_idx, load_attrs)
+        else:
+            raise ValueError(f"ids: Length ({len(ids)}) does not match number of parameter sets ({len(loaded_data)})")
 
     values: Iterable[
         LoadedDataType
         | LazyLoadedData
         | LazyLoadedPartData
         | tuple[Path, LoadedDataType | LazyLoadedData | LazyLoadedPartData]
+        | None
     ]
+    if data_loader_option.on_missing == DataLoaderOnMissingAction.WARN:
+        for x in loaded_data:
+            if isinstance(x, MissingData):
+                _emit_warning(f"{type(x.error).__name__}: {x.error}", metafunc, loader_idx, load_attrs)
+
     if loaded_data:
         values = [
-            # i matches the idx drawn from idx_counter during scan/load: one draw per item, in the same order
-            _generate_parameterset(load_attrs, x, idx=i, id_=ids[i] if ids else None)
+            _generate_parameterset(load_attrs, data_loader_option, x, id_=ids[i] if ids else None)
             for i, x in enumerate(loaded_data)
         ]
     else:
         values = []
 
-    args: str | tuple[str, ...]
-    if len(load_attrs.fixture_names) == 1:
-        args = load_attrs.fixture_names[0]
-    else:
-        args = load_attrs.fixture_names
-    metafunc.parametrize(args, values)
+    metafunc.parametrize(load_attrs.fixture_names, values)
 
 
 @pytest.hookimpl(tryfirst=True)
@@ -140,22 +169,25 @@ def pytest_fixture_setup(request: SubRequest) -> None:
 
 def _generate_parameterset(
     load_attrs: DataLoaderLoadAttrs,
-    loaded_data: LoadedData | LazyLoadedData | LazyLoadedPartData,
+    data_loader_option: DataLoaderOption,
+    loaded_data: LoadedData | LazyLoadedData | LazyLoadedPartData | MissingData,
     *,
-    idx: int,
     id_: Any = None,
 ) -> ParameterSet:
     """Generate Pytest ParameterSet object for the loaded data.
 
     :param load_attrs: The load attributes
+    :param data_loader_option: Data loader options
     :param loaded_data: The loaded data
-    :param idx: Post-filter position of this item within the entire parameters
     :param id_: Explicit ID value from a sequence-based ids argument
     """
 
     def generate_param_id() -> Any:
         if id_ is not None:
             return id_
+
+        if isinstance(loaded_data, MissingData):
+            return repr(loaded_data)
 
         if load_attrs.id_func:
             if isinstance(loaded_data, LazyLoadedPartData):
@@ -166,31 +198,43 @@ def _generate_parameterset(
                     return param_id
                 return repr(loaded_data)
             if load_attrs.loader.requires_parametrization:
-                return load_attrs.id_func(idx, loaded_data.file_path, loaded_data.data)
+                assert loaded_data.gidx is not None
+                return load_attrs.id_func(loaded_data.gidx, loaded_data.file_path, loaded_data.data)
             else:
                 return load_attrs.id_func(loaded_data.file_path, loaded_data.data)
+
+        # Default ID
+        if load_attrs.lazy_loading or not (load_attrs.loader.type == DataLoaderType.PARAMETRIZE):
+            return repr(loaded_data)
         else:
-            # Default ID
-            if load_attrs.lazy_loading or not (load_attrs.loader.type == DataLoaderType.PARAMETRIZE):
-                return repr(loaded_data)
-            else:
-                return repr(loaded_data.data)
+            return repr(loaded_data.data)
 
     def generate_param_marks() -> MarkDecorator | Collection[MarkDecorator | Mark]:
         default_markers: tuple[()] = ()
-        if load_attrs.marker_func is None:
-            return default_markers
-        else:
-            if isinstance(loaded_data, LazyLoadedPartData):
-                # When `marks` callable is provided for the @parametrize loader, marks are generated when
-                # LazyLoadedPartData is created
-                marks = loaded_data.meta["marks"]
+        if isinstance(loaded_data, MissingData):
+            on_missing = data_loader_option.on_missing
+            reason = f"{type(loaded_data.error).__name__}: {loaded_data.error}"
+            if on_missing == DataLoaderOnMissingAction.SKIP:
+                marks = pytest.mark.skip(reason=reason)
+            elif on_missing == DataLoaderOnMissingAction.XFAIL:
+                marks = pytest.mark.xfail(reason=reason, run=False)
             else:
-                if load_attrs.loader.requires_parametrization:
-                    marks = load_attrs.marker_func(idx, loaded_data.file_path, loaded_data.data)
+                marks = None
+        else:
+            if load_attrs.marker_func is None:
+                return default_markers
+            else:
+                if isinstance(loaded_data, LazyLoadedPartData):
+                    # When `marks` callable is provided for the @parametrize loader, marks are generated when
+                    # LazyLoadedPartData is created
+                    marks = loaded_data.meta["marks"]
                 else:
-                    marks = load_attrs.marker_func(loaded_data.file_path, loaded_data.data)
-            return marks or default_markers
+                    if load_attrs.loader.requires_parametrization:
+                        assert loaded_data.gidx is not None
+                        marks = load_attrs.marker_func(loaded_data.gidx, loaded_data.file_path, loaded_data.data)
+                    else:
+                        marks = load_attrs.marker_func(loaded_data.file_path, loaded_data.data)
+        return marks or default_markers
 
     args: tuple[Any, ...]
     if load_attrs.requires_file_path:
@@ -202,3 +246,11 @@ def _generate_parameterset(
     finally:
         if isinstance(loaded_data, LazyLoadedPartData):
             loaded_data.meta.clear()
+
+
+def _emit_warning(msg: str, metafunc: Metafunc, loader_idx: int, load_attrs: DataLoaderLoadAttrs) -> None:
+    decorator_src = (
+        get_data_loader_source(metafunc.function, loader_idx, load_attrs.loader.__name__)
+        or f"@{load_attrs.loader.__name__}"
+    )
+    warnings.warn(f"{msg}\n  - nodeid: {metafunc.definition.nodeid}\n  - data loader: {decorator_src}", UserWarning)

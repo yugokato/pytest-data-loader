@@ -6,7 +6,7 @@ from pytest import ExitCode
 
 from pytest_data_loader import load
 from pytest_data_loader.constants import DEFAULT_LOADER_DIR_NAME, ROOT_DIR
-from pytest_data_loader.types import DataLoader, DataLoaderIniOption
+from pytest_data_loader.types import DataLoader, DataLoaderIniOption, DataLoaderOnMissingAction
 
 from .helper import LoaderRootDir, TestContext, create_test_data_in_data_dir, run_pytest_with_context
 
@@ -99,6 +99,21 @@ class TestIniOptions:
             result.assert_outcomes(passed=test_context.num_expected_tests)
 
     @pytest.mark.parametrize("collect_only", [True, False])
+    @pytest.mark.parametrize("on_missing", DataLoaderOnMissingAction)
+    def test_ini_option_data_loader_on_missing(
+        self, test_context: TestContext, collect_only: bool, on_missing: DataLoaderOnMissingAction
+    ) -> None:
+        """Test data_loader_on_missing INI option with valid values"""
+        test_context.pytester.makeini(f"""
+        [pytest]
+        {DataLoaderIniOption.DATA_LOADER_ON_MISSING} = {on_missing.value}
+        """)
+        result = run_pytest_with_context(test_context, collect_only=collect_only)
+        assert result.ret == ExitCode.OK
+        if not collect_only:
+            result.assert_outcomes(passed=test_context.num_expected_tests)
+
+    @pytest.mark.parametrize("collect_only", [True, False])
     @pytest.mark.parametrize("invalid_dir_name", ["", ".", "..", ROOT_DIR, f"{ROOT_DIR}foo", f"foo{os.sep}bar"])
     def test_ini_option_data_loader_dir_name_invalid(
         self, test_context: TestContext, collect_only: bool, invalid_dir_name: str
@@ -145,3 +160,19 @@ class TestIniOptions:
             f"invalid truth value '{invalid_value}'"
         )
         assert expected in str(result.stderr)
+
+    @pytest.mark.parametrize("collect_only", [True, False])
+    @pytest.mark.parametrize("invalid_value", ["", "foo", "RAISE", "Skip"])
+    def test_ini_option_data_loader_on_missing_invalid(
+        self, test_context: TestContext, collect_only: bool, invalid_value: str
+    ) -> None:
+        """Test data_loader_on_missing INI option with invalid values"""
+        test_context.pytester.makeini(f"""
+        [pytest]
+        {DataLoaderIniOption.DATA_LOADER_ON_MISSING} = {invalid_value}
+        """)
+        result = run_pytest_with_context(test_context, collect_only=collect_only)
+        assert result.ret == ExitCode.USAGE_ERROR
+        assert f"INI option {DataLoaderIniOption.DATA_LOADER_ON_MISSING}: Invalid value: '{invalid_value}'" in str(
+            result.stderr
+        )

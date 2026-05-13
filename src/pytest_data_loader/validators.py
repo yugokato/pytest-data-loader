@@ -183,10 +183,9 @@ def _validate_single_path(path: Path | str, *, loader: DataLoader, recursive: bo
                 stacklevel=6,  # The @parametrize_dir(...) def in the test
             )
     elif path_.is_absolute():
+        # NOTE: The existence of the path is checked later to handle the error based on the on_missing option.
         if path_.is_symlink():
             check_circular_symlink(path_)
-        if not path_.exists():
-            raise FileNotFoundError(f"The provided path does not exist: {str(path)!r}")
         if path_.is_dir() and loader.is_file_loader:
             raise ValueError(f"Invalid path type: @{loader.__name__} loader must take a file path, not {str(path)!r}")
         if path_.is_file() and not loader.is_file_loader:

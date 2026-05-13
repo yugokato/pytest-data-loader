@@ -673,3 +673,8 @@ Plugin default: Pytest rootdir (`config.rootpath`)
 ### `data_loader_strip_trailing_whitespace`
 Automatically remove trailing whitespace characters when loading text data.  
 Plugin default: `true`
+
+### `data_loader_on_missing`
+The action to take when a data file or directory specified as `path` cannot be located. Supported values are 
+`raise`, `skip`, `xfail`, and `warn`.  
+Plugin default: `raise`

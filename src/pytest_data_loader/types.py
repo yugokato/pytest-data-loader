@@ -12,6 +12,7 @@ import pytest
 from pytest import Config, Mark, MarkDecorator
 
 from pytest_data_loader.compat import StrEnum
+from pytest_data_loader.exceptions import DataNotFound
 from pytest_data_loader.paths import expand_env_vars, has_env_vars
 
 T = TypeVar("T")
@@ -73,16 +74,33 @@ class DataLoaderIniOption(StrEnum):
     DATA_LOADER_DIR_NAME = auto()
     DATA_LOADER_ROOT_DIR = auto()
     DATA_LOADER_STRIP_TRAILING_WHITESPACE = auto()
+    DATA_LOADER_ON_MISSING = auto()
+
+
+class DataLoaderOnMissingAction(StrEnum):
+    """How to behave when a configured data path cannot be located."""
+
+    RAISE = auto()
+    SKIP = auto()
+    XFAIL = auto()
+    WARN = auto()
 
 
 class DataLoaderOption:
+    """Parsed pytest-data-loader INI options for the current session."""
+
     def __init__(self, config: Config):
+        """Parse and validate all INI options.
+
+        :param config: The pytest Config object for the current session.
+        """
         self._config = config
         self.loader_dir_name = self._parse_ini_option(DataLoaderIniOption.DATA_LOADER_DIR_NAME)
         self.loader_root_dir = self._parse_ini_option(DataLoaderIniOption.DATA_LOADER_ROOT_DIR)
         self.strip_trailing_whitespace = self._parse_ini_option(
             DataLoaderIniOption.DATA_LOADER_STRIP_TRAILING_WHITESPACE
         )
+        self.on_missing = self._parse_ini_option(DataLoaderIniOption.DATA_LOADER_ON_MISSING)
 
     def _parse_ini_option(self, option: DataLoaderIniOption) -> str | bool | Path:
         """Parse pytest INI option and perform additional validation if needed.
@@ -121,6 +139,12 @@ class DataLoaderOption:
                     if orig_value != str(v):
                         err += f" (resolved value: {str(v)!r})"
                     raise ValueError(err)
+            elif option == DataLoaderIniOption.DATA_LOADER_ON_MISSING:
+                assert isinstance(v, str)
+                allowed = [m.value for m in DataLoaderOnMissingAction]
+                if v not in allowed:
+                    raise ValueError(f"Invalid value: '{v}'. Must be one of: {', '.join(repr(x) for x in allowed)}")
+                return DataLoaderOnMissingAction(v)
             return v
         except ValueError as e:
             raise pytest.UsageError(f"INI option {option}: {e}") from e
@@ -180,7 +204,8 @@ DataLoaderFunctionType._validate()
 
 
 @dataclass(frozen=True, kw_only=True, slots=True, repr=False)
-class LoadedDataABC(ABC):
+class Data(ABC):
+    gidx: int | None = None
     file_path: Path
     loaded_from: Path | None = None
 
@@ -199,12 +224,24 @@ class LoadedDataABC(ABC):
 
 
 @dataclass(frozen=True, kw_only=True, slots=True, repr=False)
-class LoadedData(LoadedDataABC):
+class MissingData(Data):
+    error: DataNotFound
+
+    def __repr__(self) -> str:
+        return f"{Data.__repr__(self)}:MISSING"
+
+    @property
+    def data(self) -> None:
+        return None
+
+
+@dataclass(frozen=True, kw_only=True, slots=True, repr=False)
+class LoadedData(Data):
     data: LoadedDataType
 
 
 @dataclass(frozen=True, kw_only=True, slots=True, repr=False)
-class LazyLoadedDataABC(LoadedDataABC):
+class LazyLoadedDataABC(Data):
     resolver: Callable[..., LoadedData | Iterable[LoadedData]]
 
     @property

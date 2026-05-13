@@ -1,6 +1,8 @@
 import pytest
 from pytest import ExitCode
 
+from pytest_data_loader.types import DataLoaderOnMissingAction
+
 pytestmark = pytest.mark.plugin
 
 
@@ -264,7 +266,7 @@ class TestParametrizeDirMultiPaths:
         """)
         result = pytester.runpytest("--collect-only", "-q")
         assert result.ret == ExitCode.INTERRUPTED
-        assert "Unable to locate the specified directory" in str(result.stdout)
+        assert "Unable to locate the directory" in str(result.stdout)
 
 
 class TestLoadMultiPath:
@@ -282,3 +284,39 @@ class TestLoadMultiPath:
         result = pytester.runpytest("--collect-only", "-q")
         assert result.ret == ExitCode.INTERRUPTED
         assert "Multi-path is not supported for @load loader" in str(result.stdout)
+
+
+class TestOnMissingPartialMultiPath:
+    """Tests that on_missing with multi-path preserves valid entries when one path is missing."""
+
+    @pytest.mark.parametrize(
+        "on_missing",
+        [DataLoaderOnMissingAction.SKIP, DataLoaderOnMissingAction.XFAIL, DataLoaderOnMissingAction.WARN],
+    )
+    def test_multi_path_partial_missing(self, pytester: pytest.Pytester, on_missing: DataLoaderOnMissingAction) -> None:
+        """Test that a missing entry in a multi-path list produces a placeholder while valid entries still run."""
+        pytester.mkdir("data")
+        pytester.makefile(".txt", **{"data/file1": "alpha"})
+        pytester.makefile(".txt", **{"data/file2": "beta"})
+        pytester.makeini(f"""
+        [pytest]
+        data_loader_on_missing = {on_missing.value}
+        """)
+        pytester.makepyfile("""
+        from pytest_data_loader import parametrize
+
+        @parametrize("data", ["file1.txt", "missing.txt", "file2.txt"])
+        def test_func(data):
+            assert data in ("alpha", "beta")
+        """)
+        result = pytester.runpytest("-v")
+        if on_missing == DataLoaderOnMissingAction.SKIP:
+            result.assert_outcomes(passed=2, skipped=1)
+            assert result.ret == ExitCode.OK
+        elif on_missing == DataLoaderOnMissingAction.XFAIL:
+            result.assert_outcomes(passed=2, xfailed=1)
+            assert result.ret == ExitCode.OK
+        elif on_missing == DataLoaderOnMissingAction.WARN:
+            # None data causes assertion failure in test body
+            result.assert_outcomes(passed=2, failed=1)
+            assert result.ret == ExitCode.TESTS_FAILED

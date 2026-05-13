@@ -9,4 +9,11 @@ try:
 except PackageNotFoundError:
     pass
 
-__all__ = ["DataLoaderFixture", "data_loader", "load", "parametrize", "parametrize_dir", "register_reader"]
+__all__ = [
+    "DataLoaderFixture",
+    "data_loader",
+    "load",
+    "parametrize",
+    "parametrize_dir",
+    "register_reader",
+]

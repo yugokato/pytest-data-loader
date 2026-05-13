@@ -194,4 +194,4 @@ class TestLoaderDataPath:
                 assert f"The provided path does not exist: {str(path)!r}" in stdout
         else:
             file_or_dir = "directory" if loader == parametrize_dir else "file"
-            assert f"Unable to locate the specified {file_or_dir} {str(path)!r}" in stdout
+            assert f"Unable to locate the {file_or_dir} {str(path)!r}" in stdout

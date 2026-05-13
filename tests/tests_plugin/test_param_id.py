@@ -2,7 +2,7 @@ import pytest
 from _pytest.config import ExitCode
 
 from pytest_data_loader import load, parametrize, parametrize_dir
-from pytest_data_loader.types import DataLoader, DataLoaderFunctionType
+from pytest_data_loader.types import DataLoader, DataLoaderFunctionType, DataLoaderIniOption, DataLoaderOnMissingAction
 
 from .helper import TestContext, run_pytest_with_context
 
@@ -107,3 +107,33 @@ class TestParamId:
         assert f"ids: Length ({len(invalid_ids)}) does not match number of parameter sets ({num_tests})" in str(
             result.stdout
         )
+
+
+class TestParamIdOnMissingData:
+    """Tests for id_func and idx correctness when on_missing != raise."""
+
+    @pytest.mark.parametrize(
+        "on_missing",
+        [DataLoaderOnMissingAction.SKIP, DataLoaderOnMissingAction.XFAIL, DataLoaderOnMissingAction.WARN],
+    )
+    def test_ids_callable_ignored_on_missing(
+        self, pytester: pytest.Pytester, on_missing: DataLoaderOnMissingAction
+    ) -> None:
+        """Test that a user-supplied ids callable is not invoked for a missing path."""
+        pytester.mkdir("data")
+        pytester.makefile(".txt", **{"data/present": "hello"})
+        pytester.makeini(f"""
+        [pytest]
+        {DataLoaderIniOption.DATA_LOADER_ON_MISSING} = {on_missing.value}
+        """)
+        pytester.makepyfile("""
+        from pytest_data_loader import parametrize
+
+        @parametrize("data", ["present.txt", "absent.txt"], ids=lambda p, d: "custom-" + str(d))
+        def test_func(data):
+            pass
+        """)
+        result = pytester.runpytest("-v")
+        output = str(result.stdout)
+        assert "custom-None" not in output
+        result.stdout.fnmatch_lines("*absent.txt:MISSING*")
