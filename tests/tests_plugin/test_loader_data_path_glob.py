@@ -171,7 +171,7 @@ class TestParametrizeWithGlobPath:
 
     @pytest.mark.parametrize("is_abs", [True, False])
     def test_glob_with_no_matching_file(self, pytester: Pytester, data_dir: Path, is_abs: bool) -> None:
-        """Test that a glob matching no files raises FileNotFoundError"""
+        """Test that a glob matching no files raises DataNotFound"""
         pattern = "foo/*.txt"
         if is_abs:
             pattern = str(data_dir / pattern)
@@ -185,7 +185,7 @@ class TestParametrizeWithGlobPath:
         """)
         result = pytester.runpytest("--collect-only")
         assert result.ret == ExitCode.INTERRUPTED
-        result.stdout.fnmatch_lines(["*FileNotFoundError: Glob pattern*matched no files*"])
+        result.stdout.fnmatch_lines(["*DataNotFound: Glob pattern*matched no files*"])
 
     @pytest.mark.parametrize("is_abs", [True, False])
     @pytest.mark.parametrize("has_matching_file", [True, False])
@@ -323,7 +323,7 @@ class TestParametrizeDirWithGlobPath:
 
     @pytest.mark.parametrize("is_abs", [True, False])
     def test_glob_with_no_matching_dir(self, pytester: Pytester, data_dir: Path, is_abs: bool) -> None:
-        """Test that a glob matching no directories raises FileNotFoundError"""
+        """Test that a glob matching no directories raises DataNotFound"""
         pattern = "foo/**"
         if is_abs:
             pattern = str(data_dir / pattern)
@@ -337,7 +337,7 @@ class TestParametrizeDirWithGlobPath:
         """)
         result = pytester.runpytest("--collect-only")
         assert result.ret == ExitCode.INTERRUPTED
-        result.stdout.fnmatch_lines(["*FileNotFoundError: Glob pattern*matched no directories*"])
+        result.stdout.fnmatch_lines(["*DataNotFound: Glob pattern*matched no directories*"])
 
     @pytest.mark.parametrize("is_abs", [True, False])
     @pytest.mark.parametrize("collect_only", [True, False])

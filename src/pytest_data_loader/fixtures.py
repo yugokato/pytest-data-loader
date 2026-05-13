@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import warnings
 from collections.abc import Generator
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
@@ -10,12 +11,14 @@ from _pytest.fixtures import FixtureRequest
 from pytest import Config
 
 from pytest_data_loader.constants import PYTEST_DATA_LOADER_MODULE_CACHE, STASH_KEY_DATA_LOADER_OPTION
+from pytest_data_loader.exceptions import DataNotFound
 from pytest_data_loader.loaders.impl import create_loaders
 from pytest_data_loader.loaders.loaders import load
 from pytest_data_loader.types import (
     DataLoader,
     DataLoaderFunctionType,
     DataLoaderLoadAttrs,
+    DataLoaderOnMissingAction,
     DataLoaderOption,
     FileReader,
     HashableDict,
@@ -92,24 +95,46 @@ class DataLoaderFixture:
         if cache_key in self._cache:
             return self._cache[cache_key]
 
-        load_attrs = DataLoaderLoadAttrs(
-            loader=loader,
-            search_from=self._search_from,
-            fixture_names=("_",),
-            path=validated_path,
-            lazy_loading=False,
-            reader=reader,
-            read_options=hashable_read_options,
-            onload_func=onload,
-        )
+        try:
+            load_attrs = DataLoaderLoadAttrs(
+                loader=loader,
+                search_from=self._search_from,
+                fixture_names=("_",),
+                path=validated_path,
+                lazy_loading=False,
+                reader=reader,
+                read_options=hashable_read_options,
+                onload_func=onload,
+            )
 
-        (file_loader,) = create_loaders(validated_path, load_attrs, self._data_loader_option)
-        file_loader.register_cleanup(self._request.module)
-        loaded = file_loader.load()
-        assert isinstance(loaded, LoadedData)
-        data = loaded.data
-        self._cache[cache_key] = data
-        return data
+            (file_loader,) = create_loaders(validated_path, load_attrs, self._data_loader_option)
+            file_loader.register_cleanup(self._request.module)
+            loaded = file_loader.load()
+            assert isinstance(loaded, LoadedData)
+            data = loaded.data
+            self._cache[cache_key] = data
+            return data
+        except DataNotFound as e:
+            return self._handle_missing_data(cache_key, e)
+
+    def _handle_missing_data(self, cache_key: tuple[Any, ...], exc: DataNotFound) -> Any:
+        """Dispatch a missing-path DataNotFound at test runtime based on the on_missing option.
+
+        :param cache_key: Cache key used to deduplicate repeated calls for the same missing path
+        :param exc: The DataNotFound exception describing the missing path
+        """
+        on_missing = self._data_loader_option.on_missing
+        reason = f"{type(exc).__name__}: {exc}"
+        if on_missing == DataLoaderOnMissingAction.RAISE:
+            raise exc
+        elif on_missing == DataLoaderOnMissingAction.SKIP:
+            pytest.skip(reason=reason)
+        elif on_missing == DataLoaderOnMissingAction.XFAIL:
+            pytest.xfail(reason=reason)
+        elif on_missing == DataLoaderOnMissingAction.WARN:
+            warnings.warn(reason, UserWarning, stacklevel=3)
+            self._cache[cache_key] = None
+        return None
 
 
 @pytest.fixture(scope="module", autouse=True)

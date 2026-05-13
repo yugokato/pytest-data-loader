@@ -4,6 +4,8 @@ from pathlib import Path
 import pytest
 from pytest import ExitCode, Pytester
 
+from pytest_data_loader.types import DataLoaderIniOption, DataLoaderOnMissingAction
+
 pytestmark = pytest.mark.plugin
 
 
@@ -280,3 +282,70 @@ class TestDataLoaderFixture:
         result = pytester.runpytest("-v")
         assert result.ret == ExitCode.OK
         result.assert_outcomes(passed=1)
+
+
+class TestOnMissingWithFixture:
+    """Tests for the data_loader_on_missing INI option behavior with the data_loader fixture."""
+
+    @pytest.fixture
+    def data_dir(self, pytester: Pytester) -> Path:
+        return pytester.mkdir("data")
+
+    @pytest.mark.parametrize("is_abs", [True, False])
+    @pytest.mark.parametrize("on_missing", DataLoaderOnMissingAction)
+    def test_on_missing(
+        self, pytester: Pytester, data_dir: Path, is_abs: bool, on_missing: DataLoaderOnMissingAction
+    ) -> None:
+        """Test that on_missing governs data_loader fixture behavior for a missing path."""
+        path = "does_not_exist.txt"
+        if is_abs:
+            path = str(data_dir / path)
+        pytester.makeini(f"""
+        [pytest]
+        {DataLoaderIniOption.DATA_LOADER_ON_MISSING} = {on_missing.value}
+        """)
+        pytester.makepyfile(f"""
+        def test_load(data_loader):
+            data_loader({path!r})
+        """)
+        result = pytester.runpytest("-v")
+        if on_missing == DataLoaderOnMissingAction.RAISE:
+            assert result.ret == ExitCode.TESTS_FAILED
+            result.assert_outcomes(failed=1)
+        elif on_missing == DataLoaderOnMissingAction.WARN:
+            # warn: data_loader() returns None; test body doesn't use the result, so it passes
+            assert result.ret == ExitCode.OK
+            result.assert_outcomes(passed=1)
+        else:
+            assert result.ret == ExitCode.OK
+            if on_missing == DataLoaderOnMissingAction.SKIP:
+                result.assert_outcomes(skipped=1)
+            else:
+                result.assert_outcomes(xfailed=1)
+
+        if on_missing == DataLoaderOnMissingAction.WARN:
+            result.stdout.fnmatch_lines(
+                [
+                    "*UserWarning: DataNotFound:*",
+                    f"*data_loader({path!r})",
+                ],
+            )
+        else:
+            assert "UserWarning: DataNotFound:" not in str(result.stdout)
+
+    def test_on_missing_warn_no_duplicate_warning(self, pytester: Pytester, data_dir: Path) -> None:
+        """Test that calling data_loader twice for the same missing path emits only one warning."""
+        path = str(data_dir / "does_not_exist.txt")
+        pytester.makeini(f"""
+        [pytest]
+        {DataLoaderIniOption.DATA_LOADER_ON_MISSING} = {DataLoaderOnMissingAction.WARN.value}
+        """)
+        pytester.makepyfile(f"""
+        def test_load(data_loader):
+            data_loader({path!r})
+            data_loader({path!r})
+        """)
+        result = pytester.runpytest("-v", "-W", "always")
+        assert result.ret == ExitCode.OK
+        result.assert_outcomes(passed=1)
+        assert str(result.stdout).count("UserWarning: DataNotFound:") == 1

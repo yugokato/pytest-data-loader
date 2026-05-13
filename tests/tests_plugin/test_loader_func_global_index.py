@@ -1,7 +1,10 @@
 from pathlib import Path
 
 import pytest
+from _pytest.config import ExitCode
 from pytest import Pytester
+
+from pytest_data_loader.types import DataLoaderIniOption, DataLoaderOnMissingAction
 
 pytestmark = pytest.mark.plugin
 
@@ -11,7 +14,7 @@ def data_dir(pytester: Pytester) -> Path:
     return pytester.mkdir("data")
 
 
-class TestParametrizeLoaderFuncParamIdx:
+class TestParametrizeLoaderFuncGlobalIdx:
     """Tests for idx arg support in @parametrize loader callable options"""
 
     @pytest.mark.parametrize("lazy_loading", [True, False])
@@ -81,7 +84,7 @@ class TestParametrizeLoaderFuncParamIdx:
     def test_idx_with_ids_func(
         self, pytester: Pytester, data_dir: Path, lazy_loading: bool, file_extension: str
     ) -> None:
-        """Test that @parametrize ids receives sequential post-filter param idx regardless of which items were
+        """Test that @parametrize ids receives sequential post-filter global idx regardless of which items were
         filtered out.
 
         The file has 5 items but only 2 pass the filter. If idx were pre-filter positions, the ids would be
@@ -163,7 +166,7 @@ class TestParametrizeLoaderFuncParamIdx:
         assert "[item-1]" in output
 
 
-class TestParametrizeDirLoaderFuncIdx:
+class TestParametrizeDirLoaderFuncGlobalIdx:
     """Tests for idx arg support in @parametrize_dir loader function callbacks.
 
     The test directory has 4 files sorted alphabetically: file0.txt, file1.txt, file2.txt, file3.txt.
@@ -312,8 +315,8 @@ class TestParametrizeDirLoaderFuncIdx:
         assert "[item-2]" not in output
 
 
-class TestParamIdxInMultiPaths:
-    """Tests that a param idx is continuous across all paths matched by a single decorator invocation."""
+class TestGlobalIdxInMultiPaths:
+    """Tests that a global idx is continuous across all paths matched by a single decorator invocation."""
 
     @pytest.mark.parametrize("lazy_loading", [True, False])
     def test_idx_with_multi_paths_parametrize(self, pytester: Pytester, data_dir: Path, lazy_loading: bool) -> None:
@@ -526,3 +529,52 @@ class TestParamIdxInMultiPaths:
         """)
         result = pytester.runpytest("-v")
         result.assert_outcomes(passed=4)
+
+
+class TestGlobalIdxOnMissingData:
+    """Tests global idx when missing data"""
+
+    @pytest.mark.parametrize("lazy_loading", [True, False])
+    @pytest.mark.parametrize(
+        "on_missing",
+        [DataLoaderOnMissingAction.SKIP, DataLoaderOnMissingAction.XFAIL, DataLoaderOnMissingAction.WARN],
+    )
+    def test_missing_data_does_not_consume_global_idx(
+        self, pytester: pytest.Pytester, data_dir: Path, on_missing: DataLoaderOnMissingAction, lazy_loading: bool
+    ) -> None:
+        """Test that missing data does not consume the global idx"""
+        (data_dir / "first.txt").write_text("line1\nline2")
+        (data_dir / "third.txt").write_text("line1\nline2")
+        pytester.makeini(f"""
+        [pytest]
+        {DataLoaderIniOption.DATA_LOADER_ON_MISSING} = {on_missing.value}
+        """)
+        pytester.makepyfile(f"""
+        import pytest
+        from pytest_data_loader import parametrize
+
+        @parametrize(
+            "data",
+            ["first.txt", "second_missing.txt", "third.txt"],
+            lazy_loading={lazy_loading},
+            processor=lambda i, *_: i,
+            marks=lambda i, *_: getattr(pytest.mark, f"mark{{i}}"),
+            ids=lambda i, p, d: "item" + str(i),
+        )
+        def test_func(request, data):
+            call_idx = request.node.callspec.indices["data"]
+            if call_idx < 2:
+                assert data == call_idx
+                assert request.node.get_closest_marker(f"mark{{call_idx}}")
+            elif call_idx == 2:
+                # missing data
+                assert data is None
+            else:
+                assert data == call_idx-1
+                assert request.node.get_closest_marker(f"mark{{call_idx-1}}")
+        """)
+        result = pytester.runpytest("-v")
+        assert result.ret == ExitCode.OK
+        output = str(result.stdout)
+        assert all(x in output for x in ("item0", "item1", "item2", "item3"))
+        assert "item4" not in output

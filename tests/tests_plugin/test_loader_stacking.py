@@ -203,6 +203,25 @@ class TestLoaderStacking:
         assert "rows.txt:part2" in test_lines[2] and "rows.txt:part2" in test_lines[3]
         assert "rows.txt:part3" in test_lines[4] and "rows.txt:part3" in test_lines[5]
 
+    def test_on_missing_path_stacked(self, pytester: pytest.Pytester) -> None:
+        """Test that stacked decorators with missing paths produce unique per-decorator IDs."""
+        pytester.makeini("""
+        [pytest]
+        data_loader_on_missing = skip
+        """)
+        pytester.makepyfile("""
+        from pytest_data_loader import load
+
+        @load("outer_data", "outer_missing.txt")
+        @load("inner_data", "inner_missing.txt")
+        def test_func(outer_data, inner_data):
+            pass
+        """)
+        result = pytester.runpytest("-v")
+        assert result.ret == ExitCode.OK
+        result.assert_outcomes(skipped=1)
+        assert "[outer_missing.txt:MISSING-inner_missing.txt:MISSING]" in str(result.stdout)
+
     def test_stacked_loaders_read_file_from_cache(self, pytester: pytest.Pytester) -> None:
         """Test that each file in stacked data loaders is opened only once per test function, not per Cartesian test."""
         _tracked_files = {"columns.txt", "rows.txt", "a.txt", "b.txt"}

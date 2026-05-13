@@ -14,6 +14,7 @@ from types import ModuleType
 from typing import IO, Any, ClassVar, Concatenate, ParamSpec, TypeVar
 
 from pytest_data_loader.constants import PYTEST_DATA_LOADER_MODULE_CACHE
+from pytest_data_loader.exceptions import DataNotFound
 from pytest_data_loader.loaders.reader import FileReader
 from pytest_data_loader.paths import (
     check_and_track_dir,
@@ -58,7 +59,7 @@ def create_loaders(
     load_attrs: DataLoaderLoadAttrs,
     data_loader_option: DataLoaderOption,
     *,
-    idx_counter: count[int] | None = None,
+    gidx_counter: count[int] | None = None,
 ) -> list[FileLoader | DirectoryLoader]:
     """Resolve a single path entry (which may be a glob pattern or a concrete path) to file or directory loaders.
     Returns one loader per matched entry (possibly many when *path* is a glob pattern).
@@ -66,8 +67,8 @@ def create_loaders(
     :param path: A single path entry from the data loader's path argument. This can be a glob pattern
     :param load_attrs: Loader attributes for the current data loader
     :param data_loader_option: Data loader options
-    :param idx_counter: Shared counter that produces continuous post-filter idx values across all loaders
-                        created for a single decorator invocation
+    :param gidx_counter: Global index counter that produces continuous post-filter idx values across all loaders
+                         created for a single decorator invocation
     """
     strip_trailing_whitespace = bool(data_loader_option.strip_trailing_whitespace)
     is_file = load_attrs.loader.is_file_loader
@@ -83,10 +84,10 @@ def create_loaders(
                 base, pattern = split_glob_path(path)
                 file_or_dir_paths = get_matching_paths(base, pattern, "file" if is_file else "directory")
                 if not file_or_dir_paths:
-                    raise FileNotFoundError(
-                        f"Glob pattern {str(path)!r} matched no {'files' if is_file else 'directories'}"
-                    )
+                    raise DataNotFound(f"Glob pattern {str(path)!r} matched no {'files' if is_file else 'directories'}")
         else:
+            if not path.exists():
+                raise DataNotFound(f"The provided path does not exist: {str(path)!r}")
             file_or_dir_paths = (path,)
     else:
         data_dir_path, file_or_dir_paths = resolve_relative_path(
@@ -104,7 +105,7 @@ def create_loaders(
             load_from=data_dir_path,
             strip_trailing_whitespace=strip_trailing_whitespace,
             ignore_recursive=is_glob,
-            idx_counter=idx_counter or count(),
+            gidx_counter=gidx_counter or count(),
         )
         for p in file_or_dir_paths
     ]
@@ -138,7 +139,7 @@ class Loader(ABC):
         *,
         load_from: Path | None = None,
         strip_trailing_whitespace: bool = False,
-        idx_counter: count[int] | None = None,
+        gidx_counter: count[int] | None = None,
     ):
         assert path.is_absolute()
         if path.is_symlink():
@@ -150,7 +151,7 @@ class Loader(ABC):
         self.load_attrs = load_attrs
         self.load_from = load_from
         self.strip_trailing_whitespace = strip_trailing_whitespace
-        self._idx_counter = idx_counter or count()
+        self._gidx_counter = gidx_counter or count()
 
     @abstractmethod
     def load(self) -> LoadedData | LazyLoadedData | Iterable[LoadedData | LazyLoadedPartData]:
@@ -181,12 +182,12 @@ class FileLoader(Loader):
 
     STREAMABLE_FILE_TYPES: ClassVar[tuple[str, ...]] = (".txt", ".log", ".csv", ".tsv")
 
-    def __init__(self, *args: Any, param_idx: int | None = None, **kwargs: Any):
+    def __init__(self, *args: Any, gidx: int | None = None, **kwargs: Any):
         super().__init__(*args, **kwargs)
         if not self.path.is_file():
             raise ValueError(f"path must be a file path: {self.path}")
 
-        self._param_idx = param_idx
+        self._gidx = gidx
         self.file_reader = self.load_attrs.reader
         self.read_options = self.load_attrs.read_options
         if not self.file_reader:
@@ -330,26 +331,36 @@ class FileLoader(Loader):
             data = self.load_attrs.onload_func(self.path, data)
 
         if self.loader.should_split_data:
-            data = self.parametrizer_func(self.path, data)
+            parts = self.parametrizer_func(self.path, data)
             if self.load_attrs.filter_func:
-                data = (x for x in data if self.load_attrs.filter_func(self.path, x))
-            if not skip_processor and self.load_attrs.process_func:
-                data = (self.load_attrs.process_func(next(self._idx_counter), self.path, x) for x in data)
-            return [LoadedData(file_path=self.path, loaded_from=self.load_from, data=x) for x in data]
+                parts = (x for x in parts if self.load_attrs.filter_func(self.path, x))
+            loaded_data: list[LoadedData] = []
+            for part in parts:
+                data = part
+                if skip_processor:
+                    gidx = None
+                else:
+                    gidx = next(self._gidx_counter)
+                    if self.load_attrs.process_func:
+                        data = self.load_attrs.process_func(gidx, self.path, part)
+                loaded_data.append(LoadedData(file_path=self.path, loaded_from=self.load_from, data=data, gidx=gidx))
+            return loaded_data
         else:
+            gidx = self._gidx
             if not skip_processor and self.load_attrs.process_func:
-                param_idx = self._param_idx if self._param_idx is not None else next(self._idx_counter)
-                data = self.load_attrs.process_func(param_idx, self.path, data)
-            return LoadedData(file_path=self.path, loaded_from=self.load_from, data=data)
+                if gidx is None:
+                    gidx = next(self._gidx_counter)
+                data = self.load_attrs.process_func(gidx, self.path, data)
+            return LoadedData(file_path=self.path, loaded_from=self.load_from, data=data, gidx=gidx)
 
     @requires_loader(DataLoaderType.PARAMETRIZE)
     def _load_part_data_now(
-        self, *, pos: int, param_idx: int, file_loader_func: Callable[..., list[LoadedData]] | None = None
+        self, *, pos: int, gidx: int, file_loader_func: Callable[..., list[LoadedData]] | None = None
     ) -> LoadedData:
         """Load part data for the specified position now
 
         :param pos: Position of the part data
-        :param param_idx: The parameter index of this part data
+        :param gidx: The global index of this part data
         :param file_loader_func: Function to load file data
         """
         if not self.is_streamable and file_loader_func is None:
@@ -361,7 +372,8 @@ class FileLoader(Loader):
                 return LoadedData(
                     file_path=self.path,
                     loaded_from=self.load_from,
-                    data=self.load_attrs.process_func(param_idx, loaded_data.file_path, loaded_data.data),
+                    data=self.load_attrs.process_func(gidx, loaded_data.file_path, loaded_data.data),
+                    gidx=gidx,
                 )
             else:
                 return loaded_data
@@ -374,8 +386,8 @@ class FileLoader(Loader):
                 f.seek(pos)
                 part_data = f.readline().rstrip("\r\n")
             if self.load_attrs.process_func:
-                part_data = self.load_attrs.process_func(param_idx, self.path, part_data)
-            return LoadedData(file_path=self.path, loaded_from=self.load_from, data=part_data)
+                part_data = self.load_attrs.process_func(gidx, self.path, part_data)
+            return LoadedData(file_path=self.path, loaded_from=self.load_from, data=part_data, gidx=gidx)
 
     def _load_lazily(self) -> LazyLoadedData | Iterable[LazyLoadedPartData]:
         """Lazily load data. The actual data will be resolved when needed in a test"""
@@ -390,12 +402,13 @@ class FileLoader(Loader):
                     LazyLoadedPartData(
                         file_path=self.path,
                         loaded_from=self.load_from,
-                        resolver=partial(self._load_part_data_now, pos=pos, param_idx=param_idx),
+                        resolver=partial(self._load_part_data_now, pos=pos, gidx=gidx),
                         idx=i,
                         pos=pos,
                         meta=dict(marks=marks, id=param_id),
+                        gidx=gidx,
                     )
-                    for i, (param_idx, pos, marks, param_id) in enumerate(scan_results)
+                    for i, (gidx, pos, marks, param_id) in enumerate(scan_results)
                 ]
             else:
                 # The entire file content needs to be loaded once during the collection phase to be able to determine
@@ -409,11 +422,11 @@ class FileLoader(Loader):
                 self._cached_functions.add(file_loader_func)
                 lazy_parts = []
                 for i, data in enumerate(loaded_data):
-                    param_idx = next(self._idx_counter)
+                    gidx = next(self._gidx_counter)
                     resolver = partial(
                         self._load_part_data_now,
                         pos=i,
-                        param_idx=param_idx,
+                        gidx=gidx,
                         file_loader_func=file_loader_func,  # type: ignore
                     )
                     lazy_parts.append(
@@ -423,13 +436,14 @@ class FileLoader(Loader):
                             resolver=resolver,
                             idx=i,
                             meta=dict(
-                                marks=self.load_attrs.marker_func(param_idx, self.path, data.data)
+                                marks=self.load_attrs.marker_func(gidx, self.path, data.data)
                                 if self.load_attrs.marker_func
                                 else None,
-                                id=self.load_attrs.id_func(param_idx, self.path, data.data)
+                                id=self.load_attrs.id_func(gidx, self.path, data.data)
                                 if self.load_attrs.id_func
                                 else None,
                             ),
+                            gidx=gidx,
                         )
                     )
                 return lazy_parts
@@ -441,6 +455,7 @@ class FileLoader(Loader):
                 file_path=self.path,
                 loaded_from=self.load_from,
                 resolver=file_loader_func,
+                gidx=self._gidx,
             )
 
     def _get_file_obj(self) -> IO[Any]:
@@ -456,7 +471,7 @@ class FileLoader(Loader):
     def _scan_text_file(self) -> Generator[tuple[int, int, Any, Any]]:
         """Scan file and returns metadata for each part data that should be loaded.
 
-        Each yielded tuple is (param_idx, pos, marks, param_id) where param_idx is the zero-based post-filter
+        Each yielded tuple is (gidx, pos, marks, param_id) where gidx is the zero-based global post-filter
         position passed to the loader callable options.
 
         NOTE: The following loader functions will be applied to each part data as part of the scan
@@ -469,13 +484,11 @@ class FileLoader(Loader):
         buffer: list[tuple[int, Any]] = []
 
         def commit(pos: int, part: Any) -> None:
-            """Commit a part to results, drawing param_idx and evaluating marker/id now."""
-            param_idx = next(self._idx_counter)
-            param_marks = (
-                self.load_attrs.marker_func(param_idx, self.path, part) if self.load_attrs.marker_func else None
-            )
-            param_id = self.load_attrs.id_func(param_idx, self.path, part) if self.load_attrs.id_func else None
-            results.append((param_idx, pos, param_marks, param_id))
+            """Commit a part to results, drawing gidx and evaluating marker/id now."""
+            gidx = next(self._gidx_counter)
+            param_marks = self.load_attrs.marker_func(gidx, self.path, part) if self.load_attrs.marker_func else None
+            param_id = self.load_attrs.id_func(gidx, self.path, part) if self.load_attrs.id_func else None
+            results.append((gidx, pos, param_marks, param_id))
 
         def inspect_part_data(pos: int, part: Any) -> None:
             if not self.load_attrs.filter_func or self.load_attrs.filter_func(self.path, part):
@@ -582,19 +595,19 @@ class DirectoryLoader(Loader):
         def load_file(file_path: Path) -> None:
             if not file_path.name.startswith("."):
                 if not self.load_attrs.filter_func or self.load_attrs.filter_func(file_path, None):
-                    param_idx = next(self._idx_counter)
+                    gidx = next(self._gidx_counter)
                     file_loader = FileLoader(
                         file_path,
                         self.load_attrs,
                         load_from=self.load_from,
                         strip_trailing_whitespace=self.strip_trailing_whitespace,
-                        param_idx=param_idx,
+                        gidx=gidx,
                     )
                     file_reader = read_options = None
                     if self.load_attrs.read_options_func:
-                        read_options = self.load_attrs.read_options_func(param_idx, file_path, None)
+                        read_options = self.load_attrs.read_options_func(gidx, file_path, None)
                     if self.load_attrs.reader_func:
-                        file_reader = self.load_attrs.reader_func(param_idx, file_path, None)
+                        file_reader = self.load_attrs.reader_func(gidx, file_path, None)
                     if file_reader:
                         validate_reader(file_reader)
                         file_loader.file_reader = file_reader
@@ -635,7 +648,7 @@ def _data_loader_factory(
     load_from: Path | None = None,
     strip_trailing_whitespace: bool,
     ignore_recursive: bool = False,
-    idx_counter: count[int],
+    gidx_counter: count[int],
 ) -> FileLoader | DirectoryLoader:
     """Data loader factory that creates either FileLoader or DirectoryLoader depending on the specified path
 
@@ -644,7 +657,7 @@ def _data_loader_factory(
     :param load_from: Data directory to load from
     :param strip_trailing_whitespace: Whether to strip trailing whitespace from loaded data
     :param ignore_recursive: When True, DirectoryLoader will ignore the recursive flag
-    :param idx_counter: Shared counter that produces continuous post-filter idx values across all loaders
+    :param gidx_counter: Global index counter that produces continuous post-filter idx values across all loaders
     """
     if not abs_data_path.is_absolute():
         raise ValueError("abs_data_path must be an absolute path")
@@ -655,7 +668,7 @@ def _data_loader_factory(
             load_attrs,
             load_from=load_from,
             strip_trailing_whitespace=strip_trailing_whitespace,
-            idx_counter=idx_counter,
+            gidx_counter=gidx_counter,
         )
     else:
         return DirectoryLoader(
@@ -664,7 +677,7 @@ def _data_loader_factory(
             load_from=load_from,
             strip_trailing_whitespace=strip_trailing_whitespace,
             ignore_recursive=ignore_recursive,
-            idx_counter=idx_counter,
+            gidx_counter=gidx_counter,
         )
 
 

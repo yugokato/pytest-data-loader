@@ -8,6 +8,8 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
+from pytest_data_loader.exceptions import DataNotFound
+
 
 @lru_cache
 def resolve_relative_path(
@@ -44,7 +46,7 @@ def resolve_relative_path(
     for dir_to_search in (search_from, *search_from.parents):
         data_dir = dir_to_search / data_loader_dir_name
         if data_dir.exists():
-            data_dirs.append(data_dir)
+            data_dirs.append(data_dir.relative_to(data_loader_root_dir.parent))
 
             # Note: Even if the path looks like a glob pattern, we check it as a literal path first in case it
             #       actually exists
@@ -65,17 +67,18 @@ def resolve_relative_path(
             break
 
     if data_dirs:
-        listed_data_dirs = "\n".join(f"  - {x}" for x in data_dirs)
         if is_glob:
             err = f"Glob pattern {str(relative_path_to_search)!r} matched no {'files' if is_file else 'directories'}"
         else:
-            err = (
-                f"Unable to locate the specified {'file' if is_file else 'directory'} {str(relative_path_to_search)!r}"
-            )
-        err += f" under any of the following data directories:\n{listed_data_dirs}"
+            err = f"Unable to locate the {'file' if is_file else 'directory'} {str(relative_path_to_search)!r}"
+        if len(data_dirs) == 1:
+            err += f" under data directory {str(data_dirs[0])!r}"
+        else:
+            listed_data_dirs = "\n".join(f"  - {x}" for x in data_dirs)
+            err += f" under any of the following data directories:\n{listed_data_dirs}"
     else:
         err = f"Unable to find any data directory '{data_loader_dir_name}'"
-    raise FileNotFoundError(err)
+    raise DataNotFound(err)
 
 
 def get_matching_paths(root_dir: Path, pattern: str, match_type: Literal["file", "directory"]) -> tuple[Path, ...]:
