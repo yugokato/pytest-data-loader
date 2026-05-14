@@ -1,14 +1,25 @@
 from __future__ import annotations
 
+import bz2
 import errno
 import glob
+import gzip
+import lzma
 import os
 import re
+from collections.abc import Callable
 from functools import lru_cache
 from pathlib import Path
-from typing import Literal
+from typing import IO, Any, Literal
 
 from pytest_data_loader.exceptions import DataNotFound
+
+_COMPRESSION_OPENERS: dict[str, Callable[..., IO[Any]]] = {
+    ".gz": gzip.open,
+    ".bz2": bz2.open,
+    ".xz": lzma.open,
+}
+SUPPORTED_COMPRESSION_EXTENSIONS: tuple[str, ...] = tuple(_COMPRESSION_OPENERS)
 
 
 @lru_cache
@@ -188,3 +199,46 @@ def split_glob_path(path: Path) -> tuple[Path, str]:
     base = Path(*parts[:split])
     pattern = str(Path(*parts[split:]))
     return base, pattern
+
+
+def is_compressed_path(path: Path) -> bool:
+    """Return whether the given path is a supported compressed file (.gz/.bz2/.xz).
+
+    :param path: File path to inspect
+    """
+    return path.suffix.lower() in SUPPORTED_COMPRESSION_EXTENSIONS
+
+
+def get_effective_suffix(path: Path) -> str:
+    """Return the format-bearing suffix of path, skipping a trailing compression suffix when present.
+
+    :param path: File path to inspect
+
+    Examples:
+        Path("data.json.gz") -> ".json"
+        Path("data.csv.bz2") -> ".csv"
+        Path("data.json")    -> ".json"
+        Path("data.gz")      -> ".gz"   (no inner suffix to expose)
+    """
+    suffixes = path.suffixes
+    if len(suffixes) >= 2 and is_compressed_path(path):
+        return suffixes[-2]
+    return path.suffix
+
+
+def compression_aware_open(path: Path, **open_kwargs: Any) -> IO[Any]:
+    """Open a file, routing through gzip.open()/bz2.open()/lzma.open() when the suffix matches.
+
+    For compression openers "r" means binary (unlike builtin open() where "r" means text). This function normalizes
+    the mode so that "r" and "rt" both produce a text-mode stream, matching the semantics of builtin open().
+
+    :param path: File path to open
+    :param open_kwargs: Keyword arguments forwarded to the opener (mode, encoding, errors, newline)
+    """
+    opener = _COMPRESSION_OPENERS.get(path.suffix.lower())
+    if opener is None:
+        return open(path, **open_kwargs)
+    mode = open_kwargs.get("mode") or "r"
+    # Compression openers treat "r" as binary. Map to "rt" so callers get text mode, matching builtin open.
+    open_kwargs["mode"] = "rt" if mode in ("r", "rt") else mode
+    return opener(path, **open_kwargs)

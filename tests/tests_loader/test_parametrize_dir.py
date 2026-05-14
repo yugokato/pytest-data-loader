@@ -1,11 +1,25 @@
+import json
 from pathlib import Path
+from typing import Any
 
 import pytest
 from pytest import FixtureRequest
 
 from pytest_data_loader import parametrize_dir
+from pytest_data_loader.paths import get_effective_suffix
 from pytest_data_loader.types import LoadedDataType
-from tests.paths import ABS_PATH_LOADER_DIR, IMAGE_DIR, PATH_TEXT_FILE_DIR, SOME_DIR, SOME_DIR_INNER
+from tests.paths import (
+    ABS_PATH_LOADER_DIR,
+    IMAGE_DIR,
+    PATH_COMPRESSED_FILE_DIR,
+    PATH_JPEG_FILE,
+    PATH_JSON_FILE_OBJECT,
+    PATH_TEXT_FILE,
+    PATH_TEXT_FILE_DIR,
+    PATH_YAML_FILE,
+    SOME_DIR,
+    SOME_DIR_INNER,
+)
 
 from .helper import get_parametrized_test_idx
 
@@ -118,3 +132,23 @@ def test_parametrize_dir_multi_dirs_recursive(request: FixtureRequest, data: str
     idx = get_parametrized_test_idx(request, "data")
     all_expected = ["data0", "data1", "data2", "data3", "data4", "data5", "line0\nline1\nline2"]
     assert data == all_expected[idx]
+
+
+@parametrize_dir(
+    ("file_path", "data"),
+    PATH_COMPRESSED_FILE_DIR,
+    filter=lambda p: get_effective_suffix(p) in (".txt", ".json", ".yml", ".jpg"),
+)
+def test_parametrize_dir_with_compressed_files(file_path: Path, data: Any) -> None:
+    """Test @parametrize_dir loader with compressed files in the directory"""
+    effective_suffix = get_effective_suffix(file_path)
+    if effective_suffix == ".txt":
+        assert data == (ABS_PATH_LOADER_DIR / PATH_TEXT_FILE).read_text()
+    elif effective_suffix == ".json":
+        assert data == json.loads((ABS_PATH_LOADER_DIR / PATH_JSON_FILE_OBJECT).read_text())
+    elif effective_suffix == ".yml":
+        assert data == (ABS_PATH_LOADER_DIR / PATH_YAML_FILE).read_text()
+    elif effective_suffix == ".jpg":
+        assert data == (ABS_PATH_LOADER_DIR / PATH_JPEG_FILE).read_bytes()
+    else:
+        raise NotImplementedError("Add test")

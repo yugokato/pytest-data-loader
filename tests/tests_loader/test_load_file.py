@@ -8,19 +8,23 @@ from pytest_data_loader import load
 from tests.paths import (
     ABS_PATH_LOADER_DIR,
     PATH_JPEG_FILE,
+    PATH_JPEG_FILE_GZ,
+    PATH_JSON_FILE_GZ,
     PATH_JSON_FILE_NESTED_OBJECT,
     PATH_JSON_FILE_OBJECT,
     PATH_TEXT_FILE,
+    PATH_TEXT_FILE_GZ,
 )
 
 pytestmark = pytest.mark.loaders
 
 # NOTE:
 # - lazy_loading option is separately tested in another test using pytester
-# - This file covers 3 types of data types the plugin handles differently:
+# - This file covers 4 types of data types the plugin handles differently:
 #   - text file (no file reader)
 #   - json file (with default file reader)
 #   - binary file
+#   - compressed files (gz, .bz2, .xz) for the above
 
 
 # Text file
@@ -132,3 +136,32 @@ def test_load_binary_file_with_id(request: FixtureRequest, data: bytes) -> None:
 def test_load_binary_file_with_marks(request: FixtureRequest, data: bytes) -> None:
     """Test @load loader with the marks option using binary file"""
     assert "foo" in {m.name for m in request.node.own_markers}
+
+
+# Compressed files
+@load("data", PATH_TEXT_FILE_GZ)
+def test_load_compressed_text_file(data: str) -> None:
+    """Test that @load with a .txt.gz file returns decompressed file data"""
+    assert isinstance(data, str)
+    assert data == (ABS_PATH_LOADER_DIR / PATH_TEXT_FILE).read_text()
+
+
+@load("data", PATH_JSON_FILE_GZ)
+def test_load_compressed_json_file(data: dict[str, Any]) -> None:
+    """Test that @load with a .json.gz file resolves to the default json.load reader transparently"""
+    assert isinstance(data, dict)
+    assert data == json.loads((ABS_PATH_LOADER_DIR / PATH_JSON_FILE_OBJECT).read_text())
+
+
+@load("data", PATH_JPEG_FILE_GZ)
+def test_load_compressed_autodetects_binary_mode(data: bytes) -> None:
+    """Test that @load with a .jpg.gz file auto-detects binary mode from decompressed content"""
+    assert isinstance(data, bytes)
+    assert data == (ABS_PATH_LOADER_DIR / PATH_JPEG_FILE).read_bytes()
+
+
+@load("data", PATH_TEXT_FILE_GZ, read_options={"mode": "rb"})
+def test_load_compressed_text_with_force_binary(data: bytes) -> None:
+    """Test that @load with a .txt.gz file in binary mode returns decompressed bytes"""
+    assert isinstance(data, bytes)
+    assert data == (ABS_PATH_LOADER_DIR / PATH_TEXT_FILE).read_bytes()

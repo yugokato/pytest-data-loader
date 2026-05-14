@@ -1,0 +1,2 @@
+# For tests in Windows - Force LF for test data text files so their bytes match compressed counterparts (e.g. text.txt vs text.txt.gz)
+**/data/**  text=auto eol=lf

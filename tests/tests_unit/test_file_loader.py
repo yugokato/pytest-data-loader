@@ -1,4 +1,6 @@
 import gc
+import gzip
+import json
 from collections.abc import Callable
 from functools import _CacheInfo
 from pathlib import Path
@@ -8,14 +10,19 @@ import pytest
 
 from pytest_data_loader import load, parametrize, parametrize_dir
 from pytest_data_loader.loaders.impl import FileLoader
+from pytest_data_loader.paths import SUPPORTED_COMPRESSION_EXTENSIONS, compression_aware_open, get_effective_suffix
 from pytest_data_loader.types import DataLoader, DataLoaderLoadAttrs, LazyLoadedData, LazyLoadedPartData, LoadedData
 from tests.paths import (
     ABS_PATH_LOADER_DIR,
     PATH_JSON_FILE_ARRAY,
+    PATH_JSON_FILE_GZ,
     PATH_JSONL_FILE,
     PATH_TEXT_FILE,
+    PATH_TEXT_FILE_GZ,
     PATH_XML_FILE,
     PATHS_BINARY_FILES,
+    PATHS_COMPRESSED_BINARY_FILES,
+    PATHS_COMPRESSED_TEXT_FILES,
     PATHS_TEXT_FILES,
 )
 
@@ -26,7 +33,9 @@ class TestFileLoader:
     """Tests for file loader with various file types and loading modes."""
 
     @pytest.mark.parametrize("is_abs_path", [False, True])
-    @pytest.mark.parametrize("path", [*PATHS_TEXT_FILES, *PATHS_BINARY_FILES])
+    @pytest.mark.parametrize(
+        "path", [*PATHS_TEXT_FILES, *PATHS_BINARY_FILES, *PATHS_COMPRESSED_TEXT_FILES, *PATHS_COMPRESSED_BINARY_FILES]
+    )
     @pytest.mark.parametrize("lazy_loading", [True, False])
     @pytest.mark.parametrize("loader", [load, parametrize, parametrize_dir])
     def test_file_loader(self, loader: DataLoader, lazy_loading: bool, path: Path, is_abs_path: bool) -> None:
@@ -39,7 +48,10 @@ class TestFileLoader:
             load_from = ABS_PATH_LOADER_DIR
         if loader == parametrize_dir:
             path = path.parent
-        is_binary = abs_file_path.relative_to(ABS_PATH_LOADER_DIR) in PATHS_BINARY_FILES
+        is_binary = abs_file_path.relative_to(ABS_PATH_LOADER_DIR) in (
+            *PATHS_BINARY_FILES,
+            *PATHS_COMPRESSED_BINARY_FILES,
+        )
         marks = (pytest.mark.foo, pytest.mark.bar)
         load_attrs = DataLoaderLoadAttrs(
             loader=loader,
@@ -54,7 +66,7 @@ class TestFileLoader:
         )
 
         file_loader = FileLoader(abs_file_path, load_attrs, load_from=load_from, strip_trailing_whitespace=True)
-        if path.suffix == ".json":
+        if get_effective_suffix(abs_file_path) == ".json":
             assert file_loader.file_reader is not None
         loaded_data = file_loader.load()
 
@@ -167,22 +179,31 @@ class TestFileLoaderCaching:
             parametrizer_func=parametrizer,
         )
 
-    @pytest.mark.parametrize("path", [*PATHS_TEXT_FILES, *PATHS_BINARY_FILES])
+    @pytest.mark.parametrize(
+        "path", [*PATHS_TEXT_FILES, *PATHS_BINARY_FILES, *PATHS_COMPRESSED_TEXT_FILES, *PATHS_COMPRESSED_BINARY_FILES]
+    )
     @pytest.mark.parametrize("loader", [load, parametrize, parametrize_dir])
     def test_lazy_loading_cache_state_transitions(self, loader: DataLoader, path: Path) -> None:
         """Test that lazy loading correctly transitions cache state before and after resolve and clear_cache."""
         abs_file_path = ABS_PATH_LOADER_DIR / path
-        parametrizer: Callable[..., Any] | None = (lambda x: [x]) if path in PATHS_BINARY_FILES else None
+        binary_files = (*PATHS_BINARY_FILES, *PATHS_COMPRESSED_BINARY_FILES)
+        parametrizer: Callable[..., Any] | None = (lambda x: [x]) if path in binary_files else None
         load_attrs = self._make_load_attrs(loader, path, lazy_loading=True, parametrizer=parametrizer)
         file_loader = FileLoader(
             abs_file_path, load_attrs, load_from=ABS_PATH_LOADER_DIR, strip_trailing_whitespace=True
         )
-        if path.suffix == ".json":
+        if get_effective_suffix(abs_file_path) == ".json":
             assert file_loader.file_reader is not None
 
         lazy_loaded_data = file_loader._load_lazily()
 
-        assert file_loader._cached_file_objects == {}
+        # Non-streamable @parametrize files call _load_now() at collection (to count items). When a
+        # file_reader is present, _load_now() uses _get_file_obj() which caches the open handle.
+        # All other paths leave _cached_file_objects empty after _load_lazily().
+        if loader == parametrize and not file_loader.is_streamable and file_loader.file_reader is not None:
+            assert len(file_loader._cached_file_objects) == 1
+        else:
+            assert file_loader._cached_file_objects == {}
         # For streamable @parametrize files, no lru_cache wrapper is created at load time.
         # For all other cases, the file_loader is registered eagerly to ensure cleanup even if tests are skipped.
         if loader == parametrize and file_loader.is_streamable:
@@ -206,9 +227,14 @@ class TestFileLoaderCaching:
                         # The result of _read_reader_and_split() should be cached per reader
                         assert file_loader.file_reader in file_loader._cached_reader_and_split
                 else:
-                    # The file object and resolver should not be cached, but the file loader function used in resolver
-                    # should be cached
-                    assert len(file_loader._cached_file_objects) == 0
+                    # The file loader function (lru_cache wrapper) should be populated, but the resolver itself
+                    # is not cached. For non-streamable files WITH a file_reader (e.g. compressed JSON/JSONL),
+                    # _load_now uses _get_file_obj() so _cached_file_objects is populated. For those without a
+                    # reader (e.g. XML, CSV), _read_file() is used and _cached_file_objects stays empty.
+                    if file_loader.file_reader is not None:
+                        assert len(file_loader._cached_file_objects) == 1
+                    else:
+                        assert len(file_loader._cached_file_objects) == 0
                     assert not hasattr(lazy_data.resolver, "cache_info")
                     assert len(file_loader._cached_functions) == 1
                     file_loader_func = next(iter(file_loader._cached_functions))
@@ -368,3 +394,127 @@ class TestFileLoaderCaching:
         assert cached_file_objects_ref == {}
         assert cached_file_loaders_ref == set()
         assert cached_reader_split_ref == {}
+
+
+class TestFileLoaderWithCompressedFiles:
+    """Tests for compression-aware file loading (.gz/.bz2/.xz)."""
+
+    def _make_load_attrs(self, loader: DataLoader, path: Path, *, lazy_loading: bool = False) -> DataLoaderLoadAttrs:
+        """Create minimal DataLoaderLoadAttrs for the given loader and path.
+
+        :param loader: The data loader to use
+        :param path: Relative path to the test data file
+        :param lazy_loading: Whether to use lazy loading
+        """
+        return DataLoaderLoadAttrs(
+            loader=loader,
+            search_from=Path(__file__),
+            fixture_names=("file_path", "data"),
+            path=path,
+            lazy_loading=lazy_loading,
+        )
+
+    def test_get_effective_suffix_returns_inner_suffix_for_compressed_paths(self) -> None:
+        """Test that get_effective_suffix strips the compression suffix to expose the inner format suffix"""
+        assert get_effective_suffix(Path("data.json.gz")) == ".json"
+        assert get_effective_suffix(Path("data.csv.bz2")) == ".csv"
+        assert get_effective_suffix(Path("data.txt.xz")) == ".txt"
+        assert get_effective_suffix(Path("data.JSON.GZ")) == ".JSON"
+
+    def test_get_effective_suffix_returns_suffix_for_non_compressed_paths(self) -> None:
+        """Test that get_effective_suffix is a no-op for non-compressed paths"""
+        assert get_effective_suffix(Path("data.json")) == ".json"
+        assert get_effective_suffix(Path("data.txt")) == ".txt"
+
+    def test_get_effective_suffix_returns_gz_when_no_inner_suffix(self) -> None:
+        """Test that get_effective_suffix returns the compression suffix itself when there is no inner suffix"""
+        assert get_effective_suffix(Path("data.gz")) == ".gz"
+        assert get_effective_suffix(Path("data.bz2")) == ".bz2"
+        assert get_effective_suffix(Path("data.xz")) == ".xz"
+
+    def test_compression_aware_open_routes_gz_through_gzip(self, tmp_path: Path) -> None:
+        """Test that compression_aware_open opens .gz files via gzip and returns decompressed text"""
+        payload = "hello compressed world\n"
+        gz_path = tmp_path / "test.txt.gz"
+        with gzip.open(gz_path, "wt") as f:
+            f.write(payload)
+
+        with compression_aware_open(gz_path) as f:
+            assert f.read() == payload
+
+    def test_compressed_json_resolves_to_default_json_reader(self) -> None:
+        """Test that FileLoader for a .json.gz file resolves to the default json.load reader"""
+        abs_path = ABS_PATH_LOADER_DIR / PATH_JSON_FILE_GZ
+        load_attrs = self._make_load_attrs(load, PATH_JSON_FILE_GZ)
+        file_loader = FileLoader(abs_path, load_attrs, load_from=ABS_PATH_LOADER_DIR)
+
+        assert file_loader.file_reader is json.load
+
+    def test_compressed_file_disables_streaming(self) -> None:
+        """Test that FileLoader marks compressed files as non-streamable to avoid O(n) seeks"""
+        abs_path = ABS_PATH_LOADER_DIR / PATH_TEXT_FILE_GZ
+        load_attrs = self._make_load_attrs(parametrize, PATH_TEXT_FILE_GZ)
+        file_loader = FileLoader(abs_path, load_attrs, load_from=ABS_PATH_LOADER_DIR)
+
+        assert not file_loader.is_streamable
+
+    def test_compressed_binary_autodetect_via_decompressed_chunk(self, tmp_path: Path) -> None:
+        """Test that binary auto-detection probes decompressed bytes, not the gzip magic bytes"""
+        binary_payload = bytes(range(256))
+        gz_path = tmp_path / "binary.dat.gz"
+        with gzip.open(gz_path, "wb") as f:
+            f.write(binary_payload)
+
+        load_attrs = DataLoaderLoadAttrs(
+            loader=load,
+            search_from=Path(__file__),
+            fixture_names=("data",),
+            path=gz_path,
+            lazy_loading=False,
+        )
+        file_loader = FileLoader(gz_path, load_attrs)
+        loaded = file_loader.load()
+
+        assert isinstance(loaded, LoadedData)
+        assert loaded.data == binary_payload
+        assert file_loader.read_mode == "rb"
+
+    def test_compressed_text_autodetect_via_decompressed_chunk(self, tmp_path: Path) -> None:
+        """Test that text auto-detection probes decompressed bytes and resolves to text mode"""
+        text_payload = "hello from compressed text\n"
+        gz_path = tmp_path / "text.dat.gz"
+        with gzip.open(gz_path, "wt", encoding="utf-8") as f:
+            f.write(text_payload)
+
+        load_attrs = DataLoaderLoadAttrs(
+            loader=load,
+            search_from=Path(__file__),
+            fixture_names=("data",),
+            path=gz_path,
+            lazy_loading=False,
+        )
+        file_loader = FileLoader(gz_path, load_attrs)
+        loaded = file_loader.load()
+
+        assert isinstance(loaded, LoadedData)
+        assert loaded.data == text_payload
+        assert file_loader.read_mode == "r"
+
+    @pytest.mark.parametrize("ext", [x.upper() for x in SUPPORTED_COMPRESSION_EXTENSIONS])
+    def test_compressed_uppercase_suffix_is_routed(self, tmp_path: Path, ext: str) -> None:
+        """Test that uppercase compression suffixes are routed the same as lowercase"""
+        payload = "case insensitive\n"
+        path = tmp_path / f"data.txt{ext}"
+        with compression_aware_open(path, mode="wt") as f:
+            f.write(payload)
+        load_attrs = DataLoaderLoadAttrs(
+            loader=load,
+            search_from=Path(__file__),
+            fixture_names=("data",),
+            path=path,
+            lazy_loading=False,
+        )
+        file_loader = FileLoader(path, load_attrs)
+        loaded = file_loader.load()
+        assert isinstance(loaded, LoadedData)
+        assert loaded.data == payload
