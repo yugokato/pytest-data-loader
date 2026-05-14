@@ -488,6 +488,9 @@ By default, the plugin reads and parses file content when loading as follows:
 - `.jsonl` — Each line is parsed as a JSON object
 - All other file types — Loads as raw text or binary content
 
+Compressed files with a `.gz`, `.bz2`, or `.xz` extension are decompressed transparently. The inner file type 
+determines which reader and read mode are used (e.g. `data.json.gz` uses `json.load`, `data.txt.bz2` loads as plain text).
+
 ### Customizing defaults
 
 You can customize this behavior by specifying a file reader that accepts a file-like object returned by `open()`. 

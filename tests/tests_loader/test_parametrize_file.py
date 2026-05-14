@@ -7,12 +7,16 @@ from pytest_data_loader import parametrize
 from tests.paths import (
     ABS_PATH_LOADER_DIR,
     PATH_JPEG_FILE,
+    PATH_JPEG_FILE_GZ,
     PATH_JSON_FILE_ARRAY,
+    PATH_JSON_FILE_GZ,
     PATH_JSON_FILE_NESTED_OBJECT,
     PATH_JSON_FILE_OBJECT,
     PATH_JSON_FILE_SCALAR,
     PATH_TEXT_FILE,
+    PATH_TEXT_FILE_GZ,
     PATH_YAML_FILE,
+    PATH_YAML_FILE_GZ,
 )
 
 from .helper import get_parametrized_test_idx
@@ -21,11 +25,12 @@ pytestmark = pytest.mark.loaders
 
 # NOTE:
 # - lazy_loading option is separately tested in another test using pytester
-# - This file covers 4 types of data types the plugin handles differently:
+# - This file covers 5 types of data types the plugin handles differently:
 #   - text file (non-structured file, streamable)
 #   - json file (structured file, streamable via the default file reader)
 #   - yaml file (structured file, non-streamable)
 #   - binary file
+#   - compressed files (gz, .bz2, .xz) for the above
 
 
 # Text file
@@ -267,6 +272,60 @@ def test_parametrize_binary_file_with_marks(request: FixtureRequest, data: bytes
     assert request.node.get_closest_marker("foo")
 
 
+# Compressed files
+@parametrize("data", PATH_TEXT_FILE_GZ)
+def test_parametrize_compressed_text_file(request: FixtureRequest, data: str) -> None:
+    """Test that @parametrize loader with a .txt.gz file yields line"""
+    assert isinstance(data, str)
+    idx = get_parametrized_test_idx(request, "data")
+    assert data == f"line{idx}"
+
+
+@parametrize("data", PATH_JSON_FILE_GZ)
+def test_parametrize_compressed_json_file(request: FixtureRequest, data: tuple[str, str]) -> None:
+    """Test that @parametrize loader with a .jsonl.bz2 file yields one dict per non-empty line"""
+    assert isinstance(data, tuple)
+    idx = get_parametrized_test_idx(request, "data")
+    assert data == (f"key{idx}", f"value{idx}")
+
+
+@parametrize(
+    "data",
+    PATH_YAML_FILE_GZ,
+    processor=lambda i, *_: str(i),
+    marks=lambda i, *_: pytest.mark.foo if i % 2 else None,
+    ids=lambda i, *_: str(i),
+)
+def test_parametrize_compressed_yaml_file(request: FixtureRequest, data: str) -> None:
+    """Test @parametrize loader with .yml.gz file"""
+    assert isinstance(data, str)
+    idx = get_parametrized_test_idx(request, "data")
+    assert data == str(idx)
+    mark = request.node.get_closest_marker("foo")
+    if idx % 2:
+        assert mark is not None
+    else:
+        assert mark is None
+
+
+@parametrize("data", PATH_JPEG_FILE_GZ, parametrizer=lambda d: _split_jpeg(d))  # noqa: PLW0108
+def test_parametrize_compressed_binary_file_with_parametrizer(request: FixtureRequest, data: bytes) -> None:
+    """Test @parametrize loader with the parametrizer using compressed binary file"""
+    assert isinstance(data, bytes)
+    idx = get_parametrized_test_idx(request, "data")
+    assert idx in range(3)
+    if idx == 0:
+        # Chunk 0 should start with SOI
+        assert data.startswith(b"\xff\xd8")
+    elif idx == 1:
+        # Second chunk must start with SOS
+        assert data.startswith(b"\xff\xda")
+    else:
+        # Last chunk must be EOI
+        assert data == b"\xff\xd9"
+
+
+# Multi-path
 @parametrize("data", [PATH_TEXT_FILE, PATH_JSON_FILE_ARRAY])
 def test_parametrize_multi_files(request: FixtureRequest, data: str) -> None:
     """Test @parametrize loader with a list of file paths concatenates all parametrized data"""
