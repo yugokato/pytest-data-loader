@@ -349,7 +349,7 @@ def run_pytest_with_context(
         test_code += _render_test_id_assertions_block(loader, fixtures, id_, ids_def, is_abs_path, lazy_loading)
 
     pytester.makepyfile(test_code)
-    cmd_options = ["--collect-only", "-q"] if collect_only else ["-vs"]
+    cmd_options = ["--collect-only", "-q"] if collect_only else ["-v"]
     return pytester.runpytest(*cmd_options)
 
 

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import codecs
 import os
 from abc import ABC, abstractmethod
 from collections.abc import Callable, Collection, Iterable, Mapping
@@ -75,6 +76,7 @@ class DataLoaderIniOption(StrEnum):
     DATA_LOADER_ROOT_DIR = auto()
     DATA_LOADER_STRIP_TRAILING_WHITESPACE = auto()
     DATA_LOADER_ON_MISSING = auto()
+    DATA_LOADER_DEFAULT_ENCODING = auto()
 
 
 class DataLoaderOnMissingAction(StrEnum):
@@ -101,6 +103,7 @@ class DataLoaderOption:
             DataLoaderIniOption.DATA_LOADER_STRIP_TRAILING_WHITESPACE
         )
         self.on_missing = self._parse_ini_option(DataLoaderIniOption.DATA_LOADER_ON_MISSING)
+        self.default_encoding = self._parse_ini_option(DataLoaderIniOption.DATA_LOADER_DEFAULT_ENCODING)
 
     def _parse_ini_option(self, option: DataLoaderIniOption) -> str | bool | Path:
         """Parse pytest INI option and perform additional validation if needed.
@@ -145,6 +148,16 @@ class DataLoaderOption:
                 if v not in allowed:
                     raise ValueError(f"Invalid value: '{v}'. Must be one of: {', '.join(repr(x) for x in allowed)}")
                 return DataLoaderOnMissingAction(v)
+            elif option == DataLoaderIniOption.DATA_LOADER_DEFAULT_ENCODING:
+                assert isinstance(v, str)
+                try:
+                    codec_info = codecs.lookup(v)
+                except LookupError:
+                    is_valid_encode = False
+                else:
+                    is_valid_encode = codec_info._is_text_encoding
+                if not is_valid_encode:
+                    raise ValueError(f"Invalid value: '{v}' is not a valid text encoding")
             return v
         except ValueError as e:
             raise pytest.UsageError(f"INI option {option}: {e}") from e
@@ -294,7 +307,7 @@ class DataLoaderLoadAttrs:
     parametrizer_func: Callable[..., Iterable[Any]] | None = None
     filter_func: Callable[..., bool] | None = None
     process_func: Callable[..., Any] | None = None
-    reader_func: Callable[..., FileReader] | None = None
+    reader_func: Callable[..., FileReader | None] | None = None
     read_options_func: Callable[..., ReadOptions] | None = None
     marker_func: Callable[..., PytestMarkType | None] | None = None
     id_func: Callable[..., Any] | None = None

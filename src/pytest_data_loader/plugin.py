@@ -10,7 +10,12 @@ from _pytest.fixtures import SubRequest
 from _pytest.mark import ParameterSet
 from pytest import Config, Mark, MarkDecorator, Metafunc, Parser
 
-from pytest_data_loader.constants import DEFAULT_LOADER_DIR_NAME, PYTEST_DATA_LOADER_ATTRS, STASH_KEY_DATA_LOADER_OPTION
+from pytest_data_loader.constants import (
+    DEFAULT_ENCODING,
+    DEFAULT_LOADER_DIR_NAME,
+    PYTEST_DATA_LOADER_ATTRS,
+    STASH_KEY_DATA_LOADER_OPTION,
+)
 from pytest_data_loader.exceptions import DataNotFound
 from pytest_data_loader.fixtures import _pytest_data_loader_cleanup, data_loader  # noqa: F401
 from pytest_data_loader.loaders.impl import create_loaders
@@ -61,6 +66,12 @@ def pytest_addoption(parser: Parser) -> None:
         help="[pytest-data-loader] The action to take when a data file or directory specified as path cannot be "
         "located. Supported values: 'raise' (default, raise an error), 'skip' (skip the test), 'xfail' "
         "(xfail the test without running it), 'warn' (emit a UserWarning and run the test with data=None).",
+    )
+    parser.addini(
+        DataLoaderIniOption.DATA_LOADER_DEFAULT_ENCODING,
+        type="string",
+        default=DEFAULT_ENCODING,
+        help="[pytest-data-loader] The default text encoding to use when opening data files in text mode.",
     )
 
 

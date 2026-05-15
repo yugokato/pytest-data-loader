@@ -17,8 +17,10 @@ from tests.paths import (
     PATH_JSON_FILE_ARRAY,
     PATH_JSON_FILE_GZ,
     PATH_JSONL_FILE,
+    PATH_LATIN1_TEXT_FILE,
     PATH_TEXT_FILE,
     PATH_TEXT_FILE_GZ,
+    PATH_UTF16_TEXT_FILE,
     PATH_XML_FILE,
     PATHS_BINARY_FILES,
     PATHS_COMPRESSED_BINARY_FILES,
@@ -133,6 +135,70 @@ class TestFileLoader:
         assert isinstance(loaded_data, LoadedData)
         assert loaded_data.data == data
         assert file_loader.read_mode == expected_mode
+
+    def test_file_loading_with_non_default_encoding(self) -> None:
+        """Test that FileLoader reads a Latin-1 encoded file correctly when default_encoding is set to latin-1"""
+        encoding = "latin-1"
+        abs_file_path = ABS_PATH_LOADER_DIR / PATH_LATIN1_TEXT_FILE
+        load_attrs = DataLoaderLoadAttrs(
+            loader=load,
+            search_from=Path(__file__),
+            fixture_names=("data",),
+            path=abs_file_path,
+            lazy_loading=False,
+        )
+        file_loader = FileLoader(abs_file_path, load_attrs, default_encoding=encoding)
+        loaded_data = file_loader.load()
+
+        assert isinstance(loaded_data, LoadedData)
+        assert loaded_data.data == abs_file_path.read_text(encoding=encoding)
+        assert file_loader.read_mode == "r"
+        assert file_loader.default_encoding == encoding
+
+    def test_file_loading_with_utf16_encoding(self) -> None:
+        """Test that FileLoader reads a UTF-16 encoded file correctly when default_encoding is set to utf-16"""
+        encoding = "utf-16"
+        abs_file_path = ABS_PATH_LOADER_DIR / PATH_UTF16_TEXT_FILE
+        load_attrs = DataLoaderLoadAttrs(
+            loader=load,
+            search_from=Path(__file__),
+            fixture_names=("data",),
+            path=abs_file_path,
+            lazy_loading=False,
+        )
+        file_loader = FileLoader(abs_file_path, load_attrs, default_encoding=encoding)
+        loaded_data = file_loader.load()
+
+        assert isinstance(loaded_data, LoadedData)
+        assert loaded_data.data == abs_file_path.read_text(encoding=encoding)
+        assert file_loader.read_mode == "r"
+        assert file_loader.default_encoding == encoding
+
+    def test_file_loading_with_non_utf8_file(self) -> None:
+        """Test that with the default utf-8 encoding, a non-utf-8 file is auto-detected as binary"""
+        abs_file_path = ABS_PATH_LOADER_DIR / PATH_LATIN1_TEXT_FILE
+        load_attrs = DataLoaderLoadAttrs(
+            loader=load, search_from=Path(__file__), fixture_names=("data",), path=abs_file_path, lazy_loading=False
+        )
+        file_loader = FileLoader(abs_file_path, load_attrs)
+        loaded_data = file_loader.load()
+
+        assert isinstance(loaded_data, LoadedData)
+        assert loaded_data.data == abs_file_path.read_bytes()
+        assert file_loader.read_mode == "rb"
+
+    def test_file_loading_with_utf16_file(self) -> None:
+        """Test that with the default utf-8 encoding, a UTF-16 file is auto-detected as binary"""
+        abs_file_path = ABS_PATH_LOADER_DIR / PATH_UTF16_TEXT_FILE
+        load_attrs = DataLoaderLoadAttrs(
+            loader=load, search_from=Path(__file__), fixture_names=("data",), path=abs_file_path, lazy_loading=False
+        )
+        file_loader = FileLoader(abs_file_path, load_attrs)
+        loaded_data = file_loader.load()
+
+        assert isinstance(loaded_data, LoadedData)
+        assert loaded_data.data == abs_file_path.read_bytes()
+        assert file_loader.read_mode == "rb"
 
 
 class TestFileLoaderCaching:

@@ -682,3 +682,17 @@ Plugin default: `true`
 The action to take when a data file or directory specified as `path` cannot be located. Supported values are 
 `raise`, `skip`, `xfail`, and `warn`.  
 Plugin default: `raise`
+
+### `data_loader_default_encoding`
+The default text encoding to use when opening data files in text mode, applied when the data loader's `read_options`
+does not explicitly specify an `encoding`.  
+Plugin default: `utf-8`
+
+> [!NOTE]
+> Binary auto-detection becomes less reliable with some encodings and may incorrectly classify binary files as text:
+> - **Single-byte permissive codecs** (e.g. `latin-1`, `cp1252`) can decode any byte sequence without errors.
+> - **Multi-byte codecs** (e.g. `utf-16`, `utf-32`) legitimately contain null bytes in valid text, which disables the
+>   null-byte fast-path used by the binary detector.
+>
+> If you use one of these encodings as the default, configure data loaders for known binary formats with
+> `read_options={"mode": "rb"}` to force binary reads.
