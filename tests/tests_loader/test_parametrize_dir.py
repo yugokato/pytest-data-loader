@@ -132,7 +132,7 @@ def test_parametrize_dir_multi_dirs(request: FixtureRequest, data: str) -> None:
     assert data == all_expected[idx]
 
 
-@parametrize_dir("data", [SOME_DIR, PATH_TEXT_FILE_DIR], recursive=True)
+@parametrize_dir("data", [SOME_DIR, PATH_TEXT_FILE_DIR], recursive=True, filter=lambda x: x.parent.name != "encoding")
 def test_parametrize_dir_multi_dirs_recursive(request: FixtureRequest, data: str) -> None:
     """Test @parametrize_dir loader with recursive option with a list of dir paths concatenates all parametrized data"""
     assert isinstance(data, str)

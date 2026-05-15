@@ -114,6 +114,62 @@ class TestIniOptions:
             result.assert_outcomes(passed=test_context.num_expected_tests)
 
     @pytest.mark.parametrize("collect_only", [True, False])
+    @pytest.mark.parametrize("default_encoding", ["utf-8", "latin-1", "ascii"])
+    def test_ini_option_data_loader_default_encoding(
+        self, test_context: TestContext, collect_only: bool, default_encoding: str
+    ) -> None:
+        """Test data_loader_default_encoding INI option with valid values"""
+        test_context.pytester.makeini(f"""
+        [pytest]
+        {DataLoaderIniOption.DATA_LOADER_DEFAULT_ENCODING} = {default_encoding}
+        """)
+        result = run_pytest_with_context(test_context, collect_only=collect_only)
+        assert result.ret == ExitCode.OK
+        if not collect_only:
+            result.assert_outcomes(passed=test_context.num_expected_tests)
+
+    def test_ini_option_data_loader_default_encoding_loads_non_utf8_file(self, pytester: pytest.Pytester) -> None:
+        """Test that data_loader_default_encoding enables loading a non-UTF-8 file as text."""
+        encoding = "latin-1"
+        latin1_text = "café\ncrème\nbrûlée\n"
+        data_dir = pytester.mkdir("data")
+        data_file = data_dir / "latin1.txt"
+        data_file.write_bytes(latin1_text.encode(encoding))
+
+        pytester.makeini(f"""
+        [pytest]
+        {DataLoaderIniOption.DATA_LOADER_DEFAULT_ENCODING} = {encoding}
+        """)
+        pytester.makepyfile(f"""
+        from pytest_data_loader import load
+
+        @load("data", {str(data_file.name)!r})
+        def test_latin1(data):
+            assert isinstance(data, str)
+            assert data == {latin1_text.rstrip()!r}
+        """)
+        result = pytester.runpytest("-v")
+        assert result.ret == ExitCode.OK
+        result.assert_outcomes(passed=1)
+
+    @pytest.mark.parametrize("collect_only", [True, False])
+    @pytest.mark.parametrize("invalid_value", ["", "not-a-codec", "utf8x", "base64", "hex"])
+    def test_ini_option_data_loader_default_encoding_invalid(
+        self, test_context: TestContext, collect_only: bool, invalid_value: str
+    ) -> None:
+        """Test data_loader_default_encoding INI option with invalid values"""
+        test_context.pytester.makeini(f"""
+        [pytest]
+        {DataLoaderIniOption.DATA_LOADER_DEFAULT_ENCODING} = {invalid_value}
+        """)
+        result = run_pytest_with_context(test_context, collect_only=collect_only)
+        assert result.ret == ExitCode.USAGE_ERROR
+        assert (
+            f"INI option {DataLoaderIniOption.DATA_LOADER_DEFAULT_ENCODING}: Invalid value: '{invalid_value}'"
+            in str(result.stderr)
+        )
+
+    @pytest.mark.parametrize("collect_only", [True, False])
     @pytest.mark.parametrize("invalid_dir_name", ["", ".", "..", ROOT_DIR, f"{ROOT_DIR}foo", f"foo{os.sep}bar"])
     def test_ini_option_data_loader_dir_name_invalid(
         self, test_context: TestContext, collect_only: bool, invalid_dir_name: str

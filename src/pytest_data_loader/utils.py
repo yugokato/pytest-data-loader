@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ast
+import codecs
 import inspect
 import keyword
 import sys
@@ -277,3 +278,12 @@ def _resolve_data_loader_name(call: ast.Call, direct_names: dict[str, str], modu
         if func.value.id in module_aliases and func.attr in get_data_loader_names():
             return func.attr
     return None
+
+
+def can_decode(chunk: bytes, encoding: str) -> bool:
+    """Return True if chunk can be decoded with encoding, tolerating trailing partial multibyte sequences."""
+    try:
+        codecs.getincrementaldecoder(encoding)().decode(chunk, final=False)
+        return True
+    except UnicodeDecodeError:
+        return False
