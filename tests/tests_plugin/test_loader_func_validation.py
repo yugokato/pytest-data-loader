@@ -85,15 +85,12 @@ class TestLoaderFuncValidation:
         else:
             assert f"{name}: Must be a dict, but got " in output
 
-    @pytest.mark.parametrize("loader", [load, parametrize])
+    @pytest.mark.parametrize("loader", [load, parametrize, parametrize_dir])
     @pytest.mark.parametrize("invalid_value", ["not-a-dict", [1, 2], 123], ids=["str", "list", "int"])
     def test_read_options_with_non_dict_type(
         self, test_context: TestContext, loader: DataLoader, invalid_value: str
     ) -> None:
-        """Test that passing a non-dict value to the read_options dict argument raises a clear TypeError.
-
-        NOTE: parametrize_dir takes read_options as a callable (per-path function), not a dict, so it is excluded.
-        """
+        """Test that passing a non-dict, non-callable value to read_options raises a clear TypeError."""
         pytester = test_context.pytester
         pytester.makepyfile(f"""
         import pytest_data_loader
@@ -105,7 +102,11 @@ class TestLoaderFuncValidation:
         result = pytester.runpytest()
         assert result.ret == ExitCode.INTERRUPTED
         result.assert_outcomes(errors=1)
-        assert "read_options: Must be a dict, but got" in str(result.stdout)
+        output = str(result.stdout)
+        if loader is parametrize_dir:
+            assert "read_options: Must be a callable or a dict, but got" in output
+        else:
+            assert "read_options: Must be a dict, but got" in output
 
     @pytest.mark.parametrize("loader", [parametrize_dir])
     def test_read_options_func_with_unsupported_option(self, test_context: TestContext) -> None:

@@ -40,7 +40,7 @@ def test_parametrize_pdf_file_with_reader(request: FixtureRequest, data: str) ->
     assert data == f"Page{idx + 1}"
 
 
-@parametrize_dir("data", PATH_PDF_FILE_DIR, read_options=lambda f: {"mode": "rb"}, reader=lambda f: PdfReader)
+@parametrize_dir("data", PATH_PDF_FILE_DIR, read_options={"mode": "rb"}, reader=lambda f: PdfReader)
 def test_parametrize_dir_with_pdf_reader(data: PdfReader) -> None:
     """Test @parametrize_dr loader with PDF file reader"""
     assert isinstance(data, PdfReader)

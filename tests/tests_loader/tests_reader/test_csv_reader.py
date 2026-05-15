@@ -84,7 +84,7 @@ def test_parametrize_csv_file_with_dict_reader(request: FixtureRequest, file_pat
     ("file_path", "data"),
     PATH_CSV_FILE_DIR,
     reader=lambda p: lambda f: csv.reader(f, delimiter=DELIMITER[p.stem]),
-    read_options=lambda f: read_options,
+    read_options=read_options,
 )
 def test_parametrize_dir_with_csv_reader(file_path: Path, data: Iterator[list[str]]) -> None:
     """Test @parametrize_dir loader with CSV file reader"""
