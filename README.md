@@ -633,7 +633,7 @@ its return value becomes the data passed to `onload()`
 
 > [!NOTE]
 > - `onload`, `parametrizer`, and `filter` must take one `(data)` or two `(file_path, data)` arguments
-> - `processor`, `marks`, and `ids` (in callable form) additionally accept a three-argument form `(idx, file_path, data)`, where `idx` is the zero-based post-filter position of the item
+> - `processor` and callable `marks` and `ids` additionally accept a three-argument form `(idx, file_path, data)`, where `idx` is the zero-based post-filter position of the item
 > - When `reader` is provided, its return value becomes the data passed to these callables
 
 
@@ -642,8 +642,9 @@ its return value becomes the data passed to `onload()`
 - `recursive`: Recursively load files from all subdirectories of the given directory. Defaults to `False`. 
 This option is ignored for glob patterns. Use `**` instead for recursive matching
 - `reader`: A function that determines the file reader for each file path
-- `read_options`: A function that returns the file read options (as a dict) the plugin passes to `open()` for
-                  matching file paths. Supports only the `mode`, `encoding`, `errors`, and `newline` keys
+- `read_options`: File read options the plugin passes to `open()` when reading files. Accepts a dict applied
+                  uniformly to all files, or a function that returns the options for matching file paths.
+                  Supports only the `mode`, `encoding`, `errors`, and `newline` keys
 - `filter`: A function to filter file paths. Only the contents of matching file paths are included as the test 
 parameters
 - `processor`: A function to adjust the shape of each loaded file's data before passing it to the test function
@@ -654,7 +655,7 @@ parameters
 
 > [!NOTE]
 > - `filter` must take only one argument `(file_path)`
-> - `reader`, `read_options`, `marks`, and `ids` (in callable form) additionally accept a two-argument form `(idx, file_path)`, where `idx` is the zero-based post-filter position of the file
+> - `reader` and callable `read_options`, `marks`, and `ids` additionally accept a two-argument form `(idx, file_path)`, where `idx` is the zero-based post-filter position of the file
 > - `processor` may take one `(data)`, two `(file_path, data)`, or three `(idx, file_path, data)` arguments, where `idx` is the zero-based post-filter position of the file
 
 

@@ -12,7 +12,14 @@ from pytest import Mark, MarkDecorator
 
 from pytest_data_loader.constants import ROOT_DIR
 from pytest_data_loader.paths import check_circular_symlink, expand_env_vars, has_env_vars
-from pytest_data_loader.types import DataLoader, DataLoaderFunctionType, FileReadOptions, HashableDict, PytestMarkType
+from pytest_data_loader.types import (
+    DataLoader,
+    DataLoaderFunctionType,
+    DataLoaderType,
+    FileReadOptions,
+    HashableDict,
+    PytestMarkType,
+)
 from pytest_data_loader.utils import get_max_allowed_loader_func_args, is_valid_fixture_name
 
 
@@ -30,7 +37,6 @@ def validate_loader_options(
     filter_func: Any,
     process_func: Any,
     reader_func: Any,
-    read_options_func: Any,
     marks: Any,
     ids: Any,
 ) -> dict[str, Any]:
@@ -63,6 +69,13 @@ def validate_loader_options(
         ids_seq = tuple(ids) or None
 
     validate_reader(reader)
+
+    read_options_func = None
+    if read_options is not None and loader.type == DataLoaderType.PARAMETRIZE_DIR:
+        if not callable(read_options) and not isinstance(read_options, dict):
+            raise TypeError(f"read_options: Must be a callable or a dict, but got {_get_type_name(read_options)}")
+        if callable(read_options):
+            read_options_func, read_options = read_options, None
     validate_read_options(read_options)
 
     for loader_func, func_type in [

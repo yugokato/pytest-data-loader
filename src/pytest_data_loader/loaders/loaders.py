@@ -161,7 +161,7 @@ def parametrize(
 
     NOTE:
         - onload, parametrizer, and filter must take either one (data) or two (file path, data) arguments.
-        - processor, marks, and ids (in callable form) additionally accept a three-argument form
+        - processor and callable marks and ids additionally accept a three-argument form
           (idx, file path, data), where idx is the zero-based post-filter position of the item,
           counted continuously across all files matched by this data loader.
         - When reader is provided, its return value becomes the data passed to these callables.
@@ -204,7 +204,7 @@ def parametrize_dir(
     reader: ReaderFunc | None = None,
     filter: PathFilterFunc | None = None,
     processor: ProcessorFunc | None = None,
-    read_options: ReadOptionsFunc | None = None,
+    read_options: ReadOptions | ReadOptionsFunc | None = None,
     marks: PytestMarkType | PathMarkerFunc | None = None,
     ids: Iterable[str] | PathIdFunc | None = None,
 ) -> Callable[[Func], Func]:
@@ -228,8 +228,9 @@ def parametrize_dir(
                       NOTE: This option is ignored for directories matched by a glob pattern. Use ** for recursive
                             matching
     :param reader: A function to specify file readers to matching file paths.
-    :param read_options: A function that returns the file read options (as a dict) the plugin passes to `open()` for
-                         matching file paths. Supports only the mode, encoding, errors, and newline keys.
+    :param read_options: File read options the plugin passes to `open()` when reading files. Accepts a dict applied
+                         uniformly to all files, or a function that returns the options for matching file paths.
+                         Supports only the mode, encoding, errors, and newline keys.
     :param filter: A function to filter file paths. Only the contents of matching file paths are included as the test
                    parameters.
     :param processor: A function to adjust the shape of each loaded file's data before passing it to the test function.
@@ -240,7 +241,7 @@ def parametrize_dir(
 
     NOTE:
         - filter must take only one argument (file path).
-        - reader, read_options, marks, and ids (in callable form) additionally accept a two-argument form
+        - reader and callable read_options, marks, and ids additionally accept a two-argument form
           (idx, file path), where idx is the zero-based post-filter position of the file, counted
           continuously across all directories matched by this data loader.
         - processor must take one (data), two (file path, data), or three (idx, file path, data) arguments,
@@ -268,7 +269,7 @@ def parametrize_dir(
         marks=marks,
         ids=ids,
         reader_func=reader,
-        read_options_func=read_options,
+        read_options=read_options,
     )
 
 
@@ -281,7 +282,7 @@ def _setup_data_loader(
     lazy_loading: bool = True,
     recursive: bool = False,
     reader: FileReader | None = None,
-    read_options: ReadOptions | None = None,
+    read_options: ReadOptions | ReadOptionsFunc | None = None,
     onload: Callable[..., Any] | None = None,
     parametrizer: Callable[..., Iterable[Any]] | None = None,
     filter: Callable[..., bool] | None = None,
@@ -289,7 +290,6 @@ def _setup_data_loader(
     marks: PytestMarkType | Callable[..., PytestMarkType | None] | None = None,
     ids: Iterable[Any] | Callable[..., Any] | None = None,
     reader_func: Callable[..., FileReader] | None = None,
-    read_options_func: Callable[..., ReadOptions] | None = None,
 ) -> Callable[[Func], Func]:
     """Set up a test function and inject loader attributes that are used by pytest_generate_tests hook"""
     validated_options = validate_loader_options(
@@ -305,7 +305,6 @@ def _setup_data_loader(
         filter_func=filter,
         process_func=processor,
         reader_func=reader_func,
-        read_options_func=read_options_func,
         marks=marks,
         ids=ids,
     )

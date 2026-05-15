@@ -45,9 +45,16 @@ def test_parametrize_dir_with_no_options_binary(file_path: Path, data: LoadedDat
     assert data == file_path.read_bytes()
 
 
-@parametrize_dir(("file_path", "data"), SOME_DIR, read_options=lambda x: {"mode": "rb"})
+@parametrize_dir(("file_path", "data"), SOME_DIR, read_options={"mode": "rb"})
 def test_parametrize_dir_in_binary_mode(file_path: Path, data: LoadedDataType) -> None:
-    """Test @parametrize_dir loader in binary mode"""
+    """Test @parametrize_dir loader in binary mode using a dict read_options"""
+    assert isinstance(data, bytes)
+    assert data == file_path.read_bytes()
+
+
+@parametrize_dir(("file_path", "data"), SOME_DIR, read_options=lambda x: {"mode": "rb"})
+def test_parametrize_dir_in_binary_mode2(file_path: Path, data: LoadedDataType) -> None:
+    """Test @parametrize_dir loader in binary mode using a callable read_options"""
     assert isinstance(data, bytes)
     assert data == file_path.read_bytes()
 

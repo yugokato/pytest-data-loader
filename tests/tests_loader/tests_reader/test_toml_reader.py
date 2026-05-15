@@ -25,7 +25,7 @@ def test_parametrize_toml_file_with_reader(data: tuple[str, Any]) -> None:
     assert isinstance(data, tuple)
 
 
-@parametrize_dir("data", PATH_TOML_FILE_DIR, reader=lambda f: toml.load, read_options=lambda f: {"mode": "rb"})
+@parametrize_dir("data", PATH_TOML_FILE_DIR, reader=lambda f: toml.load, read_options={"mode": "rb"})
 def test_parametrize_dir_with_toml_reader(data: dict[str, Any]) -> None:
     """Test @parametrize_dir loader with TOML file reader"""
     assert isinstance(data, dict)
