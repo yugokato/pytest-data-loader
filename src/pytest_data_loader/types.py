@@ -14,7 +14,6 @@ from pytest import Config, Mark, MarkDecorator
 
 from pytest_data_loader.compat import StrEnum
 from pytest_data_loader.exceptions import DataNotFound
-from pytest_data_loader.paths import expand_env_vars, has_env_vars
 
 T = TypeVar("T")
 P = ParamSpec("P")
@@ -117,6 +116,8 @@ class DataLoaderOption:
                 if v in ("", ".", "..") or os.sep in v:
                     raise ValueError(rf"Invalid value: '{v}'")
             elif option == DataLoaderIniOption.DATA_LOADER_ROOT_DIR:
+                from pytest_data_loader.paths import expand_env_vars, has_env_vars
+
                 assert isinstance(v, str)
                 orig_value = v
                 pytest_rootdir = self._config.rootpath

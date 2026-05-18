@@ -11,7 +11,14 @@ import pytest
 from pytest_data_loader import load, parametrize, parametrize_dir
 from pytest_data_loader.loaders.impl import FileLoader
 from pytest_data_loader.paths import SUPPORTED_COMPRESSION_EXTENSIONS, compression_aware_open, get_effective_suffix
-from pytest_data_loader.types import DataLoader, DataLoaderLoadAttrs, LazyLoadedData, LazyLoadedPartData, LoadedData
+from pytest_data_loader.types import (
+    DataLoader,
+    DataLoaderLoadAttrs,
+    HashableDict,
+    LazyLoadedData,
+    LazyLoadedPartData,
+    LoadedData,
+)
 from tests.paths import (
     ABS_PATH_LOADER_DIR,
     PATH_JSON_FILE_ARRAY,
@@ -199,6 +206,124 @@ class TestFileLoader:
         assert isinstance(loaded_data, LoadedData)
         assert loaded_data.data == abs_file_path.read_bytes()
         assert file_loader.read_mode == "rb"
+
+    @pytest.mark.parametrize("is_default_encoding", [False, True])
+    @pytest.mark.parametrize("encoding", ["utf-8", "latin-1", "ascii"])
+    def test_single_byte_encoding_is_streamable(self, encoding: str, is_default_encoding: bool) -> None:
+        """Test that @parametrize over a plain text file is streamable with single-byte encodings"""
+        abs_file_path = ABS_PATH_LOADER_DIR / PATH_TEXT_FILE
+        if is_default_encoding:
+            default_encoding = encoding
+            read_options = {}
+        else:
+            default_encoding = None
+            read_options = {"encoding": encoding}
+        load_attrs = DataLoaderLoadAttrs(
+            loader=parametrize,
+            search_from=Path(__file__),
+            fixture_names=("data",),
+            path=abs_file_path,
+            lazy_loading=True,
+            read_options=HashableDict(read_options),
+        )
+        file_loader = FileLoader(abs_file_path, load_attrs, default_encoding=default_encoding)
+        assert file_loader.is_streamable
+
+    @pytest.mark.parametrize("is_default_encoding", [False, True])
+    @pytest.mark.parametrize("encoding", ["utf-16", "utf-32"])
+    def test_multi_byte_encoding_is_not_streamable(self, encoding: str, is_default_encoding: bool) -> None:
+        """Test that a multibyte encoding file with @parametrize is not streamable to avoid BOM/seek incompatibility"""
+        abs_file_path = ABS_PATH_LOADER_DIR / PATH_UTF16_TEXT_FILE
+        if is_default_encoding:
+            default_encoding = encoding
+            read_options = {}
+        else:
+            default_encoding = None
+            read_options = {"encoding": encoding}
+        load_attrs = DataLoaderLoadAttrs(
+            loader=parametrize,
+            search_from=Path(__file__),
+            fixture_names=("data",),
+            path=abs_file_path,
+            lazy_loading=True,
+            read_options=HashableDict(read_options),
+        )
+        file_loader = FileLoader(abs_file_path, load_attrs, default_encoding=default_encoding)
+        assert not file_loader.is_streamable
+
+    @pytest.mark.parametrize("is_default_encoding", [False, True])
+    def test_utf16_parametrize_loads_lines_correctly(self, is_default_encoding: bool) -> None:
+        """Test that @parametrize over a UTF-16 file loads line-split content correctly"""
+        abs_file_path = ABS_PATH_LOADER_DIR / PATH_UTF16_TEXT_FILE
+        encoding = "utf-16"
+        if is_default_encoding:
+            default_encoding = encoding
+            read_options = {}
+        else:
+            default_encoding = None
+            read_options = {"encoding": encoding}
+        load_attrs = DataLoaderLoadAttrs(
+            loader=parametrize,
+            search_from=Path(__file__),
+            fixture_names=("data",),
+            path=abs_file_path,
+            lazy_loading=False,
+            read_options=HashableDict(read_options),
+        )
+
+        file_loader = FileLoader(abs_file_path, load_attrs, default_encoding=default_encoding)
+        result = file_loader.load()
+        assert isinstance(result, list)
+        expected = abs_file_path.read_text(encoding=encoding).rstrip().splitlines()
+        assert [r.data for r in result] == expected
+
+    def test_read_options_encoding_takes_precedence_over_default_encoding(self) -> None:
+        """Test that encoding in read_options takes precedence over default_encoding (the INI option)."""
+        abs_file_path = ABS_PATH_LOADER_DIR / PATH_LATIN1_TEXT_FILE
+        encoding = "latin-1"
+        default_encoding = "utf-16"
+        load_attrs = DataLoaderLoadAttrs(
+            loader=load,
+            search_from=Path(__file__),
+            fixture_names=("data",),
+            path=abs_file_path,
+            lazy_loading=False,
+            read_options=HashableDict({"encoding": encoding}),
+        )
+        # utf-16 as default_encoding is incompatible with the latin-1 file; if it were used instead
+        # of the read_options encoding the file would load incorrectly or raise an error
+        file_loader = FileLoader(abs_file_path, load_attrs, default_encoding=default_encoding)
+        loaded_data = file_loader.load()
+
+        assert isinstance(loaded_data, LoadedData)
+        assert loaded_data.data == abs_file_path.read_text(encoding=encoding)
+        assert file_loader.default_encoding == default_encoding
+        assert file_loader.read_mode == "r"
+
+    @pytest.mark.parametrize("is_default_encoding", [False, True])
+    def test_encoding_mismatch_raises_error_with_context(self, is_default_encoding: bool) -> None:
+        """Test that loading a file incompatible with the configured encoding raises a UnicodeDecodeError with
+        additional context
+        """
+        abs_file_path = ABS_PATH_LOADER_DIR / PATH_TEXT_FILE
+        encoding = "utf-16"
+        if is_default_encoding:
+            default_encoding = encoding
+            read_options = {}
+        else:
+            default_encoding = None
+            read_options = {"encoding": encoding}
+        load_attrs = DataLoaderLoadAttrs(
+            loader=load,
+            search_from=Path(__file__),
+            fixture_names=("data",),
+            path=abs_file_path,
+            lazy_loading=False,
+            read_options=HashableDict(read_options),
+        )
+        file_loader = FileLoader(abs_file_path, load_attrs, default_encoding=default_encoding)
+        with pytest.raises(UnicodeDecodeError, match=r".*While reading .* with options: *"):
+            file_loader.load()
 
 
 class TestFileLoaderCaching:
