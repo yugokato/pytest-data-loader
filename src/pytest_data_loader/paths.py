@@ -7,12 +7,14 @@ import gzip
 import lzma
 import os
 import re
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from functools import lru_cache
 from pathlib import Path
-from typing import IO, Any, Literal
+from typing import IO, Any, BinaryIO, Literal, TextIO, cast, overload
 
+from pytest_data_loader.compat import Self
 from pytest_data_loader.exceptions import DataNotFound
+from pytest_data_loader.utils import add_error_note
 
 _COMPRESSION_OPENERS: dict[str, Callable[..., IO[Any]]] = {
     ".gz": gzip.open,
@@ -226,19 +228,88 @@ def get_effective_suffix(path: Path) -> str:
     return path.suffix
 
 
-def compression_aware_open(path: Path, **open_kwargs: Any) -> IO[Any]:
-    """Open a file, routing through gzip.open()/bz2.open()/lzma.open() when the suffix matches.
+@overload
+def compression_aware_open(path: Path, *, mode: Literal["r", "rt", "w", "wt", "a", "at"], **kwargs: Any) -> TextIO: ...
 
-    For compression openers "r" means binary (unlike builtin open() where "r" means text). This function normalizes
-    the mode so that "r" and "rt" both produce a text-mode stream, matching the semantics of builtin open().
+
+@overload
+def compression_aware_open(path: Path, *, mode: Literal["rb", "wb", "ab"], **kwargs: Any) -> BinaryIO: ...
+
+
+@overload
+def compression_aware_open(path: Path, **kwargs: Any) -> TextIO: ...
+
+
+def compression_aware_open(path: Path, **kwargs: Any) -> IO[Any]:
+    """Open a file via `_compression_aware_open`, typed as a file handle.
 
     :param path: File path to open
-    :param open_kwargs: Keyword arguments forwarded to the opener (mode, encoding, errors, newline)
+    :param kwargs: Keyword arguments forwarded to the opener
     """
-    opener = _COMPRESSION_OPENERS.get(path.suffix.lower())
-    if opener is None:
-        return open(path, **open_kwargs)
-    mode = open_kwargs.get("mode") or "r"
-    # Compression openers treat "r" as binary. Map to "rt" so callers get text mode, matching builtin open.
-    open_kwargs["mode"] = "rt" if mode in ("r", "rt") else mode
-    return opener(path, **open_kwargs)
+    return cast(IO[Any], _CompressionAwareOpen(path, **kwargs))
+
+
+class _CompressionAwareOpen:
+    """Open a file, routing through gzip/bz2/lzma openers when the suffix matches.
+
+    Works as both a plain callable returning a file-like handle and as a context manager,
+    mirroring the semantics of the builtin :func:`open`.
+
+    For compression openers ``"r"`` means binary. This class normalizes the mode so that
+    ``"r"`` and ``"rt"`` both produce a text-mode stream, matching builtin ``open()``.
+
+    :param path: File path to open
+    :param kwargs: Keyword arguments forwarded to the opener
+    """
+
+    def __init__(self, path: Path, **kwargs: Any) -> None:
+        self._path = path
+        self._encoding: str | None = kwargs.get("encoding")
+        opener = _COMPRESSION_OPENERS.get(path.suffix.lower())
+        if opener is None:
+            opener = open
+        else:
+            # Normalize compressed "r" to text mode for consistency with builtin open()
+            mode = kwargs.get("mode") or "r"
+            if mode in ("r", "rt"):
+                kwargs["mode"] = "rt"
+        self._read_options = kwargs
+        self._file: IO[Any] = opener(path, **kwargs)
+
+    def _with_decode_error_context(self, f: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
+        try:
+            return f(*args, **kwargs)
+        except UnicodeDecodeError as e:
+            note = f"While reading {str(self._path)!r}"
+            if self._read_options:
+                options = ", ".join(f"{k}={v!r}" for k, v in self._read_options.items())
+                note += f" with options: {options}"
+            add_error_note(e, note)
+            raise
+
+    def read(self, *args: Any, **kwargs: Any) -> Any:
+        return self._with_decode_error_context(self._file.read, *args, **kwargs)
+
+    def readline(self, *args: Any, **kwargs: Any) -> Any:
+        return self._with_decode_error_context(self._file.readline, *args, **kwargs)
+
+    def readlines(self, *args: Any, **kwargs: Any) -> list[Any]:
+        return self._with_decode_error_context(self._file.readlines, *args, **kwargs)
+
+    def __next__(self) -> Any:
+        return self._with_decode_error_context(self._file.__next__)
+
+    def __iter__(self) -> Iterator[Any]:
+        return self
+
+    def __enter__(self) -> Self:
+        self._file.__enter__()
+        return self
+
+    def __exit__(self, *args: Any) -> Any:
+        return self._file.__exit__(*args)
+
+    def __getattr__(self, name: str) -> Any:
+        if name == "_file":
+            raise AttributeError(name)
+        return getattr(self._file, name)

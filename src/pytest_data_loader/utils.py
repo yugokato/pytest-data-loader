@@ -187,16 +187,22 @@ def get_data_loader_source(test_func: Callable[..., Any], position: int, data_lo
 def add_error_note(exc: Exception, note: str) -> None:
     """Add a contextual note to an exception.
 
-    On Python 3.11+, uses the built-in ``add_note()`` method.
-    On Python 3.10, appends the note to the exception's args when possible.
-
-    :param exc: The exception to annotate
-    :param note: The note to add
+    On Python 3.11+, uses ``Exception.add_note()``.
+    On older versions, stores notes in ``__notes__``.
     """
     if sys.version_info >= (3, 11):
         exc.add_note(note)
-    elif len(exc.args) == 1 and isinstance(exc.args[0], str):
-        exc.args = (f"{exc.args[0]}\n{note}",)
+    else:
+        # Best-effort compatibility for older Python versions
+        notes = getattr(exc, "__notes__", None)
+        if not isinstance(notes, list):
+            notes = []
+        notes.append(note)
+
+        try:
+            setattr(exc, "__notes__", notes)
+        except Exception:
+            pass
 
 
 @lru_cache

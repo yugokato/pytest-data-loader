@@ -144,7 +144,7 @@ class Loader(ABC):
         *,
         load_from: Path | None = None,
         strip_trailing_whitespace: bool = False,
-        default_encoding: str = DEFAULT_ENCODING,
+        default_encoding: str | None = None,
         gidx_counter: count[int] | None = None,
     ):
         assert path.is_absolute()
@@ -157,7 +157,7 @@ class Loader(ABC):
         self.load_attrs = load_attrs
         self.load_from = load_from
         self.strip_trailing_whitespace = strip_trailing_whitespace
-        self.default_encoding = default_encoding
+        self.default_encoding = default_encoding or DEFAULT_ENCODING
         self._gidx_counter = gidx_counter or count()
 
     @abstractmethod
@@ -198,7 +198,8 @@ class FileLoader(Loader):
         self.read_options = self._get_read_options()
         self.file_reader = self._get_file_reader()
         self._effective_read_mode: str | None = None
-        self._is_multibyte = len("A".encode(self.default_encoding)) > 1
+        self._effective_encoding = self.read_options.get("encoding") or self.default_encoding
+        self._is_multibyte = len("A".encode(self._effective_encoding)) > 1
         self._is_streamable = not is_compressed_path(self.path) and (
             self.file_reader is not None
             or all(
@@ -207,6 +208,7 @@ class FileLoader(Loader):
                     self.read_mode != "rb",
                     self.load_attrs.onload_func is None,
                     self.load_attrs.parametrizer_func is None,
+                    not self._is_multibyte,
                 ]
             )
         )
@@ -544,15 +546,14 @@ class FileLoader(Loader):
 
             if chunk:
                 # Null bytes are a fast-path (utf-8 and single-byte codecs never contain
-                # them in valid text), but multi-byte encodings like utf-16 legitimately
+                # them in valid text), but multibyte encodings like utf-16 legitimately
                 # interleave nulls, so skip the short-circuit for those.
-
                 if not self._is_multibyte and b"\x00" in chunk:
                     is_binary = True
                 elif not can_decode(chunk, DEFAULT_ENCODING):
                     # utf-8 probe failed; fall back to the configured encoding if different.
                     # Incremental decoding tolerates a partial multibyte char at the chunk boundary.
-                    if self.default_encoding == DEFAULT_ENCODING or not can_decode(chunk, self.default_encoding):
+                    if self._effective_encoding == DEFAULT_ENCODING or not can_decode(chunk, self._effective_encoding):
                         is_binary = True
 
             read_mode = "rb" if is_binary else "r"
@@ -575,7 +576,7 @@ class FileLoader(Loader):
             options["mode"] = mode
         effective_mode = options.get("mode") or "r"
         if "b" not in effective_mode and "encoding" not in options:
-            options["encoding"] = self.default_encoding
+            options["encoding"] = self._effective_encoding
         return options
 
     @requires_loader(DataLoaderType.PARAMETRIZE)
@@ -684,7 +685,7 @@ def _data_loader_factory(
     *,
     load_from: Path | None = None,
     strip_trailing_whitespace: bool,
-    default_encoding: str = DEFAULT_ENCODING,
+    default_encoding: str | None = None,
     ignore_recursive: bool = False,
     gidx_counter: count[int],
 ) -> FileLoader | DirectoryLoader:
