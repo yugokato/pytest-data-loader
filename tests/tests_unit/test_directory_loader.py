@@ -136,7 +136,6 @@ class TestDirectoryLoaderCaching:
         for child in child_loaders:
             assert child._loaded_data is None
             assert child._file_handles == []
-            assert child._reader_split_result is None
 
     def test_directory_loader_weakref_finalize(self) -> None:
         """Test that GC-ing a DirectoryLoader triggers the weakref finalizer, clearing child caches"""
@@ -161,4 +160,3 @@ class TestDirectoryLoaderCaching:
         for child in child_loaders:
             assert child._loaded_data is None
             assert child._file_handles == []
-            assert child._reader_split_result is None

@@ -3,7 +3,7 @@ import warnings
 from collections.abc import Collection, Iterable
 from itertools import count
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import pytest
 from _pytest.fixtures import SubRequest
@@ -13,11 +13,15 @@ from pytest import Config, Mark, MarkDecorator, Metafunc, Parser
 from pytest_data_loader.constants import (
     DEFAULT_ENCODING,
     DEFAULT_LOADER_DIR_NAME,
+    DEFAULT_MAX_CACHED_CONTENT_BYTES,
+    DEFAULT_MAX_OPEN_FILE_HANDLES,
     PYTEST_DATA_LOADER_ATTRS,
     STASH_KEY_DATA_LOADER_OPTION,
+    STASH_KEY_FILE_CACHE,
 )
 from pytest_data_loader.exceptions import DataNotFound
 from pytest_data_loader.fixtures import _pytest_data_loader_cleanup, data_loader  # noqa: F401
+from pytest_data_loader.loaders.cache import SessionFileCache
 from pytest_data_loader.loaders.impl import create_loaders
 from pytest_data_loader.types import (
     DataLoaderIniOption,
@@ -73,11 +77,38 @@ def pytest_addoption(parser: Parser) -> None:
         default=DEFAULT_ENCODING,
         help="[pytest-data-loader] The default text encoding to use when opening data files in text mode.",
     )
+    parser.addini(
+        DataLoaderIniOption.DATA_LOADER_MAX_CACHE_BYTES,
+        type="string",
+        default=str(DEFAULT_MAX_CACHED_CONTENT_BYTES),
+        help="[pytest-data-loader] Cumulative byte cap for the session-scoped raw file content cache. "
+        "Set to 0 to disable raw-content caching.",
+    )
+    parser.addini(
+        DataLoaderIniOption.DATA_LOADER_MAX_OPEN_FILES,
+        type="string",
+        default=str(DEFAULT_MAX_OPEN_FILE_HANDLES),
+        help="[pytest-data-loader] Maximum number of simultaneously pooled open file handles for the "
+        "session-scoped cache. Set to 0 to disable handle pooling (each loader uses a per-instance handle).",
+    )
 
 
 def pytest_configure(config: Config) -> None:
     """Parse INI options for the plugin and fail early with a nice USAGE_ERROR error if validation fails"""
-    config.stash[STASH_KEY_DATA_LOADER_OPTION] = DataLoaderOption(config)
+    option = DataLoaderOption(config)
+    config.stash[STASH_KEY_DATA_LOADER_OPTION] = option
+    config.stash[STASH_KEY_FILE_CACHE] = SessionFileCache(
+        max_content_bytes=cast(int, option.max_cache_bytes),
+        max_open_handles=cast(int, option.max_open_files),
+    )
+
+
+def pytest_unconfigure(config: Config) -> None:
+    """Release the session file cache (pooled handles + raw-content LRU)"""
+    try:
+        config.stash[STASH_KEY_FILE_CACHE].clear()
+    except KeyError:
+        pass
 
 
 def pytest_generate_tests(metafunc: Metafunc) -> None:
@@ -113,6 +144,7 @@ def _apply_load_attrs(
     """
     paths = load_attrs.path if isinstance(load_attrs.path, tuple) else (load_attrs.path,)
     loaded_data: list[LoadedData | LazyLoadedData | LazyLoadedPartData | MissingData] = []
+    file_cache = metafunc.config.stash[STASH_KEY_FILE_CACHE]
 
     # One shared counter per data loader invocation. Stacked loaders each get their own independent counter
     gidx_counter = count()
@@ -120,7 +152,9 @@ def _apply_load_attrs(
     has_missing_data = False
     for path in paths:
         try:
-            for loader in create_loaders(path, load_attrs, data_loader_option, gidx_counter=gidx_counter):
+            for loader in create_loaders(
+                path, load_attrs, data_loader_option, file_cache=file_cache, gidx_counter=gidx_counter
+            ):
                 loader.register_cleanup(metafunc.module)
 
                 loaded = loader.load()

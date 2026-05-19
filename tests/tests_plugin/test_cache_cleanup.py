@@ -20,38 +20,38 @@ class TestCacheCleanup:
 
         # Patch FileLoader.clear_cache to count invocations across the entire session
         pytester.makeconftest("""
-import json
-import pytest
-from pytest_data_loader.loaders.impl import FileLoader
+        import json
+        import pytest
+        from pytest_data_loader.loaders.impl import FileLoader
 
-_clear_cache_call_count = 0
-_original_clear_cache = FileLoader.clear_cache
-
-
-def _counting_clear_cache(self) -> None:
-    global _clear_cache_call_count
-    _clear_cache_call_count += 1
-    _original_clear_cache(self)
+        _clear_cache_call_count = 0
+        _original_clear_cache = FileLoader.clear_cache
 
 
-FileLoader.clear_cache = _counting_clear_cache
+        def _counting_clear_cache(self) -> None:
+            global _clear_cache_call_count
+            _clear_cache_call_count += 1
+            _original_clear_cache(self)
 
 
-def pytest_terminal_summary() -> None:
-    FileLoader.clear_cache = _original_clear_cache
-    print("CLEAR_CACHE_REPORT:" + json.dumps({"calls": _clear_cache_call_count}))
-""")
+        FileLoader.clear_cache = _counting_clear_cache
+
+
+        def pytest_terminal_summary() -> None:
+            FileLoader.clear_cache = _original_clear_cache
+            print("CLEAR_CACHE_REPORT:" + json.dumps({"calls": _clear_cache_call_count}))
+        """)
 
         # Test module: one test using @load with lazy_loading=True on an absolute JSON path
         pytester.makepyfile(f"""
-from pathlib import Path
-from pytest_data_loader import load
+        from pathlib import Path
+        from pytest_data_loader import load
 
-@load("data", Path({str(json_file)!r}), lazy_loading=True)
-def test_load_json(data):
-    '''Test that data is loaded correctly'''
-    assert data == {{"key": "value"}}
-""")
+        @load("data", Path({str(json_file)!r}), lazy_loading=True)
+        def test_load_json(data):
+            '''Test that data is loaded correctly'''
+            assert data == {{"key": "value"}}
+        """)
 
         result = pytester.runpytest("-vs")
         assert result.ret == ExitCode.OK

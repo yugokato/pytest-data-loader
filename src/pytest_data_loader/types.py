@@ -48,7 +48,7 @@ class HashableDict(dict[str, Any]):
     """A hashable dictionary"""
 
     def __hash__(self) -> int:  # type: ignore[override]
-        return hash(tuple((k, HashableDict.freeze(v)) for k, v in self.items()))
+        return hash(frozenset((k, HashableDict.freeze(v)) for k, v in self.items()))
 
     @staticmethod
     def freeze(obj: Any) -> Any:
@@ -57,7 +57,7 @@ class HashableDict(dict[str, Any]):
         :param obj: Any object
         """
         if isinstance(obj, HashableDict | Mapping):
-            return tuple((k, HashableDict.freeze(v)) for k, v in obj.items())
+            return frozenset((k, HashableDict.freeze(v)) for k, v in obj.items())
         elif isinstance(obj, tuple | Collection) and not isinstance(obj, str | bytes):
             return tuple(HashableDict.freeze(x) for x in obj)
         else:
@@ -76,6 +76,8 @@ class DataLoaderIniOption(StrEnum):
     DATA_LOADER_STRIP_TRAILING_WHITESPACE = auto()
     DATA_LOADER_ON_MISSING = auto()
     DATA_LOADER_DEFAULT_ENCODING = auto()
+    DATA_LOADER_MAX_CACHE_BYTES = auto()
+    DATA_LOADER_MAX_OPEN_FILES = auto()
 
 
 class DataLoaderOnMissingAction(StrEnum):
@@ -103,8 +105,10 @@ class DataLoaderOption:
         )
         self.on_missing = self._parse_ini_option(DataLoaderIniOption.DATA_LOADER_ON_MISSING)
         self.default_encoding = self._parse_ini_option(DataLoaderIniOption.DATA_LOADER_DEFAULT_ENCODING)
+        self.max_cache_bytes = self._parse_ini_option(DataLoaderIniOption.DATA_LOADER_MAX_CACHE_BYTES)
+        self.max_open_files = self._parse_ini_option(DataLoaderIniOption.DATA_LOADER_MAX_OPEN_FILES)
 
-    def _parse_ini_option(self, option: DataLoaderIniOption) -> str | bool | Path:
+    def _parse_ini_option(self, option: DataLoaderIniOption) -> str | int | bool | Path:
         """Parse pytest INI option and perform additional validation if needed.
 
         :param option: INI option
@@ -159,9 +163,30 @@ class DataLoaderOption:
                     is_valid_encode = codec_info._is_text_encoding
                 if not is_valid_encode:
                     raise ValueError(f"Invalid value: '{v}' is not a valid text encoding")
+            elif option == DataLoaderIniOption.DATA_LOADER_MAX_CACHE_BYTES:
+                assert isinstance(v, str)
+                return self._parse_int(v, min=0)
+            elif option == DataLoaderIniOption.DATA_LOADER_MAX_OPEN_FILES:
+                assert isinstance(v, str)
+                return self._parse_int(v, min=0)
             return v
         except ValueError as e:
             raise pytest.UsageError(f"INI option {option}: {e}") from e
+
+    @staticmethod
+    def _parse_int(v: str, *, min: int) -> int:
+        """Parse a string as an integer and validate it is >= min.
+
+        :param v: The string value to parse.
+        :param min: The minimum acceptable integer value (inclusive).
+        """
+        try:
+            parsed = int(v)
+            if parsed < min:
+                raise ValueError
+        except ValueError:
+            raise ValueError(f"Invalid value: '{v}'. Must be an integer >= {min}")
+        return parsed
 
 
 @runtime_checkable

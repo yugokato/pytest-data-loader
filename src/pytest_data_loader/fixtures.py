@@ -10,7 +10,11 @@ import pytest
 from _pytest.fixtures import FixtureRequest
 from pytest import Config
 
-from pytest_data_loader.constants import PYTEST_DATA_LOADER_MODULE_CACHE, STASH_KEY_DATA_LOADER_OPTION
+from pytest_data_loader.constants import (
+    PYTEST_DATA_LOADER_MODULE_CACHE,
+    STASH_KEY_DATA_LOADER_OPTION,
+    STASH_KEY_FILE_CACHE,
+)
 from pytest_data_loader.exceptions import DataNotFound
 from pytest_data_loader.loaders.impl import create_loaders
 from pytest_data_loader.loaders.loaders import load
@@ -29,6 +33,7 @@ from pytest_data_loader.types import (
 from pytest_data_loader.validators import validate_loader_func, validate_path, validate_read_options, validate_reader
 
 if TYPE_CHECKING:
+    from pytest_data_loader.loaders.cache import SessionFileCache
     from pytest_data_loader.loaders.impl import Loader
 
 
@@ -44,7 +49,8 @@ def data_loader(request: FixtureRequest, pytestconfig: Config) -> DataLoaderFixt
     This is an alternative to the @load data loader for cases where the file path is only known at test time.
     """
     data_loader_option = pytestconfig.stash[STASH_KEY_DATA_LOADER_OPTION]
-    return DataLoaderFixture(request, data_loader_option)
+    file_cache = pytestconfig.stash[STASH_KEY_FILE_CACHE]
+    return DataLoaderFixture(request, data_loader_option, file_cache=file_cache)
 
 
 class DataLoaderFixture:
@@ -55,14 +61,22 @@ class DataLoaderFixture:
     Repeated calls with the same arguments within a single test return the cached result without re-reading the file.
     """
 
-    def __init__(self, request: FixtureRequest, data_loader_option: DataLoaderOption) -> None:
+    def __init__(
+        self,
+        request: FixtureRequest,
+        data_loader_option: DataLoaderOption,
+        *,
+        file_cache: SessionFileCache | None = None,
+    ) -> None:
         """Initialize the data loader fixture.
 
         :param request: The active fixture request, used to locate the test file and module cache.
         :param data_loader_option: Parsed data loader INI options.
+        :param file_cache: Session-scoped file cache. None disables session caching.
         """
         self._request = request
         self._data_loader_option = data_loader_option
+        self._file_cache = file_cache
         self._search_from = request.path
         self._cache: dict[tuple[Any, ...], Any] = {}
 
@@ -107,7 +121,9 @@ class DataLoaderFixture:
                 onload_func=onload,
             )
 
-            (file_loader,) = create_loaders(validated_path, load_attrs, self._data_loader_option)
+            (file_loader,) = create_loaders(
+                validated_path, load_attrs, self._data_loader_option, file_cache=self._file_cache
+            )
             file_loader.register_cleanup(self._request.module)
             loaded = file_loader.load()
             assert isinstance(loaded, LoadedData)
