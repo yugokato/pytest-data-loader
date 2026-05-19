@@ -6,15 +6,16 @@ import os
 import weakref
 from abc import ABC, abstractmethod
 from collections.abc import Callable, Generator, Iterable, Iterator, Mapping
-from functools import cached_property, lru_cache, partial, wraps
+from functools import cached_property, partial, wraps
 from io import StringIO
 from itertools import count
 from pathlib import Path
 from types import ModuleType
-from typing import IO, Any, ClassVar, Concatenate, ParamSpec, TypeVar
+from typing import IO, Any, ClassVar, Concatenate, Literal, ParamSpec, TypeVar
 
 from pytest_data_loader.constants import DEFAULT_ENCODING, PYTEST_DATA_LOADER_MODULE_CACHE
 from pytest_data_loader.exceptions import DataNotFound
+from pytest_data_loader.loaders.cache import CacheKey, ReadModeKey, SessionFileCache
 from pytest_data_loader.loaders.reader import FileReader
 from pytest_data_loader.paths import (
     check_and_track_dir,
@@ -62,6 +63,7 @@ def create_loaders(
     load_attrs: DataLoaderLoadAttrs,
     data_loader_option: DataLoaderOption,
     *,
+    file_cache: SessionFileCache | None = None,
     gidx_counter: count[int] | None = None,
 ) -> list[FileLoader | DirectoryLoader]:
     """Resolve a single path entry (which may be a glob pattern or a concrete path) to file or directory loaders.
@@ -70,6 +72,7 @@ def create_loaders(
     :param path: A single path entry from the data loader's path argument. This can be a glob pattern
     :param load_attrs: Loader attributes for the current data loader
     :param data_loader_option: Data loader options
+    :param file_cache: Session-scoped file cache. None disables session caching
     :param gidx_counter: Global index counter that produces continuous post-filter idx values across all loaders
                          created for a single decorator invocation
     """
@@ -111,6 +114,7 @@ def create_loaders(
             default_encoding=default_encoding,
             ignore_recursive=is_glob,
             gidx_counter=gidx_counter or count(),
+            file_cache=file_cache,
         )
         for p in file_or_dir_paths
     ]
@@ -146,6 +150,7 @@ class Loader(ABC):
         strip_trailing_whitespace: bool = False,
         default_encoding: str | None = None,
         gidx_counter: count[int] | None = None,
+        file_cache: SessionFileCache | None = None,
     ):
         assert path.is_absolute()
         if path.is_symlink():
@@ -159,6 +164,7 @@ class Loader(ABC):
         self.strip_trailing_whitespace = strip_trailing_whitespace
         self.default_encoding = default_encoding or DEFAULT_ENCODING
         self._gidx_counter = gidx_counter or count()
+        self._file_cache = file_cache
 
     @abstractmethod
     def load(self) -> LoadedData | LazyLoadedData | Iterable[LoadedData | LazyLoadedPartData]:
@@ -200,31 +206,29 @@ class FileLoader(Loader):
         self._effective_read_mode: str | None = None
         self._effective_encoding = self.read_options.get("encoding") or self.default_encoding
         self._is_multibyte = len("A".encode(self._effective_encoding)) > 1
-        self._is_streamable = not is_compressed_path(self.path) and (
-            self.file_reader is not None
-            or all(
-                [
-                    get_effective_suffix(self.path) in FileLoader.STREAMABLE_FILE_TYPES,
-                    self.read_mode != "rb",
-                    self.load_attrs.onload_func is None,
-                    self.load_attrs.parametrizer_func is None,
-                    not self._is_multibyte,
-                ]
-            )
+        # read_mode may still be "auto" here; "auto" != "rb" is intentionally True so that text
+        # files (which default to auto-detection) are eligible for streaming. Binary files explicitly set mode="rb"
+        # are excluded. _get_file_obj uses text options for the pooled handle so the byte positions from
+        # _scan_text_file remain valid regardless of what _resolve_read_mode() later detects.
+        self._is_streamable = not is_compressed_path(self.path) and all(
+            [
+                self.file_reader is None,
+                get_effective_suffix(self.path) in FileLoader.STREAMABLE_FILE_TYPES,
+                self.read_mode != "rb",
+                self.load_attrs.onload_func is None,
+                self.load_attrs.parametrizer_func is None,
+                not self._is_multibyte,
+            ]
         )
 
-        # Caches used by data loaders.
-        # NOTE: In Pytest, these cache data will be cleared as a module teardown managed by the plugin
-        self._cached_file_objects: dict[tuple[Path, HashableDict], IO[Any]] = {}
-        self._cached_functions: set[Callable[..., Any]] = set()
-        self._cached_reader_and_split: dict[Callable[..., Any], list[Any]] = {}
-        weakref.finalize(
-            self,
-            _clear_file_loader_caches,
-            self._cached_file_objects,
-            self._cached_functions,
-            self._cached_reader_and_split,
-        )
+        # caches
+        self._loaded_data: LoadedData | list[LoadedData] | None = None
+        self._file_handles: list[IO[Any]] = []
+        weakref.finalize(self, _close_files, self._file_handles)
+
+    @cached_property
+    def stat(self) -> os.stat_result:
+        return self.path.stat()
 
     @property
     def read_mode(self) -> str:
@@ -275,8 +279,13 @@ class FileLoader(Loader):
             return self._load_now()
 
     def clear_cache(self) -> None:
-        """Clear cache associated with this file loader"""
-        _clear_file_loader_caches(self._cached_file_objects, self._cached_functions, self._cached_reader_and_split)
+        """Clear caches and any per-instance file handles held by this loader.
+
+        Per-instance handles are always closed here. Session-scoped pooled handles survive until pytest_unconfigure
+        clears the session cache.
+        """
+        _close_files(self._file_handles)
+        self._loaded_data = None
 
     @requires_loader(DataLoaderType.PARAMETRIZE)
     def _parametrizer_func(self, data: Any) -> Iterable[Any]:
@@ -313,16 +322,20 @@ class FileLoader(Loader):
         # TODO: Add more if needed
         return data
 
-    def _load_now(self, skip_processor: bool = False) -> LoadedData | Iterable[LoadedData]:
+    def _load_now(self, skip_processor: bool = False, cache: bool = False) -> LoadedData | list[LoadedData]:
         """Load the entire file data now, then finalize the loaded data after applying all loader functions requested
 
         :param skip_processor: Whether to skip processing of loaded data. Use this option when you need to apply
                                processor using pre-calculated known param indices (to avoid consuming the idx counter)
                                outside this function
-
-        NOTE: When resolving lazily loaded part data, this function result will be dynamically cached to share it among
-              all part data
+        :param cache: Whether to cache the loaded data for reusing (for lazy loading)
         """
+        if not self.load_attrs.lazy_loading and cache:
+            raise ValueError("cache option is for lazy loading only")
+
+        if cache and self._loaded_data is not None:
+            return self._loaded_data
+
         data: Any
         if self.file_reader:
             # The file obj needs to remain opened during a test so that a test can access to the loaded data.
@@ -337,11 +350,12 @@ class FileLoader(Loader):
         if self.load_attrs.onload_func:
             data = self.load_attrs.onload_func(self.path, data)
 
+        loaded_data: LoadedData | list[LoadedData]
         if self.loader.should_split_data:
+            loaded_data = []
             parts = self.parametrizer_func(self.path, data)
             if self.load_attrs.filter_func:
                 parts = (x for x in parts if self.load_attrs.filter_func(self.path, x))
-            loaded_data: list[LoadedData] = []
             for part in parts:
                 data = part
                 if skip_processor:
@@ -351,14 +365,18 @@ class FileLoader(Loader):
                     if self.load_attrs.process_func:
                         data = self.load_attrs.process_func(gidx, self.path, part)
                 loaded_data.append(LoadedData(file_path=self.path, loaded_from=self.load_from, data=data, gidx=gidx))
-            return loaded_data
         else:
             gidx = self._gidx
             if not skip_processor and self.load_attrs.process_func:
                 if gidx is None:
                     gidx = next(self._gidx_counter)
                 data = self.load_attrs.process_func(gidx, self.path, data)
-            return LoadedData(file_path=self.path, loaded_from=self.load_from, data=data, gidx=gidx)
+            loaded_data = LoadedData(file_path=self.path, loaded_from=self.load_from, data=data, gidx=gidx)
+
+        if cache:
+            self._loaded_data = loaded_data
+
+        return loaded_data
 
     @requires_loader(DataLoaderType.PARAMETRIZE)
     def _load_part_data_now(
@@ -386,12 +404,8 @@ class FileLoader(Loader):
                 return loaded_data
         else:
             f = self._get_file_obj()
-            if self.file_reader:
-                data = self._read_reader_and_split(self.file_reader, f)
-                part_data = data[pos]
-            else:
-                f.seek(pos)
-                part_data = f.readline().rstrip("\r\n")
+            f.seek(pos)
+            part_data = f.readline().rstrip("\r\n")
             if self.load_attrs.process_func:
                 part_data = self.load_attrs.process_func(gidx, self.path, part_data)
             return LoadedData(file_path=self.path, loaded_from=self.load_from, data=part_data, gidx=gidx)
@@ -423,10 +437,10 @@ class FileLoader(Loader):
                 # data in memory.
                 # NOTE: The actual data loaded with the file loader called during a test setup will be cached and
                 #       reused among tests for the same test function
-                loaded_data = self._load_now(skip_processor=True)
+                skip_processor = True
+                loaded_data = self._load_now(skip_processor=skip_processor)
                 assert isinstance(loaded_data, list)
-                file_loader_func = lru_cache(maxsize=1)(partial(self._load_now, skip_processor=True))
-                self._cached_functions.add(file_loader_func)
+                file_loader_func = partial(self._load_now, skip_processor=skip_processor, cache=True)
                 lazy_parts = []
                 for i, data in enumerate(loaded_data):
                     gidx = next(self._gidx_counter)
@@ -455,24 +469,39 @@ class FileLoader(Loader):
                     )
                 return lazy_parts
         else:
-            # Caches the loaded data for reusing in case other parametrized loader is stacked
-            file_loader_func = lru_cache(maxsize=1)(self._load_now)
-            self._cached_functions.add(file_loader_func)
             return LazyLoadedData(
                 file_path=self.path,
                 loaded_from=self.load_from,
-                resolver=file_loader_func,
+                resolver=partial(self._load_now, cache=True),
                 gidx=self._gidx,
             )
 
     def _get_file_obj(self) -> IO[Any]:
-        """Get file object from cache or open a new one and cache it"""
-        f = self._cached_file_objects.get((self.path, self.read_options))
-        if not f or f.closed:
+        """Return an open file handle for this loader.
+
+        When a session cache is available and no file_reader is in use, the handle is drawn from the session
+        pool (bounded, shared across instances for the same path and read options).  When a file_reader is present
+        the handle must remain open for the duration of the test (the reader may hold it lazily), so a per-instance
+        handle is used instead — the pool would close it on eviction.
+
+        Pool callers are responsible for seeking to their desired position before reading.
+        """
+        if self._file_cache is not None and self._file_cache.pooling_enabled and self.file_reader is None:
+            # Use the same options as _scan_text_file (text mode, no explicit mode resolution) so
+            # that byte positions recorded during scanning remain valid for this handle.
+            read_options = self._effective_read_options()
+            return self._file_cache.get_handle(
+                self._build_session_cache_key(read_options),
+                on_miss=lambda: compression_aware_open(self.path, **read_options),
+            )
+        elif self._file_handles and not self._file_handles[0].closed:
+            f = self._file_handles[0]
+            f.seek(0)
+            return f
+        else:
             f = compression_aware_open(self.path, **self._effective_read_options())
-            self._cached_file_objects[(self.path, self.read_options)] = f
-        f.seek(0)
-        return f
+            self._file_handles[:] = [f]
+            return f
 
     @requires_loader(DataLoaderType.PARAMETRIZE)
     def _scan_text_file(self) -> Generator[tuple[int, int, Any, Any]]:
@@ -514,36 +543,48 @@ class FileLoader(Loader):
                     commit(pos, part)
 
         with compression_aware_open(self.path, **self._effective_read_options()) as f:
-            if self.file_reader:
-                # NOTE: Do NOT use _read_reader_and_split here to get the split data. Closing the file will invalidate
-                #       the cached part data generated by the file reader and cause issues when loading part data later.
-                reader = self.file_reader(f)
-                if self.load_attrs.onload_func:
-                    reader = self.load_attrs.onload_func(self.path, reader)
-                for i, part in enumerate(self.parametrizer_func(self.path, reader)):
-                    inspect_part_data(i, part)
-            else:
-                while True:
-                    pos = f.tell()
-                    line = f.readline()
-                    if not line:
-                        # EOF
-                        break
+            while True:
+                pos = f.tell()
+                line = f.readline()
+                if not line:
+                    # EOF
+                    break
 
-                    line = line.rstrip("\r\n")
-                    inspect_part_data(pos, line)
+                line = line.rstrip("\r\n")
+                inspect_part_data(pos, line)
 
         yield from results
 
     def _read_file(self) -> str | bytes:
-        """Read file data"""
+        """Read file data, served from the session content cache when available."""
         assert self.path.is_absolute()
+        read_options = self._effective_read_options(mode=self._resolve_read_mode())
+
+        def read_from_disk() -> str | bytes:
+            with compression_aware_open(self.path, **read_options) as f:
+                return f.read()
+
+        if self._file_cache is not None:
+            return self._file_cache.get_content(self._build_session_cache_key(read_options), on_miss=read_from_disk)
+        return read_from_disk()
+
+    def _resolve_read_mode(self) -> str:
+        """Resolve and cache the effective read mode, running auto-detection when needed."""
         if self.read_mode == "auto":
-            # Detect read mode based on sampled data
+            self.read_mode = self._detect_read_mode()
+        return self.read_mode
+
+    def _detect_read_mode(self) -> Literal["r", "rb"]:
+        """Return the detected read mode ("r" or "rb") for this file.
+
+        When a session cache is available the result is memoized so the 4 KiB binary
+        probe runs at most once per (file, encoding) combination per session.
+        """
+
+        def probe() -> Literal["r", "rb"]:
             is_binary = False
             with compression_aware_open(self.path, mode="rb") as f:
                 chunk = f.read(4096)
-
             if chunk:
                 # Null bytes are a fast-path (utf-8 and single-byte codecs never contain
                 # them in valid text), but multibyte encodings like utf-16 legitimately
@@ -555,12 +596,17 @@ class FileLoader(Loader):
                     # Incremental decoding tolerates a partial multibyte char at the chunk boundary.
                     if self._effective_encoding == DEFAULT_ENCODING or not can_decode(chunk, self._effective_encoding):
                         is_binary = True
+            return "rb" if is_binary else "r"
 
-            read_mode = "rb" if is_binary else "r"
-            self.read_mode = read_mode
-
-        with compression_aware_open(self.path, **self._effective_read_options(mode=self.read_mode)) as f:
-            return f.read()
+        if self._file_cache is not None:
+            cache_key: ReadModeKey = (
+                str(self.path),
+                self.stat.st_mtime_ns,
+                self.stat.st_size,
+                self._effective_encoding,
+            )
+            return self._file_cache.get_read_mode(cache_key, on_miss=probe)
+        return probe()
 
     def _effective_read_options(self, *, mode: str | None = None) -> dict[str, Any]:
         """Return read_options merged with the configured default encoding when applicable.
@@ -578,21 +624,6 @@ class FileLoader(Loader):
         if "b" not in effective_mode and "encoding" not in options:
             options["encoding"] = self._effective_encoding
         return options
-
-    @requires_loader(DataLoaderType.PARAMETRIZE)
-    def _read_reader_and_split(self, file_reader: Callable[..., Iterable[Any] | object], f: IO[Any]) -> list[Any]:
-        """Read full data from the file reader and split into parts, caching the result per reader.
-
-        :param file_reader: A file reader to read data from
-        :param f: File object to read from
-        """
-        if file_reader not in self._cached_reader_and_split:
-            f.seek(0)
-            reader = file_reader(f)
-            if self.load_attrs.onload_func:
-                reader = self.load_attrs.onload_func(self.path, reader)
-            self._cached_reader_and_split[file_reader] = list(self.parametrizer_func(self.path, reader))
-        return self._cached_reader_and_split[file_reader]
 
     def _get_read_options(self) -> HashableDict:
         if self.load_attrs.read_options_func:
@@ -618,6 +649,10 @@ class FileLoader(Loader):
                 if not self.read_options:
                     self.read_options = registered_reader.read_options
         return file_reader
+
+    def _build_session_cache_key(self, read_options: dict[str, Any]) -> CacheKey:
+        """Build the session content/handle cache key for this file and read options."""
+        return (str(self.path), self.stat.st_mtime_ns, self.stat.st_size, HashableDict(read_options))
 
 
 class DirectoryLoader(Loader):
@@ -651,6 +686,7 @@ class DirectoryLoader(Loader):
                         strip_trailing_whitespace=self.strip_trailing_whitespace,
                         default_encoding=self.default_encoding,
                         gidx=gidx,
+                        file_cache=self._file_cache,
                     )
                     loaded_data = file_loader.load()
                     assert isinstance(loaded_data, LoadedData | LazyLoadedData), type(loaded_data)
@@ -688,6 +724,7 @@ def _data_loader_factory(
     default_encoding: str | None = None,
     ignore_recursive: bool = False,
     gidx_counter: count[int],
+    file_cache: SessionFileCache | None = None,
 ) -> FileLoader | DirectoryLoader:
     """Data loader factory that creates either FileLoader or DirectoryLoader depending on the specified path
 
@@ -698,6 +735,7 @@ def _data_loader_factory(
     :param default_encoding: Default text encoding when no encoding is set in read_options
     :param ignore_recursive: When True, DirectoryLoader will ignore the recursive flag
     :param gidx_counter: Global index counter that produces continuous post-filter idx values across all loaders
+    :param file_cache: Session-scoped file cache; ``None`` disables session caching
     """
     if not abs_data_path.is_absolute():
         raise ValueError("abs_data_path must be an absolute path")
@@ -710,6 +748,7 @@ def _data_loader_factory(
             strip_trailing_whitespace=strip_trailing_whitespace,
             default_encoding=default_encoding,
             gidx_counter=gidx_counter,
+            file_cache=file_cache,
         )
     else:
         return DirectoryLoader(
@@ -720,37 +759,21 @@ def _data_loader_factory(
             default_encoding=default_encoding,
             ignore_recursive=ignore_recursive,
             gidx_counter=gidx_counter,
+            file_cache=file_cache,
         )
 
 
-def _clear_file_loader_caches(
-    cached_file_objects: dict[tuple[Path, HashableDict], IO[Any]],
-    cached_functions: set[Callable[..., Any]],
-    cached_reader_split: dict[Callable[..., Any], list[Any]],
-) -> None:
-    """Release all caches held by a FileLoader instance
+def _close_files(file_handlers: list[IO[Any]]) -> None:
+    """Close a FileLoader's open handle.
 
-    :param cached_file_objects: Open file handles keyed by (path, read_options)
-    :param cached_functions: lru_cache-wrapped functions
-    :param cached_reader_split: Per-reader split results
+    :param file_handlers: Open file handles
     """
-    if cached_file_objects:
-        for f in cached_file_objects.values():
-            try:
-                f.close()
-            except Exception as e:
-                logger.exception(e)
-        cached_file_objects.clear()
-
-    if cached_functions:
-        for loader_func in cached_functions:
-            try:
-                loader_func.cache_clear()  # type: ignore[attr-defined]
-            except Exception as e:
-                logger.exception(e)
-        cached_functions.clear()
-
-    cached_reader_split.clear()
+    for f in file_handlers:
+        try:
+            f.close()
+        except Exception as e:
+            logger.exception(e)
+    file_handlers.clear()
 
 
 def _clear_dir_loader_caches(file_loaders: list[FileLoader]) -> None:

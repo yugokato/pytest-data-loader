@@ -26,9 +26,9 @@ pytestmark = pytest.mark.loaders
 # NOTE:
 # - lazy_loading option is separately tested in another test using pytester
 # - This file covers 5 types of data types the plugin handles differently:
-#   - text file (non-structured file, streamable)
-#   - json file (structured file, streamable via the default file reader)
-#   - yaml file (structured file, non-streamable)
+#   - text file (streamable)
+#   - json file (non-streamable, uses file reader and file handler cache)
+#   - yaml file (non-streamable)
 #   - binary file
 #   - compressed files (gz, .bz2, .xz) for the above
 

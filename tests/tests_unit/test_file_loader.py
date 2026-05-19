@@ -2,13 +2,14 @@ import gc
 import gzip
 import json
 from collections.abc import Callable
-from functools import _CacheInfo
 from pathlib import Path
 from typing import Any
+from unittest.mock import patch
 
 import pytest
 
 from pytest_data_loader import load, parametrize, parametrize_dir
+from pytest_data_loader.loaders.cache import CacheKey, SessionFileCache
 from pytest_data_loader.loaders.impl import FileLoader
 from pytest_data_loader.paths import SUPPORTED_COMPRESSION_EXTENSIONS, compression_aware_open, get_effective_suffix
 from pytest_data_loader.types import (
@@ -23,7 +24,6 @@ from tests.paths import (
     ABS_PATH_LOADER_DIR,
     PATH_JSON_FILE_ARRAY,
     PATH_JSON_FILE_GZ,
-    PATH_JSONL_FILE,
     PATH_LATIN1_TEXT_FILE,
     PATH_TEXT_FILE,
     PATH_TEXT_FILE_GZ,
@@ -329,24 +329,6 @@ class TestFileLoader:
 class TestFileLoaderCaching:
     """Tests for FileLoader cache state management across loading modes"""
 
-    @staticmethod
-    def check_lru_cache_result(
-        f: Callable[..., Any], expected_hits: int, expected_misses: int, expected_maxsize: int, expected_currsize: int
-    ) -> None:
-        """Check lru_cache result. Only the first item should miss the cache.
-
-        :param f: The lru_cache-wrapped callable to inspect
-        :param expected_hits: Expected number of cache hits
-        :param expected_misses: Expected number of cache misses
-        :param expected_maxsize: Expected maxsize of the cache
-        :param expected_currsize: Expected current number of cached entries
-        """
-        cache_info: _CacheInfo = f.cache_info()  # type: ignore[attr-defined]
-        assert cache_info.hits == expected_hits
-        assert cache_info.misses == expected_misses
-        assert cache_info.maxsize == expected_maxsize
-        assert cache_info.currsize == expected_currsize
-
     def _make_load_attrs(
         self,
         loader: DataLoader,
@@ -388,20 +370,16 @@ class TestFileLoaderCaching:
 
         lazy_loaded_data = file_loader._load_lazily()
 
-        # Non-streamable @parametrize files call _load_now() at collection (to count items). When a
-        # file_reader is present, _load_now() uses _get_file_obj() which caches the open handle.
-        # All other paths leave _cached_file_objects empty after _load_lazily().
+        # Non-streamable @parametrize files call _load_now() once at collection (to count items). When a
+        # file_reader is present, _load_now() opens the handle via _get_file_obj(), populating _file_handles.
+        # All other paths leave _file_handles empty. _loaded_data is never set at collection (data is discarded).
         if loader == parametrize and not file_loader.is_streamable and file_loader.file_reader is not None:
-            assert len(file_loader._cached_file_objects) == 1
+            assert len(file_loader._file_handles) == 1
         else:
-            assert file_loader._cached_file_objects == {}
-        # For streamable @parametrize files, no lru_cache wrapper is created at load time.
-        # For all other cases, the file_loader is registered eagerly to ensure cleanup even if tests are skipped.
-        if loader == parametrize and file_loader.is_streamable:
-            assert file_loader._cached_functions == set()
-        else:
-            assert len(file_loader._cached_functions) == 1
-        assert file_loader._cached_reader_and_split == {}
+            assert file_loader._file_handles == []
+        # Read into locals so mypy narrows the local, not the attribute (the attribute is mutated later).
+        loaded_before = file_loader._loaded_data
+        assert loaded_before is None
 
         if loader == parametrize:
             assert isinstance(lazy_loaded_data, list)
@@ -409,44 +387,31 @@ class TestFileLoaderCaching:
                 assert isinstance(lazy_data, LazyLoadedPartData)
                 lazy_data.resolve()
                 if file_loader.is_streamable:
-                    # The file object should be cached, but resolver function should not be cached
-                    assert len(file_loader._cached_file_objects) == 1
-                    assert not hasattr(lazy_data.resolver, "cache_info")
-                    assert lazy_data.resolver not in file_loader._cached_functions
-                    assert (abs_file_path, file_loader.read_options) in file_loader._cached_file_objects
-                    if file_loader.file_reader:
-                        # The result of _read_reader_and_split() should be cached per reader
-                        assert file_loader.file_reader in file_loader._cached_reader_and_split
+                    # Streamable: _get_file_obj opens the handle; _loaded_data stays None (direct _load_part_data_now
+                    # path, not _load_now).
+                    assert len(file_loader._file_handles) == 1
+                    assert file_loader._loaded_data is None
                 else:
-                    # The file loader function (lru_cache wrapper) should be populated, but the resolver itself
-                    # is not cached. For non-streamable files WITH a file_reader (e.g. compressed JSON/JSONL),
-                    # _load_now uses _get_file_obj() so _cached_file_objects is populated. For those without a
-                    # reader (e.g. XML, CSV), _read_file() is used and _cached_file_objects stays empty.
+                    # Non-streamable: first resolve calls _load_now with cache=True, populating _loaded_data.
+                    # Subsequent resolves reuse it. _get_file_obj runs only when a file_reader is present.
+                    assert file_loader._loaded_data is not None
                     if file_loader.file_reader is not None:
-                        assert len(file_loader._cached_file_objects) == 1
+                        assert len(file_loader._file_handles) == 1
                     else:
-                        assert len(file_loader._cached_file_objects) == 0
-                    assert not hasattr(lazy_data.resolver, "cache_info")
-                    assert len(file_loader._cached_functions) == 1
-                    file_loader_func = next(iter(file_loader._cached_functions))
-                    assert hasattr(file_loader_func, "cache_info")
-                    self.check_lru_cache_result(file_loader_func, i, 1, 1, 1)
+                        assert len(file_loader._file_handles) == 0
         else:
             assert isinstance(lazy_loaded_data, LazyLoadedData)
-            assert hasattr(lazy_loaded_data.resolver, "cache_info")
             lazy_loaded_data.resolve()
-            # The file loader function should be cached for reuse across stacked parametrize calls
-            assert lazy_loaded_data.resolver in file_loader._cached_functions
-            self.check_lru_cache_result(lazy_loaded_data.resolver, 0, 1, 1, 1)
+            # @load and @parametrize_dir: resolve calls _load_now with cache=True, populating _loaded_data.
+            assert file_loader._loaded_data is not None
 
-        # Clear cache
+        # clear_cache resets _loaded_data and closes the open file handle.
         file_loader.clear_cache()
-        assert file_loader._cached_file_objects == {}
-        assert file_loader._cached_functions == set()
-        assert file_loader._cached_reader_and_split == {}
+        assert file_loader._file_handles == []
+        assert file_loader._loaded_data is None
 
     def test_eager_loading_has_no_data_cache(self) -> None:
-        """Test that eager loading does not populate lru_cache or reader_split caches for a plain text file"""
+        """Test that eager loading does not populate the loaded-data cache for a plain text file."""
         abs_file_path = ABS_PATH_LOADER_DIR / PATH_TEXT_FILE
         load_attrs = self._make_load_attrs(load, PATH_TEXT_FILE, lazy_loading=False)
         file_loader = FileLoader(
@@ -456,12 +421,11 @@ class TestFileLoaderCaching:
 
         file_loader.load()
 
-        assert file_loader._cached_functions == set()
-        assert file_loader._cached_reader_and_split == {}
-        assert file_loader._cached_file_objects == {}
+        assert file_loader._loaded_data is None
+        assert file_loader._file_handles == []
 
     def test_eager_loading_with_file_reader_caches_file_obj(self) -> None:
-        """Test that eager loading with a file_reader caches the open file handle in _cached_file_objects"""
+        """Test that eager loading with a file_reader caches the open file handle in _file_handles"""
         abs_file_path = ABS_PATH_LOADER_DIR / PATH_JSON_FILE_ARRAY
         load_attrs = self._make_load_attrs(load, PATH_JSON_FILE_ARRAY, lazy_loading=False)
         file_loader = FileLoader(
@@ -471,20 +435,47 @@ class TestFileLoaderCaching:
 
         file_loader.load()
 
-        assert file_loader._cached_functions == set()
-        assert file_loader._cached_reader_and_split == {}
-        assert len(file_loader._cached_file_objects) == 1
-        assert (abs_file_path, file_loader.read_options) in file_loader._cached_file_objects
+        assert file_loader._loaded_data is None
+        assert len(file_loader._file_handles) == 1
+        assert not file_loader._file_handles[0].closed
 
         file_loader.clear_cache()
-        assert file_loader._cached_file_objects == {}
+        assert file_loader._file_handles == []
+
+    def test_clear_cache_closes_file_reader_handle_when_session_cache_present(self) -> None:
+        """Test that clear_cache() closes per-instance file_reader handles even when a session cache is present."""
+        abs_file_path = ABS_PATH_LOADER_DIR / PATH_JSON_FILE_ARRAY
+        load_attrs = self._make_load_attrs(load, PATH_JSON_FILE_ARRAY, lazy_loading=True)
+        file_loader = FileLoader(
+            abs_file_path,
+            load_attrs,
+            load_from=ABS_PATH_LOADER_DIR,
+            file_cache=SessionFileCache(),
+        )
+        assert file_loader.file_reader is not None
+
+        lazy_data = file_loader._load_lazily()
+        assert isinstance(lazy_data, LazyLoadedData)
+        lazy_data.resolve()
+
+        # file_reader causes a per-instance handle to be opened (pool is bypassed for file_reader)
+        assert len(file_loader._file_handles) == 1
+        handle = file_loader._file_handles[0]
+        assert not handle.closed
+
+        file_loader.clear_cache()
+
+        assert handle.closed, (
+            "Per-instance file_reader handle must be closed by clear_cache() regardless of session cache"
+        )
+        assert file_loader._file_handles == []
 
     def test_non_streamable_parametrize_lazy_double_load(self) -> None:
-        """Test that non-streamable @parametrize lazy loading intentionally calls _load_now twice:
-        once at collection (to count parametrized items) and once at first test setup (lru_cache miss)
+        """Test that non-streamable @parametrize lazy loading reads the file twice:
+        once at collection (to count parametrized items) and once at first test setup
+        (_loaded_data cache miss), then reuses the _loaded_data cache for subsequent resolves.
         """
-        # XML has no registered file_reader and a non-streamable suffix, making it non-streamable
-        # for @parametrize, unlike JSON which is streamable because it has a registered file_reader.
+        # XML has no registered file_reader and a non-streamable suffix.
         abs_file_path = ABS_PATH_LOADER_DIR / PATH_XML_FILE
         load_attrs = self._make_load_attrs(parametrize, PATH_XML_FILE, lazy_loading=True)
         file_loader = FileLoader(
@@ -493,70 +484,121 @@ class TestFileLoaderCaching:
         assert not file_loader.is_streamable
         assert file_loader.file_reader is None
 
-        # Wrap _load_now to count how many times it is actually invoked
-        call_count = 0
-        original_load_now = file_loader._load_now
+        # Count actual file reads. The _loaded_data cache guard lives inside _load_now (before
+        # _read_file), so _load_now still runs on every resolve but short-circuits internally;
+        # counting _read_file measures genuine (re)loads.
+        read_count = 0
+        original_read_file = file_loader._read_file
 
-        def counting_load_now(*args: Any, **kwargs: Any) -> LoadedData | list[LoadedData]:
-            """Counting wrapper around the original _load_now."""
-            nonlocal call_count
-            call_count += 1
-            return original_load_now(*args, **kwargs)
+        def counting_read_file() -> str | bytes:
+            """Counting wrapper around the original _read_file."""
+            nonlocal read_count
+            read_count += 1
+            return original_read_file()
 
-        file_loader._load_now = counting_load_now
+        file_loader._read_file = counting_read_file
 
-        # Collection phase: _load_now is called once directly to determine item count
+        # Collection phase: _read_file is called once to determine item count.
+        # _loaded_data stays None because the collection-time result is not cached.
         lazy_parts = file_loader._load_lazily()
         assert isinstance(lazy_parts, list)
         assert len(lazy_parts) > 1
-        assert call_count == 1, "Expected exactly one _load_now call during collection"
-        assert len(file_loader._cached_functions) == 1
-        cached_loader = next(iter(file_loader._cached_functions))
-        # lru_cache wrapper has not been invoked yet (0 hits, 0 misses)
-        self.check_lru_cache_result(cached_loader, 0, 0, 1, 0)
+        assert read_count == 1, "Expected exactly one file read during collection"
+        # Read into a local to narrow the local without narrowing the attribute (which is mutated later).
+        loaded_after_collection = file_loader._loaded_data
+        assert loaded_after_collection is None
 
-        # First resolve: lru_cache miss — counting_load_now is called a second time
+        # First resolve: _loaded_data cache miss — the file is read a second time and cached.
         lazy_parts[0].resolve()
-        assert call_count == 2, "Expected a second _load_now call on first resolve (lru_cache miss)"
-        self.check_lru_cache_result(cached_loader, 0, 1, 1, 1)
+        assert read_count == 2, "Expected a second file read on first resolve (_loaded_data cache miss)"
+        assert file_loader._loaded_data is not None
+        cached_obj_id = id(file_loader._loaded_data)
 
-        # Second resolve: lru_cache hit — counting_load_now is NOT called again
+        # Second resolve: _loaded_data cache hit — no additional file read, same cached object reused.
         lazy_parts[1].resolve()
-        assert call_count == 2, "Expected no additional _load_now call on second resolve (lru_cache hit)"
-        self.check_lru_cache_result(cached_loader, 1, 1, 1, 1)
+        assert read_count == 2, "Expected no additional file read on second resolve (_loaded_data cache hit)"
+        assert id(file_loader._loaded_data) == cached_obj_id
 
         file_loader.clear_cache()
 
-    def test_cached_reader_split_reuse_across_resolves(self) -> None:
-        """Test that _cached_reader_split is populated on the first resolve and the same list object
-        is reused on subsequent resolves without re-reading the file
+    def test_file_reader_parametrize_lazy_is_non_streamable(self) -> None:
+        """Test that @parametrize lazy loading with a file_reader uses the non-streamable path.
+
+        Files with a file_reader are always non-streamable: is_streamable is False, lazy parts
+        carry pos=None (index-based, not byte-offset), resolve correctly via _load_now, and
+        _loaded_data is populated after first resolve and reused without re-opening the file.
         """
-        abs_file_path = ABS_PATH_LOADER_DIR / PATH_JSONL_FILE
-        load_attrs = self._make_load_attrs(parametrize, PATH_JSONL_FILE, lazy_loading=True)
+        abs_file_path = ABS_PATH_LOADER_DIR / PATH_JSON_FILE_ARRAY
+        load_attrs = self._make_load_attrs(parametrize, PATH_JSON_FILE_ARRAY, lazy_loading=True)
         file_loader = FileLoader(
             abs_file_path, load_attrs, load_from=ABS_PATH_LOADER_DIR, strip_trailing_whitespace=True
         )
-        assert file_loader.is_streamable
+        assert not file_loader.is_streamable
         assert file_loader.file_reader is not None
 
         lazy_parts = file_loader._load_lazily()
         assert isinstance(lazy_parts, list)
         assert len(lazy_parts) > 1
 
-        # No cached split before any resolve
-        assert file_loader._cached_reader_and_split == {}
+        # Non-streamable lazy parts use integer indices (pos=None).
+        for part in lazy_parts:
+            assert isinstance(part, LazyLoadedPartData)
+            assert part.pos is None
 
-        # First resolve: file is read and the result list is cached in _cached_reader_split
+        # Collection opened a handle for the count read; _loaded_data is not cached yet.
+        assert len(file_loader._file_handles) == 1
+        assert file_loader._loaded_data is None
+
+        # First resolve: _loaded_data is populated (handle reused, no new open).
         lazy_parts[0].resolve()
-        assert file_loader.file_reader in file_loader._cached_reader_and_split
-        first_list_id = id(file_loader._cached_reader_and_split[file_loader.file_reader])
+        assert file_loader._loaded_data is not None
+        cached_id = id(file_loader._loaded_data)  # type: ignore[unreachable]
 
-        # Second resolve: the same cached list object is reused (no re-read)
+        # Subsequent resolves reuse _loaded_data without re-reading the file.
         lazy_parts[1].resolve()
-        assert file_loader.file_reader in file_loader._cached_reader_and_split
-        assert id(file_loader._cached_reader_and_split[file_loader.file_reader]) == first_list_id
+        assert id(file_loader._loaded_data) == cached_id
 
         file_loader.clear_cache()
+
+    def test_content_cache_shared_across_loaders_for_same_file(self) -> None:
+        """Test that the session content cache serves the second FileLoader from memory without re-reading disk.
+
+        Two FileLoader instances for the same path backed by the same SessionFileCache should
+        trigger only one actual file read: the first loader populates the content cache, and the
+        second receives the cached content without touching disk.
+        """
+        abs_file_path = ABS_PATH_LOADER_DIR / PATH_TEXT_FILE
+        shared_cache = SessionFileCache()
+        load_attrs = self._make_load_attrs(load, PATH_TEXT_FILE, lazy_loading=True)
+        loader1 = FileLoader(abs_file_path, load_attrs, load_from=ABS_PATH_LOADER_DIR, file_cache=shared_cache)
+        loader2 = FileLoader(abs_file_path, load_attrs, load_from=ABS_PATH_LOADER_DIR, file_cache=shared_cache)
+
+        on_miss_count = 0
+        original_get_content = shared_cache.get_content
+
+        def tracking_get_content(key: CacheKey, on_miss: Callable[[], str | bytes]) -> str | bytes:
+            def counting_on_miss() -> str | bytes:
+                nonlocal on_miss_count
+                on_miss_count += 1
+                return on_miss()
+
+            return original_get_content(key, counting_on_miss)
+
+        lazy1 = loader1._load_lazily()
+        lazy2 = loader2._load_lazily()
+        assert isinstance(lazy1, LazyLoadedData)
+        assert isinstance(lazy2, LazyLoadedData)
+
+        with patch.object(shared_cache, "get_content", side_effect=tracking_get_content):
+            lazy1.resolve()
+            lazy2.resolve()
+
+        assert on_miss_count == 1, (
+            f"Expected exactly one disk read for two loaders targeting the same file; got {on_miss_count}. "
+            "The second loader should be served from the session content cache."
+        )
+        assert loader1._loaded_data is not None and loader2._loaded_data is not None
+        assert loader1._loaded_data.data == loader2._loaded_data.data
 
     def test_weakref_finalize_clears_cache_on_gc(self) -> None:
         """Test that GC-ing a FileLoader triggers the weakref finalizer, closing cached file handles"""
@@ -568,23 +610,19 @@ class TestFileLoaderCaching:
         file_loader.load()
 
         # Eager loading with file_reader caches an open file handle
-        assert len(file_loader._cached_file_objects) == 1
-        f_handle = next(iter(file_loader._cached_file_objects.values()))
+        assert len(file_loader._file_handles) == 1
+        f_handle = file_loader._file_handles[0]
         assert not f_handle.closed
 
-        # Capture references to the cache containers before deleting the loader
-        cached_file_objects_ref = file_loader._cached_file_objects
-        cached_file_loaders_ref = file_loader._cached_functions
-        cached_reader_split_ref = file_loader._cached_reader_and_split
+        # Capture a reference to the file handles list before deleting the loader
+        file_handles = file_loader._file_handles
 
         del file_loader
         gc.collect()
 
-        # Finalizer should have closed the file handle and cleared all cache containers
+        # Finalizer should have closed the file handle and cleared the file handles list
         assert f_handle.closed
-        assert cached_file_objects_ref == {}
-        assert cached_file_loaders_ref == set()
-        assert cached_reader_split_ref == {}
+        assert file_handles == []
 
 
 class TestFileLoaderWithCompressedFiles:

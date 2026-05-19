@@ -423,7 +423,6 @@ def test_env_specific_cases(data_loader: DataLoaderFixture, env: str, filename: 
 
 
 
-
 ## Lazy Loading
 
 Lazy loading is enabled by default for all data loaders to improve efficiency, especially with large datasets. During 
@@ -435,7 +434,7 @@ If you need to disable this behavior for a specific test, pass `lazy_loading=Fal
 > Lazy loading for the `@parametrize` loader works slightly differently from other loaders. Since pytest needs to know 
 > the total number of parameters in advance, the plugin still needs to inspect the file data and split it once during 
 > the test collection phase. But once it's done, the split data will not be kept as parameter values and will be loaded 
-> lazily later
+> lazily at test setup
 
 
 
@@ -600,6 +599,25 @@ def test_something2(data):
 
 
 
+## Caching
+
+To reduce repeated I/O and parsing work during a test session, the plugin uses two layers of caching:
+
+- **Session-scoped cache**
+  - Shared across all data loaders
+  - Caches raw file contents by resolved file path
+  - Maintains a bounded pool of open file handles using an LRU strategy
+
+- **Per-loader cache**
+  - Scoped to an individual loader on a test function
+  - Caches the loaded data after the per-file loader pipeline
+  - Reduces repeated parsing and transformation work across parametrized test cases that reuse the same source data
+
+The session-scoped cache can be tuned or disabled via the INI options.
+
+
+
+
 ## Loader Options
 
 Each data loader supports different optional parameters you can use to change how your data is loaded.
@@ -696,3 +714,14 @@ Plugin default: `utf-8`
 >
 > If you use one of these encodings as the default, configure data loaders for known binary formats with
 > `read_options={"mode": "rb"}` to force binary reads.
+
+### `data_loader_max_cache_bytes`
+Maximum cumulative approximate in-memory size of the session-scoped LRU cache for raw file contents. When the total
+cached size exceeds this limit, the least recently used entries are evicted until the cache size falls below the limit.
+Set to `0` to disable raw-content caching entirely.  
+Plugin default: `268435456` (256 MiB)
+
+### `data_loader_max_open_files`
+Maximum number of open file handles retained in the session-scoped file-handle pool. When the pool reaches this limit,
+the least recently used handle is closed before a new handle is added. Set to `0` to disable handle pooling.  
+Plugin default: `64`

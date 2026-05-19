@@ -83,13 +83,30 @@ class TestLazyLoading:
     def test_lazy_loading_io_timing(self, test_context: TestContext, lazy_loading: bool, file_extension: str) -> None:
         """Test that file I/O actually occurs at the expected phase (collection vs setup).
 
-        Expected behavior per loader:
-          @load:            lazy_loading=True  -> collection=0, setup>0
-          @load:            lazy_loading=False -> collection>0, setup=0
-          @parametrize:     lazy_loading=True  -> collection>0 (scan or load to count items), setup>0 (load data)
-          @parametrize:     lazy_loading=False -> collection>0, setup=0
-          @parametrize_dir: lazy_loading=True  -> collection=0, setup>0
-          @parametrize_dir: lazy_loading=False -> collection>0, setup=0
+        File opens for the auto-mode binary probe (mode="rb") are excluded here. Only meaningful data reads are
+        counted.  The probe is memoized per session so it runs at most once per (file, encoding) combination across
+        all FileLoader instances, but it is still excluded here because it is an implementation detail rather than a
+        data I/O.
+
+        Expected opens (collection time, setup ime) per (loader, lazy_loading, file_extension):
+
+        Loader              lazy    .txt    .json   .yml
+        ----------------    -----   ------  ------  ------
+        @load               True    (0, 1)  (0, 1)  (0, 1)
+        @load               False   (1, 0)  (1, 0)  (1, 0)
+        @parametrize        True    (1, 1)  (1, 0)  (1, 0)
+        @parametrize        False   (1, 0)  (1, 0)  (1, 0)
+        @parametrize_dir    True    (0, 2)  (0, 2)  (0, 2)
+        @parametrize_dir    False   (2, 0)  (2, 0)  (2, 0)
+
+        Open count notes:
+        - .txt: streamable. _scan_text_file() opens once at collection; setup draws from the session
+          handle pool (1 open on first case, cache hit on subsequent cases).
+        - .json: file_reader (json.load) → non-streamable. _load_now() opens a per-instance handle
+          at collection; the same handle is reused at setup via _file_handles → 0 setup opens.
+        - .yml: non-streamable, no file_reader. Lazy @parametrize caches raw bytes at collection;
+          setup is a content-cache hit → 0 setup opens.
+        - @parametrize_dir: DirectoryLoader with 2 child FileLoaders; counts are @load counts x 2.
         """
         pytester = test_context.pytester
 
@@ -104,7 +121,8 @@ class TestLazyLoading:
         _current_phase = "collection"
 
         def _tracking_open(file, *args, **kwargs):
-            _io_log.append((_current_phase, str(file)))
+            mode = args[0] if args else kwargs.get("mode", "r")
+            _io_log.append((_current_phase, str(file), mode))
             return _original_open(file, *args, **kwargs)
 
 
@@ -139,23 +157,46 @@ class TestLazyLoading:
         assert report_line is not None
         io_log: list[list[str]] = json.loads(report_line[len(report_prefix) :])
 
-        # Filter to only opens of files inside the test data directory
-        data_opens = [(phase, path) for phase, path in io_log if Path(path).is_relative_to(test_context.data_dir)]
+        # Filter to data-read opens (exclude the auto-mode binary probe, which is
+        # memoized per session but still occurs on each instance's first _detect_read_mode call).
+        data_opens = [
+            (phase, path)
+            for phase, path, mode in io_log
+            if Path(path).is_relative_to(test_context.data_dir) and mode != "rb"
+        ]
         collection_opens = sum(1 for phase, _ in data_opens if phase == "collection")
         setup_opens = sum(1 for phase, _ in data_opens if phase == "setup")
 
-        if lazy_loading:
-            # @parametrize scans the file during collection phase to count parametrized items.
-            # @load and @parametrize_dir defer all I/O to setup phase
-            if test_context.loader == parametrize:
-                assert collection_opens > 0
-            else:
-                assert collection_opens == 0
-            assert setup_opens > 0
-        else:
-            # Eager: file is read during collection; no I/O at setup
-            assert collection_opens > 0
-            assert setup_opens == 0
+        expected_opens: dict[tuple[str, str, bool], tuple[int, int]] = {
+            ("load", ".txt", True): (0, 1),
+            ("load", ".json", True): (0, 1),
+            ("load", ".yml", True): (0, 1),
+            ("load", ".txt", False): (1, 0),
+            ("load", ".json", False): (1, 0),
+            ("load", ".yml", False): (1, 0),
+            ("parametrize", ".txt", True): (1, 1),
+            ("parametrize", ".json", True): (1, 0),
+            ("parametrize", ".yml", True): (1, 0),
+            ("parametrize", ".txt", False): (1, 0),
+            ("parametrize", ".json", False): (1, 0),
+            ("parametrize", ".yml", False): (1, 0),
+            ("parametrize_dir", ".txt", True): (0, 2),
+            ("parametrize_dir", ".json", True): (0, 2),
+            ("parametrize_dir", ".yml", True): (0, 2),
+            ("parametrize_dir", ".txt", False): (2, 0),
+            ("parametrize_dir", ".json", False): (2, 0),
+            ("parametrize_dir", ".yml", False): (2, 0),
+        }
+        loader_name = test_context.loader.__name__
+        expected_collection, expected_setup = expected_opens[(loader_name, file_extension, lazy_loading)]
+        combo = f"loader={loader_name!r}, ext={file_extension!r}, lazy={lazy_loading}"
+        assert collection_opens == expected_collection, (
+            f"{combo}: expected {expected_collection} collection open(s), got {collection_opens}. "
+            f"data_opens={data_opens}"
+        )
+        assert setup_opens == expected_setup, (
+            f"{combo}: expected {expected_setup} setup open(s), got {setup_opens}. data_opens={data_opens}"
+        )
 
     @pytest.mark.parametrize("lazy_loading", [True, False])
     @pytest.mark.parametrize("file_extension", [".txt", ".json", ".yml"], indirect=True)

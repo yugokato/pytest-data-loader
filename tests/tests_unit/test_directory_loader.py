@@ -113,15 +113,16 @@ class TestDirectoryLoaderCaching:
         dir_loader = self._make_dir_loader(lazy_loading=True)
         loaded_files = dir_loader.load()
 
-        # Each child has an lru_cache wrapper registered in _cached_file_loaders at load time
+        # Each child has a _load_now cache registered as its resolver at load time
         assert len(dir_loader._file_loaders) == _NUM_FILES_IN_SOME_DIR
-        for child in dir_loader._file_loaders:
-            assert len(child._cached_functions) == 1
 
-        # Resolve all lazy data to exercise the lru_cache wrappers
+        # Resolve all lazy data to populate children's _loaded_data cache
         for lazy_data in loaded_files:
             assert isinstance(lazy_data, LazyLoadedData)
             lazy_data.resolve()
+
+        for child in dir_loader._file_loaders:
+            assert child._loaded_data is not None
 
         # Capture child loader references before clearing (clear_cache empties the list)
         child_loaders = list(dir_loader._file_loaders)
@@ -131,11 +132,10 @@ class TestDirectoryLoaderCaching:
         # _file_loaders is cleared
         assert dir_loader._file_loaders == []
 
-        # All children's caches are also cleared
+        # All children's caches are reset by clear_cache
         for child in child_loaders:
-            assert child._cached_functions == set()
-            assert child._cached_file_objects == {}
-            assert child._cached_reader_and_split == {}
+            assert child._loaded_data is None
+            assert child._file_handles == []
 
     def test_directory_loader_weakref_finalize(self) -> None:
         """Test that GC-ing a DirectoryLoader triggers the weakref finalizer, clearing child caches"""
@@ -156,8 +156,7 @@ class TestDirectoryLoaderCaching:
         # Finalizer should have cleared _file_loaders (same list object)
         assert file_loaders_ref == []
 
-        # Finalizer should have called clear_cache() on each child
+        # Finalizer should have called clear_cache() on each child, resetting their caches
         for child in child_loaders:
-            assert child._cached_functions == set()
-            assert child._cached_file_objects == {}
-            assert child._cached_reader_and_split == {}
+            assert child._loaded_data is None
+            assert child._file_handles == []
