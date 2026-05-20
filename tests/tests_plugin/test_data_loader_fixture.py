@@ -333,6 +333,27 @@ class TestOnMissingWithFixture:
         else:
             assert "UserWarning: DataNotFound:" not in str(result.stdout)
 
+    def test_jsonl_repeated_call_returns_fresh_generator(self, pytester: Pytester, data_dir: Path) -> None:
+        """Test that calling data_loader twice for the same JSONL file yields a fresh iterator each time.
+
+        The DataLoaderFixture._cache must not store a one-shot generator: the second call would return
+        the already-exhausted object and list(data) would be empty.
+        """
+        (data_dir / "file.jsonl").write_text('{"k": 1}\n{"k": 2}\n')
+
+        pytester.makepyfile("""
+        def test_load(data_loader):
+            data1 = data_loader("file.jsonl")
+            items1 = list(data1)
+            data2 = data_loader("file.jsonl")  # must not be the same exhausted generator
+            items2 = list(data2)
+            assert items1 == [{"k": 1}, {"k": 2}], f"First call: {items1!r}"
+            assert items2 == [{"k": 1}, {"k": 2}], f"Second call: {items2!r}"
+        """)
+        result = pytester.runpytest("-v")
+        assert result.ret == ExitCode.OK
+        result.assert_outcomes(passed=1)
+
     def test_on_missing_warn_no_duplicate_warning(self, pytester: Pytester, data_dir: Path) -> None:
         """Test that calling data_loader twice for the same missing path emits only one warning."""
         path = str(data_dir / "does_not_exist.txt")

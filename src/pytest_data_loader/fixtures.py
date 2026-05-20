@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 import warnings
-from collections.abc import Generator
+from collections.abc import Generator, Iterator
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
@@ -59,6 +59,8 @@ class DataLoaderFixture:
     Call it with a file path (absolute, or relative to the nearest data directory) to load a single
     file at test runtime.  Accepts the same reader, onload, and open() read options as @load.
     Repeated calls with the same arguments within a single test return the cached result without re-reading the file.
+    One-shot iterators (e.g. generators from a .jsonl reader) are intentionally not cached so each call
+    returns a fresh iterator.
     """
 
     def __init__(
@@ -128,7 +130,9 @@ class DataLoaderFixture:
             loaded = file_loader.load()
             assert isinstance(loaded, LoadedData)
             data = loaded.data
-            self._cache[cache_key] = data
+            if not isinstance(data, Iterator):
+                # Skip caching one-shot iterators: the same exhausted object would be returned on the next call.
+                self._cache[cache_key] = data
             return data
         except DataNotFound as e:
             return self._handle_missing_data(cache_key, e)

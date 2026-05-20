@@ -254,15 +254,13 @@ class TestLoaderStacking:
             ...
 
         def test_open_counts():
-            # @load: opened exactly once at first test setup (subsequent tests reuse it via lru_cache)
+            # @load: opened exactly once at first test setup
             assert counter.get("columns.txt", 0) == 1
 
             # @parametrize: 1 scan open (collection) + 1 lazy-load open
-            # (subsequent tests reuse it via _cached_file_objects)
             assert counter.get("rows.txt", 0) == 2
 
             # @parametrize_dir: Each dir file is opened exactly once at first test setup
-            # (subsequent tests reuse it via lru_cache)
             for file in ("a.txt", "b.txt"):
                 assert counter.get(file, 0) == 1
         """)

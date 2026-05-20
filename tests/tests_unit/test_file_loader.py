@@ -4,7 +4,7 @@ import json
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -402,8 +402,12 @@ class TestFileLoaderCaching:
         else:
             assert isinstance(lazy_loaded_data, LazyLoadedData)
             lazy_loaded_data.resolve()
-            # @load and @parametrize_dir: resolve calls _load_now with cache=True, populating _loaded_data.
-            assert file_loader._loaded_data is not None
+            # @load and @parametrize_dir: resolve calls _load_now(cache=True), which populates _loaded_data
+            # unless the file reader returns a one-shot iterator (e.g. .jsonl), which is intentionally skipped.
+            if get_effective_suffix(abs_file_path) == ".jsonl":
+                assert file_loader._loaded_data is None
+            else:
+                assert file_loader._loaded_data is not None
 
         # clear_cache resets _loaded_data and closes the open file handle.
         file_loader.clear_cache()
@@ -747,3 +751,56 @@ class TestFileLoaderWithCompressedFiles:
         loaded = file_loader.load()
         assert isinstance(loaded, LoadedData)
         assert loaded.data == payload
+
+
+class TestEffectiveReadOptionsNormalization:
+    """Tests for FileLoader._effective_read_options mode normalization."""
+
+    @pytest.fixture
+    def txt_loader(self, tmp_path: Path) -> FileLoader:
+        """Return a plain text FileLoader with no explicit read options."""
+        p = tmp_path / "f.txt"
+        p.write_text("hello")
+        load_attrs = DataLoaderLoadAttrs(
+            loader=load,
+            search_from=Path(__file__),
+            fixture_names=("data",),
+            path=p,
+            lazy_loading=False,
+        )
+        return FileLoader(p, load_attrs)
+
+    def test_mode_rt_normalizes_to_r(self, txt_loader: FileLoader) -> None:
+        """Test that _effective_read_options normalizes mode 'rt' to 'r' in the returned dict.
+
+        Regression: before normalization, explicit mode='rt' and auto-detected mode='r' produced
+        different cache keys for the same file even though both open() calls are identical.
+        """
+        opts = txt_loader._effective_read_options(mode="rt")
+        assert opts.get("mode") == "r", f"Expected mode='r', got {opts.get('mode')!r}"
+
+    def test_mode_rt_and_mode_r_produce_same_session_cache_key(self, tmp_path: Path) -> None:
+        """Test that loaders with read_options mode='rt' and mode='r' share a content cache entry."""
+        p = tmp_path / "f.txt"
+        p.write_text("hello")
+
+        def make_loader(read_options: dict) -> FileLoader:
+            attrs = DataLoaderLoadAttrs(
+                loader=load,
+                search_from=Path(__file__),
+                fixture_names=("data",),
+                path=p,
+                lazy_loading=False,
+                read_options=HashableDict(read_options),
+            )
+            return FileLoader(p, attrs)
+
+        fl_rt = make_loader({"mode": "rt"})
+        fl_r = make_loader({"mode": "r"})
+
+        cache = SessionFileCache()
+        on_miss = MagicMock(return_value="hello")
+        # _read_file passes the resolved mode; simulate that with explicit mode="r" for both
+        cache.get_content(fl_rt._build_session_cache_key(fl_rt._effective_read_options(mode="rt")), on_miss)
+        cache.get_content(fl_r._build_session_cache_key(fl_r._effective_read_options(mode="r")), on_miss)
+        assert on_miss.call_count == 1, "'rt' and 'r' must resolve to the same content cache key"

@@ -187,6 +187,20 @@ class TestSessionFileCacheGetContent:
         cache.get_content(_content_key(path="/b.txt"), lambda: "world!")
         assert cache._content_bytes == sys.getsizeof("hello") + sys.getsizeof("world!")
 
+    def test_max_content_bytes_zero_does_not_cache_empty_bytes(self) -> None:
+        """Test that max_content_bytes=0 never stores anything, including zero-byte content.
+
+        Regression: len(b"") == 0, so the guard ``byte_size <= max_content_bytes`` was True when
+        max_content_bytes=0, causing an empty binary file to be cached despite caching being disabled.
+        """
+        cache = SessionFileCache(max_content_bytes=0)
+        key = _content_key(read_options={"mode": "rb"})
+        on_miss = MagicMock(return_value=b"")
+        cache.get_content(key, on_miss)
+        cache.get_content(key, on_miss)
+        assert on_miss.call_count == 2, "on_miss must be called every time when caching is disabled"
+        assert cache._content == {}, "Nothing should be stored when max_content_bytes=0"
+
 
 class TestSessionFileCacheGetHandle:
     """Tests for SessionFileCache.get_handle()"""
@@ -219,6 +233,30 @@ class TestSessionFileCacheGetHandle:
         r2 = cache.get_handle(("/b.txt", 1, 10, HashableDict()), lambda: h2)
         assert r1 is h1
         assert r2 is h2
+
+    def test_pool_never_exceeds_max_open_handles(self) -> None:
+        """Test that the pool never holds more than max_open_handles simultaneously-open handles.
+
+        Regression: the old implementation opened the new handle before evicting the LRU,
+        transiently holding max+1 open fds and risking EMFILE near ulimit.
+        """
+        max_handles = 3
+        cache = SessionFileCache(max_open_handles=max_handles)
+        open_counts: list[int] = []
+        handles: list[StringIO] = []
+
+        def opener(name: str) -> StringIO:
+            h = StringIO(name)
+            handles.append(h)
+            open_counts.append(sum(1 for hh in handles if not hh.closed))
+            return h
+
+        for i in range(max_handles + 3):
+            cache.get_handle((f"/{i}.txt", 1, 10, HashableDict()), lambda n=str(i): opener(n))
+
+        assert max(open_counts) <= max_handles, (
+            f"Pool exceeded max_open_handles={max_handles}: peak was {max(open_counts)}"
+        )
 
     def test_eviction_closes_lru_handle_when_pool_full(self) -> None:
         """Test that LRU handle is closed and removed when pool capacity is exceeded."""

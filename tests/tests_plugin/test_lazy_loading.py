@@ -289,3 +289,33 @@ class TestLazyLoading:
                 f"Eager loading should use at least the data size. "
                 f"total_param_size={total_param_size}, data_size_bytes={data_size_bytes}"
             )
+
+
+class TestGeneratorCaching:
+    """Test that one-shot iterator values from file readers are not cached across resolve calls."""
+
+    def test_jsonl_load_with_stacked_parametrize_all_items_get_full_data(self, pytester: Pytester) -> None:
+        """Test that all stacked-parametrize items each receive the full JSONL iterator.
+
+        When a LazyLoadedData produced by @load is shared across N test items (cartesian product with a
+        stacked @pytest.mark.parametrize), each item's resolve() must yield a fresh generator — not a
+        replayed exhausted one from the _loaded_data cache.
+        """
+        data_dir = pytester.mkdir("data")
+        (data_dir / "file.jsonl").write_text('{"k": 1}\n{"k": 2}\n')
+
+        pytester.makepyfile("""
+        import pytest
+        from pytest_data_loader import load
+
+        @load("data", "file.jsonl")
+        @pytest.mark.parametrize("x", [1, 2, 3])
+        def test_load_stacked(data, x):
+            items = list(data)
+            assert len(items) == 2, f"Expected 2 items for x={x}, got {items!r}"
+            assert items[0] == {"k": 1}
+            assert items[1] == {"k": 2}
+        """)
+        result = pytester.runpytest("-v")
+        assert result.ret == ExitCode.OK
+        result.assert_outcomes(passed=3)

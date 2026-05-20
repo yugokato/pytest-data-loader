@@ -93,7 +93,7 @@ class SessionFileCache:
         # (includes interpreter overhead, varies with code-point width) — deliberate: exact for
         # binary, close-enough for text, consistent cap enforcement across both.
         byte_size = len(data) if isinstance(data, (bytes, bytearray)) else sys.getsizeof(data)
-        if byte_size <= self._max_content_bytes:
+        if self._max_content_bytes > 0 and byte_size <= self._max_content_bytes:
             while self._content and self._content_bytes + byte_size > self._max_content_bytes:
                 _, (_, evicted_size) = self._content.popitem(last=False)
                 self._content_bytes -= evicted_size
@@ -125,14 +125,14 @@ class SessionFileCache:
         if key in self._handles:
             del self._handles[key]
 
-        # New handle opened before evicting the LRU — pool briefly holds max+1 fds.
-        f = on_miss()
+        # Evict the LRU before opening so the pool never exceeds max_open_handles.
         if len(self._handles) >= self._max_open_handles:
             _, lru = self._handles.popitem(last=False)
             try:
                 lru.close()
             except Exception:
                 logger.exception("Failed to close evicted file handle")
+        f = on_miss()
         self._handles[key] = f
         return f
 
