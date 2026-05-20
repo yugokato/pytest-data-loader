@@ -373,7 +373,9 @@ class FileLoader(Loader):
                 data = self.load_attrs.process_func(gidx, self.path, data)
             loaded_data = LoadedData(file_path=self.path, loaded_from=self.load_from, data=data, gidx=gidx)
 
-        if cache:
+        if cache and not (isinstance(loaded_data, LoadedData) and isinstance(loaded_data.data, Iterator)):
+            # Skip caching one-shot iterators: a generator returned by a file_reader cannot be replayed,
+            # so a second resolve() would receive an exhausted object.
             self._loaded_data = loaded_data
 
         return loaded_data
@@ -490,18 +492,17 @@ class FileLoader(Loader):
             # Use the same options as _scan_text_file (text mode, no explicit mode resolution) so
             # that byte positions recorded during scanning remain valid for this handle.
             read_options = self._effective_read_options()
-            return self._file_cache.get_handle(
+            f = self._file_cache.get_handle(
                 self._build_session_cache_key(read_options),
                 on_miss=lambda: compression_aware_open(self.path, **read_options),
             )
         elif self._file_handles and not self._file_handles[0].closed:
             f = self._file_handles[0]
-            f.seek(0)
-            return f
         else:
             f = compression_aware_open(self.path, **self._effective_read_options())
             self._file_handles[:] = [f]
-            return f
+        f.seek(0)
+        return f
 
     @requires_loader(DataLoaderType.PARAMETRIZE)
     def _scan_text_file(self) -> Generator[tuple[int, int, Any, Any]]:
@@ -618,8 +619,11 @@ class FileLoader(Loader):
         :param mode: Optional explicit mode to merge into the returned options.
         """
         options: dict[str, Any] = dict(self.read_options)
-        if mode is not None:
+        if mode:
             options["mode"] = mode
+        # normalize "r" and "rt" to "r"
+        if options.get("mode") == "rt":
+            options["mode"] = "r"
         effective_mode = options.get("mode") or "r"
         if "b" not in effective_mode and "encoding" not in options:
             options["encoding"] = self._effective_encoding
@@ -771,8 +775,8 @@ def _close_files(file_handlers: list[IO[Any]]) -> None:
     for f in file_handlers:
         try:
             f.close()
-        except Exception as e:
-            logger.exception(e)
+        except Exception:
+            logger.exception("Failed to close file handle")
     file_handlers.clear()
 
 
