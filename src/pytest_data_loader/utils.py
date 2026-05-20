@@ -4,6 +4,7 @@ import ast
 import codecs
 import inspect
 import keyword
+import re
 import sys
 from collections.abc import Callable
 from functools import lru_cache, wraps
@@ -218,6 +219,57 @@ def get_data_loader_names() -> list[str]:
     return data_loader_names
 
 
+def can_decode(chunk: bytes, encoding: str) -> bool:
+    """Return True if chunk can be decoded with encoding, tolerating trailing partial multibyte sequences."""
+    try:
+        codecs.getincrementaldecoder(encoding)().decode(chunk, final=False)
+        return True
+    except UnicodeDecodeError:
+        return False
+
+
+def to_bytes(size: str | int | float) -> int:
+    """Convert a human-readable size into a number of bytes.
+
+    Supports decimal units (B, KB, MB, GB, TB, PB) and binary units (KiB, MiB, GiB, TiB, PiB).
+    A bare integer with no unit is interpreted as bytes.
+
+    Examples:
+        "5B"      -> 5
+        "256MiB"  -> 268435456
+        "500MB"   -> 500000000
+        "1048576" -> 1048576
+        "0"       -> 0
+
+    :param size: The size to convert. A string with an optional unit suffix, or a raw int/float number of bytes.
+    """
+    if isinstance(size, (int, float)):
+        return int(size)
+
+    size = size.strip()
+    match = re.fullmatch(r"(\d+)|(\d+(?:\.\d+)?)\s*([kmgtp]i?b|b)", size, flags=re.IGNORECASE)
+    if not match:
+        raise ValueError(f"Invalid value: {size!r}")
+
+    if match.group(1) is not None:
+        return int(match.group(1))
+
+    units = {
+        "B": 1,
+        "KB": 1000,
+        "MB": 1000**2,
+        "GB": 1000**3,
+        "TB": 1000**4,
+        "PB": 1000**5,
+        "KIB": 1024,
+        "MIB": 1024**2,
+        "GIB": 1024**3,
+        "TIB": 1024**4,
+        "PIB": 1024**5,
+    }
+    return int(float(match.group(2)) * units[match.group(3).upper()])
+
+
 def _find_func_node(tree: ast.Module, name: str, lineno: int | None) -> ast.FunctionDef | ast.AsyncFunctionDef | None:
     """Locate the FunctionDef / AsyncFunctionDef node matching *name*, using *lineno* as a tie-breaker.
 
@@ -284,12 +336,3 @@ def _resolve_data_loader_name(call: ast.Call, direct_names: dict[str, str], modu
         if func.value.id in module_aliases and func.attr in get_data_loader_names():
             return func.attr
     return None
-
-
-def can_decode(chunk: bytes, encoding: str) -> bool:
-    """Return True if chunk can be decoded with encoding, tolerating trailing partial multibyte sequences."""
-    try:
-        codecs.getincrementaldecoder(encoding)().decode(chunk, final=False)
-        return True
-    except UnicodeDecodeError:
-        return False

@@ -715,11 +715,12 @@ Plugin default: `utf-8`
 > If you use one of these encodings as the default, configure data loaders for known binary formats with
 > `read_options={"mode": "rb"}` to force binary reads.
 
-### `data_loader_max_cache_bytes`
-Maximum cumulative approximate in-memory size of the session-scoped LRU cache for raw file contents. When the total
-cached size exceeds this limit, the least recently used entries are evicted until the cache size falls below the limit.
-Set to `0` to disable raw-content caching entirely.  
-Plugin default: `268435456` (256 MiB)
+### `data_loader_max_cache_size`
+Maximum total memory allocated to the session-scoped LRU cache for raw file contents. When the cache exceeds this limit, 
+the least recently used entries are automatically evicted until usage falls below the configured size.  
+Supports decimal units (`KB`, `MB`, `GB`, etc.) and binary units (`KiB`, `MiB`, `GiB`, etc.). A bare integer with no
+unit is interpreted as bytes. Set to `0` to disable raw-content caching entirely.  
+Plugin default: `128MiB` (134,217,728 bytes)
 
 ### `data_loader_max_open_files`
 Maximum number of open file handles retained in the session-scoped file-handle pool. When the pool reaches this limit,

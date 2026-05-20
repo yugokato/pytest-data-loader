@@ -76,7 +76,7 @@ class DataLoaderIniOption(StrEnum):
     DATA_LOADER_STRIP_TRAILING_WHITESPACE = auto()
     DATA_LOADER_ON_MISSING = auto()
     DATA_LOADER_DEFAULT_ENCODING = auto()
-    DATA_LOADER_MAX_CACHE_BYTES = auto()
+    DATA_LOADER_MAX_CACHE_SIZE = auto()
     DATA_LOADER_MAX_OPEN_FILES = auto()
 
 
@@ -105,7 +105,7 @@ class DataLoaderOption:
         )
         self.on_missing = self._parse_ini_option(DataLoaderIniOption.DATA_LOADER_ON_MISSING)
         self.default_encoding = self._parse_ini_option(DataLoaderIniOption.DATA_LOADER_DEFAULT_ENCODING)
-        self.max_cache_bytes = self._parse_ini_option(DataLoaderIniOption.DATA_LOADER_MAX_CACHE_BYTES)
+        self.max_cache_bytes = self._parse_ini_option(DataLoaderIniOption.DATA_LOADER_MAX_CACHE_SIZE)
         self.max_open_files = self._parse_ini_option(DataLoaderIniOption.DATA_LOADER_MAX_OPEN_FILES)
 
     def _parse_ini_option(self, option: DataLoaderIniOption) -> str | int | bool | Path:
@@ -163,9 +163,11 @@ class DataLoaderOption:
                     is_valid_encode = codec_info._is_text_encoding
                 if not is_valid_encode:
                     raise ValueError(f"Invalid value: '{v}' is not a valid text encoding")
-            elif option == DataLoaderIniOption.DATA_LOADER_MAX_CACHE_BYTES:
+            elif option == DataLoaderIniOption.DATA_LOADER_MAX_CACHE_SIZE:
+                from pytest_data_loader.utils import to_bytes
+
                 assert isinstance(v, str)
-                return self._parse_int(v, min=0)
+                return to_bytes(v)
             elif option == DataLoaderIniOption.DATA_LOADER_MAX_OPEN_FILES:
                 assert isinstance(v, str)
                 return self._parse_int(v, min=0)

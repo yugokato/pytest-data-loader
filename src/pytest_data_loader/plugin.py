@@ -13,7 +13,7 @@ from pytest import Config, Mark, MarkDecorator, Metafunc, Parser
 from pytest_data_loader.constants import (
     DEFAULT_ENCODING,
     DEFAULT_LOADER_DIR_NAME,
-    DEFAULT_MAX_CACHED_CONTENT_BYTES,
+    DEFAULT_MAX_CACHED_CONTENT_SIZE,
     DEFAULT_MAX_OPEN_FILE_HANDLES,
     PYTEST_DATA_LOADER_ATTRS,
     STASH_KEY_DATA_LOADER_OPTION,
@@ -78,11 +78,12 @@ def pytest_addoption(parser: Parser) -> None:
         help="[pytest-data-loader] The default text encoding to use when opening data files in text mode.",
     )
     parser.addini(
-        DataLoaderIniOption.DATA_LOADER_MAX_CACHE_BYTES,
+        DataLoaderIniOption.DATA_LOADER_MAX_CACHE_SIZE,
         type="string",
-        default=str(DEFAULT_MAX_CACHED_CONTENT_BYTES),
-        help="[pytest-data-loader] Cumulative byte cap for the session-scoped raw file content cache. "
-        "Set to 0 to disable raw-content caching.",
+        default=DEFAULT_MAX_CACHED_CONTENT_SIZE,
+        help="[pytest-data-loader] Maximum total size of the session-scoped raw file content cache. Supports decimal "
+        "units (KB, MB, GB, etc.) and binary units (KiB, MiB, GiB, etc.). A bare integer with no unit is interpreted "
+        "as bytes. Set to 0 to disable raw-content caching.",
     )
     parser.addini(
         DataLoaderIniOption.DATA_LOADER_MAX_OPEN_FILES,
@@ -98,8 +99,7 @@ def pytest_configure(config: Config) -> None:
     option = DataLoaderOption(config)
     config.stash[STASH_KEY_DATA_LOADER_OPTION] = option
     config.stash[STASH_KEY_FILE_CACHE] = SessionFileCache(
-        max_content_bytes=cast(int, option.max_cache_bytes),
-        max_open_handles=cast(int, option.max_open_files),
+        max_content_bytes=cast(int, option.max_cache_bytes), max_open_handles=cast(int, option.max_open_files)
     )
 
 

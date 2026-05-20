@@ -7,7 +7,6 @@ from pytest import ExitCode
 from pytest_data_loader import load
 from pytest_data_loader.constants import (
     DEFAULT_LOADER_DIR_NAME,
-    DEFAULT_MAX_CACHED_CONTENT_BYTES,
     DEFAULT_MAX_OPEN_FILE_HANDLES,
     ROOT_DIR,
 )
@@ -239,14 +238,17 @@ class TestIniOptions:
         )
 
     @pytest.mark.parametrize("collect_only", [True, False])
-    @pytest.mark.parametrize("max_cache_bytes", ["0", "1", "1048576", str(DEFAULT_MAX_CACHED_CONTENT_BYTES)])
-    def test_ini_option_data_loader_max_cache_bytes(
-        self, test_context: TestContext, collect_only: bool, max_cache_bytes: str
+    @pytest.mark.parametrize(
+        "max_cache_size",
+        ["0", "1048576", "1B", "1KB", "1MB", "1GB", "1TB", "1PB", "1KiB", "1MiB", "1GiB", "1TiB", "1PiB"],
+    )
+    def test_ini_option_data_loader_max_cache_size(
+        self, test_context: TestContext, collect_only: bool, max_cache_size: str
     ) -> None:
-        """Test data_loader_max_cache_bytes INI option with valid values"""
+        """Test data_loader_max_cache_size INI option with valid values"""
         test_context.pytester.makeini(f"""
         [pytest]
-        {DataLoaderIniOption.DATA_LOADER_MAX_CACHE_BYTES} = {max_cache_bytes}
+        {DataLoaderIniOption.DATA_LOADER_MAX_CACHE_SIZE} = {max_cache_size}
         """)
         result = run_pytest_with_context(test_context, collect_only=collect_only)
         assert result.ret == ExitCode.OK
@@ -269,23 +271,23 @@ class TestIniOptions:
             result.assert_outcomes(passed=test_context.num_expected_tests)
 
     @pytest.mark.parametrize("collect_only", [True, False])
-    @pytest.mark.parametrize("invalid_value", ["", "-1", "abc", "1.5", "1e6"])
-    def test_ini_option_data_loader_max_cache_bytes_invalid(
+    @pytest.mark.parametrize("invalid_value", ["", "-1", "abc", "1.5", "1e6", "1IB", "1.2.3MiB"])
+    def test_ini_option_data_loader_max_cache_size_invalid(
         self, test_context: TestContext, collect_only: bool, invalid_value: str
     ) -> None:
-        """Test data_loader_max_cache_bytes INI option with invalid values"""
+        """Test data_loader_max_cache_size INI option with invalid values"""
         test_context.pytester.makeini(f"""
         [pytest]
-        {DataLoaderIniOption.DATA_LOADER_MAX_CACHE_BYTES} = {invalid_value}
+        {DataLoaderIniOption.DATA_LOADER_MAX_CACHE_SIZE} = {invalid_value}
         """)
         result = run_pytest_with_context(test_context, collect_only=collect_only)
         assert result.ret == ExitCode.USAGE_ERROR
-        assert f"INI option {DataLoaderIniOption.DATA_LOADER_MAX_CACHE_BYTES}: Invalid value: '{invalid_value}'" in str(
+        assert f"INI option {DataLoaderIniOption.DATA_LOADER_MAX_CACHE_SIZE}: Invalid value: '{invalid_value}'" in str(
             result.stderr
         )
 
     @pytest.mark.parametrize("collect_only", [True, False])
-    @pytest.mark.parametrize("invalid_value", ["", "-1", "abc", "1.5"])
+    @pytest.mark.parametrize("invalid_value", ["", "-1", "abc", "1.5", "MiB"])
     def test_ini_option_data_loader_max_open_files_invalid(
         self, test_context: TestContext, collect_only: bool, invalid_value: str
     ) -> None:
