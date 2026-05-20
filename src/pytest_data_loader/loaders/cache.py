@@ -6,8 +6,9 @@ from collections import OrderedDict
 from collections.abc import Callable
 from typing import IO, Any, Literal
 
-from pytest_data_loader.constants import DEFAULT_MAX_CACHED_CONTENT_BYTES, DEFAULT_MAX_OPEN_FILE_HANDLES
+from pytest_data_loader.constants import DEFAULT_MAX_CACHED_CONTENT_SIZE, DEFAULT_MAX_OPEN_FILE_HANDLES
 from pytest_data_loader.types import HashableDict
+from pytest_data_loader.utils import to_bytes
 
 logger = logging.getLogger(__name__)
 
@@ -47,16 +48,16 @@ class SessionFileCache:
           SessionFileCache instance. The configured byte cap therefore applies per worker, not globally.
     """
 
-    def __init__(
-        self,
-        max_content_bytes: int = DEFAULT_MAX_CACHED_CONTENT_BYTES,
-        max_open_handles: int = DEFAULT_MAX_OPEN_FILE_HANDLES,
-    ) -> None:
+    def __init__(self, max_content_bytes: int | None = None, max_open_handles: int | None = None) -> None:
         """Initialize the session file cache.
 
         :param max_content_bytes: Cumulative byte cap for the raw-content LRU cache.
         :param max_open_handles: Maximum number of simultaneously open pooled file handles.
         """
+        if max_content_bytes is None:
+            max_content_bytes = to_bytes(DEFAULT_MAX_CACHED_CONTENT_SIZE)
+        if max_open_handles is None:
+            max_open_handles = DEFAULT_MAX_OPEN_FILE_HANDLES
         self._max_content_bytes = max_content_bytes
         self._max_open_handles = max_open_handles
         # (content, measured byte size) ordered oldest → newest

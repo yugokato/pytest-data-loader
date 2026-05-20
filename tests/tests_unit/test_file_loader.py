@@ -784,7 +784,7 @@ class TestEffectiveReadOptionsNormalization:
         p = tmp_path / "f.txt"
         p.write_text("hello")
 
-        def make_loader(read_options: dict) -> FileLoader:
+        def make_loader(read_options: dict[str, Any]) -> FileLoader:
             attrs = DataLoaderLoadAttrs(
                 loader=load,
                 search_from=Path(__file__),
