@@ -18,7 +18,7 @@ from pytest_data_loader.exceptions import DataNotFound
 T = TypeVar("T")
 P = ParamSpec("P")
 Func = TypeVar("Func", bound=Callable[..., Any])
-JsonType: TypeAlias = str | int | float | bool | None | list["JsonType"] | dict[str, "JsonType"]
+JsonType: TypeAlias = str | int | float | bool | list["JsonType"] | dict[str, "JsonType"] | None
 LoadedDataType: TypeAlias = JsonType | bytes | tuple[str, JsonType] | object | Iterable["LoadedDataType"]
 PytestMarkType: TypeAlias = MarkDecorator | Collection[MarkDecorator | Mark]
 ReadOptions: TypeAlias = Union["FileReadOptions", dict[str, Any]]
