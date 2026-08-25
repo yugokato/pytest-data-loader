@@ -726,3 +726,16 @@ Plugin default: `128MiB` (134,217,728 bytes)
 Maximum number of open file handles retained in the session-scoped file-handle pool. When the pool reaches this limit,
 the least recently used handle is closed before a new handle is added. Set to `0` to disable handle pooling.  
 Plugin default: `64`
+
+
+## Development
+
+This project uses [uv](https://docs.astral.sh/uv/) for dependency management. Editing dependencies in
+`pyproject.toml` requires re-running `uv lock` and committing the updated `uv.lock`. CI rejects a stale lock.
+
+```bash
+uv sync                      # create .venv with all dev dependencies
+uv run pre-commit install    # install git hooks (keeps uv.lock in sync)
+uv run pytest tests -n auto  # run the test suite
+uv run tox                   # run the full test/lint matrix
+```
