@@ -1,3 +1,6 @@
+import importlib.util
+from pathlib import Path
+
 import pytest
 
 from pytest_data_loader.utils import to_bytes
@@ -127,3 +130,25 @@ class TestToBytes:
         """Test that invalid size strings raise ValueError with a descriptive message."""
         with pytest.raises(ValueError, match=f"Invalid value: {invalid.strip()!r}"):
             to_bytes(invalid)
+
+
+class TestGetCallerPath:
+    """Tests for the get_caller_path() helper."""
+
+    def test_get_caller_path_returns_file_that_called_the_calling_function(self, tmp_path: Path) -> None:
+        """Test that the file that called the function using the helper is returned, not the function's own file."""
+        module_path = tmp_path / "caller_helper.py"
+        module_path.write_text(
+            "from pytest_data_loader.utils import get_caller_path\n"
+            "\n"
+            "\n"
+            "def call_helper():\n"
+            "    return get_caller_path()\n"
+        )
+        spec = importlib.util.spec_from_file_location("caller_helper", module_path)
+        assert spec is not None
+        assert spec.loader is not None
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+
+        assert module.call_helper() == Path(__file__).resolve()

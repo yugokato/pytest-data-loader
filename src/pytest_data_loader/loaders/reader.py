@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import inspect
 import json
 from collections import defaultdict
 from collections.abc import Callable, Generator
@@ -9,6 +8,7 @@ from threading import RLock
 from typing import IO, Any, ClassVar
 
 from pytest_data_loader.types import HashableDict, ReadOptions
+from pytest_data_loader.utils import get_caller_path
 from pytest_data_loader.validators import validate_read_options, validate_reader
 
 __all__ = ["register_reader"]
@@ -94,8 +94,7 @@ def register_reader(
     :param file_reader: A reader callable (e.g. csv.reader, yaml.safe_load) to register for the extension
     :param read_options: File read options to pass to open() when reading the file
     """
-    caller_frame = inspect.stack()[1]
-    caller_file = Path(caller_frame.filename).resolve()
+    caller_file = get_caller_path()
 
     if caller_file.name != "conftest.py":
         raise RuntimeError(
