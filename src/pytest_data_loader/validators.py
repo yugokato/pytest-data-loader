@@ -6,7 +6,7 @@ import warnings
 from collections.abc import Callable, Iterable
 from inspect import Parameter
 from pathlib import Path
-from typing import Any
+from typing import Any, get_args
 
 from pytest import Mark, MarkDecorator
 
@@ -17,6 +17,7 @@ from pytest_data_loader.types import (
     DataLoaderFunctionType,
     DataLoaderType,
     FileReadOptions,
+    FixtureScope,
     HashableDict,
     PytestMarkType,
 )
@@ -275,6 +276,16 @@ def validate_read_options(read_options: Any) -> None:
         raise ValueError(f"read_options: Unsupported read options: {', '.join(unsupported)}")
     if (mode := read_options.get("mode")) and mode not in ("r", "rt", "rb"):
         raise ValueError(f"read_options: Invalid read mode: {mode}")
+
+
+def validate_fixture_scope(scope: Any) -> None:
+    """Validate the fixture scope
+
+    :param scope: Fixture scope passed by the caller
+    """
+    valid_scopes = get_args(FixtureScope)
+    if scope not in valid_scopes:
+        raise ValueError(f"scope: Must be one of {', '.join(valid_scopes)}, but got {scope!r}")
 
 
 def _get_type_name(val: Any) -> str:

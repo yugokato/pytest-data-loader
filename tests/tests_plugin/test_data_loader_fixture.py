@@ -1,20 +1,133 @@
 import json
 from pathlib import Path
+from typing import Any
 
 import pytest
-from pytest import ExitCode, Pytester
+from pytest import ExitCode, Pytester, RunResult
 
 from pytest_data_loader.types import DataLoaderIniOption, DataLoaderOnMissingAction
 
 pytestmark = pytest.mark.plugin
 
+BUILTIN_FIXTURE = "data_loader"
+SCOPED_FIXTURE = "scoped_loader"
+PROBE_REPORT_PREFIX = "PROBE_REPORT:"
+# Conftest source that counts how data loader fixtures use file loaders and the session file cache
+PROBE_CONFTEST = f"""
+import json
+
+import pytest
+from pytest_data_loader import make_data_loader_fixture
+from pytest_data_loader.loaders.cache import SessionFileCache
+from pytest_data_loader.loaders.impl import FileLoader
+
+report = dict(file_loaders_created=0, session_cache_reads=0, clear_calls=0, clear_calls_after_teardown=[])
+original_init = FileLoader.__init__
+original_clear_cache = FileLoader.clear_cache
+original_get_content = SessionFileCache.get_content
+
+
+def counting_init(self, *args, **kwargs):
+    report["file_loaders_created"] += 1
+    original_init(self, *args, **kwargs)
+
+
+def counting_clear_cache(self):
+    report["clear_calls"] += 1
+    original_clear_cache(self)
+
+
+def counting_get_content(self, *args, **kwargs):
+    report["session_cache_reads"] += 1
+    return original_get_content(self, *args, **kwargs)
+
+
+FileLoader.__init__ = counting_init
+FileLoader.clear_cache = counting_clear_cache
+SessionFileCache.get_content = counting_get_content
+
+
+@pytest.hookimpl(hookwrapper=True)
+def pytest_runtest_teardown(item):
+    yield
+    report["clear_calls_after_teardown"].append(report["clear_calls"])
+
+
+def pytest_terminal_summary():
+    print("{PROBE_REPORT_PREFIX}" + json.dumps(report))
+
+
+def pytest_unconfigure():
+    FileLoader.__init__ = original_init
+    FileLoader.clear_cache = original_clear_cache
+    SessionFileCache.get_content = original_get_content
+"""
+# File content written by the probe project and the data expected to be loaded from it
+FILE_CONTENTS: dict[str, tuple[str, Any]] = {
+    ".txt": ("hello", "hello"),
+    ".json": (json.dumps({"key": "value"}), {"key": "value"}),
+}
+
+
+@pytest.fixture
+def data_dir(pytester: Pytester) -> Path:
+    return pytester.mkdir("data")
+
+
+def run_scoped_loader_tests(
+    pytester: Pytester, scope: str | None, *, file_name: str = "file.json", num_modules: int = 1
+) -> dict[str, Any]:
+    """Run tests that load the same file with a data loader fixture and return the report from the probe conftest.
+
+    Each test module has a test class with two tests. A class-scoped fixture is torn down per test unless the tests
+    share a class.
+
+    :param pytester: The pytester fixture
+    :param scope: The scope of a fixture created with `make_data_loader_fixture()`. None uses the built-in fixture
+    :param file_name: Name of the data file to load. The extension decides the file content
+    :param num_modules: Number of test modules to create
+    """
+    content, expected = FILE_CONTENTS[Path(file_name).suffix]
+    pytester.makefile(Path(file_name).suffix, **{f"data/{Path(file_name).stem}": content})
+    conftest = PROBE_CONFTEST
+    fixture_name = BUILTIN_FIXTURE
+    if scope is not None:
+        fixture_name = SCOPED_FIXTURE
+        conftest += f"\n{SCOPED_FIXTURE} = make_data_loader_fixture(scope={scope!r})\n"
+    pytester.makeconftest(conftest)
+    for i in range(num_modules):
+        pytester.makepyfile(
+            **{
+                f"test_module{i}": f"""
+                class TestLoad:
+                    def test_first(self, {fixture_name}):
+                        assert {fixture_name}({file_name!r}) == {expected!r}
+
+                    def test_second(self, {fixture_name}):
+                        assert {fixture_name}({file_name!r}) == {expected!r}
+                """
+            }
+        )
+
+    result = pytester.runpytest("-vs")
+    assert result.ret == ExitCode.OK
+    result.assert_outcomes(passed=2 * num_modules)
+    return get_probe_report(result)
+
+
+def get_probe_report(result: RunResult) -> dict[str, Any]:
+    """Return the report printed by the probe conftest
+
+    :param result: The result of a pytester run that used the probe conftest
+    """
+    line = next((x for x in result.outlines if x.startswith(PROBE_REPORT_PREFIX)), None)
+    assert line is not None, f"{PROBE_REPORT_PREFIX} not found in output:\n{result.stdout.str()}"
+    report: dict[str, Any] = json.loads(line[len(PROBE_REPORT_PREFIX) :])
+    return report
+
 
 class TestDataLoaderFixture:
     """Tests for the data_loader fixture."""
-
-    @pytest.fixture
-    def data_dir(self, pytester: Pytester) -> Path:
-        return pytester.mkdir("data")
 
     @pytest.mark.parametrize("is_abs", [True, False])
     def test_load_data(self, pytester: Pytester, data_dir: Path, is_abs: bool) -> None:
@@ -141,48 +254,6 @@ class TestDataLoaderFixture:
         assert result.ret == ExitCode.OK
         result.assert_outcomes(passed=1)
 
-    def test_cache_cleared_at_module_teardown(self, pytester: Pytester, data_dir: Path) -> None:
-        """Test that FileLoader instances created by data_loader are cleared by module teardown."""
-        json_file = data_dir / "file.json"
-        json_file.write_text(json.dumps({"key": "value"}))
-
-        pytester.makeconftest("""
-        import json
-        import pytest
-        from pytest_data_loader.loaders.impl import FileLoader
-
-        _clear_cache_call_count = 0
-        _original_clear_cache = FileLoader.clear_cache
-
-        def _counting_clear_cache(self) -> None:
-            global _clear_cache_call_count
-            _clear_cache_call_count += 1
-            _original_clear_cache(self)
-
-        FileLoader.clear_cache = _counting_clear_cache
-
-        def pytest_terminal_summary() -> None:
-            FileLoader.clear_cache = _original_clear_cache
-            print("CLEAR_CACHE_REPORT:" + json.dumps({"calls": _clear_cache_call_count}))
-        """)
-        pytester.makepyfile(f"""
-        import json
-        from pathlib import Path
-
-        def test_load(data_loader):
-            data = data_loader(Path({str(json_file)!r}))
-            assert data == {{"key": "value"}}
-        """)
-        result = pytester.runpytest("-vs")
-        assert result.ret == ExitCode.OK
-        result.assert_outcomes(passed=1)
-
-        report_prefix = "CLEAR_CACHE_REPORT:"
-        report_line = next((line for line in result.outlines if line.startswith(report_prefix)), None)
-        assert report_line is not None
-        report = json.loads(report_line[len(report_prefix) :])
-        assert report["calls"] == 1
-
     def test_multiple_calls_same_file(self, pytester: Pytester, data_dir: Path) -> None:
         """Test that repeated calls with the same path return cached data without creating a new FileLoader."""
         (data_dir / "file.txt").write_text("hello")
@@ -287,10 +358,6 @@ class TestDataLoaderFixture:
 class TestOnMissingWithFixture:
     """Tests for the data_loader_on_missing INI option behavior with the data_loader fixture."""
 
-    @pytest.fixture
-    def data_dir(self, pytester: Pytester) -> Path:
-        return pytester.mkdir("data")
-
     @pytest.mark.parametrize("is_abs", [True, False])
     @pytest.mark.parametrize("on_missing", DataLoaderOnMissingAction)
     def test_on_missing(
@@ -369,4 +436,170 @@ class TestOnMissingWithFixture:
         result = pytester.runpytest("-v", "-W", "always")
         assert result.ret == ExitCode.OK
         result.assert_outcomes(passed=1)
+        assert str(result.stdout).count("UserWarning: DataNotFound:") == 1
+
+
+class TestDataLoaderFixtureScope:
+    """Tests for the built-in data_loader fixture and fixtures created with make_data_loader_fixture()."""
+
+    @pytest.mark.parametrize("scope", ["function", "class", "module", "package", "session"])
+    def test_loader_usable_from_fixture_with_same_scope(self, pytester: Pytester, data_dir: Path, scope: str) -> None:
+        """Test that a data loader fixture of any scope can be requested from a fixture with the same scope."""
+        (data_dir / "config.json").write_text(json.dumps({"key": "value"}))
+        pytester.makeconftest(f"""
+        import pytest
+        from pytest_data_loader import make_data_loader_fixture
+
+        {SCOPED_FIXTURE} = make_data_loader_fixture(scope={scope!r})
+
+        @pytest.fixture(scope={scope!r})
+        def loaded_config({SCOPED_FIXTURE}):
+            return {SCOPED_FIXTURE}("config.json")
+        """)
+        pytester.makepyfile("""
+        def test_config(loaded_config):
+            assert loaded_config == {"key": "value"}
+        """)
+        result = pytester.runpytest("-v")
+        assert result.ret == ExitCode.OK
+        result.assert_outcomes(passed=1)
+
+    @pytest.mark.parametrize(
+        ("scope", "expected_counts"),
+        [
+            (None, [1, 2]),
+            ("function", [1, 2]),
+            ("class", [0, 1]),
+            ("module", [0, 1]),
+            ("package", [0, 1]),
+            ("session", [0, 1]),
+        ],
+    )
+    def test_file_loaders_cleared_at_fixture_teardown(
+        self, pytester: Pytester, scope: str | None, expected_counts: list[int]
+    ) -> None:
+        """Test that file loaders created by a data loader fixture are cleared when the fixture is torn down.
+
+        The expected counts are the number of clear_cache() calls recorded after the teardown of each of the two tests.
+        A scope of None means the built-in data_loader fixture.
+        """
+        report = run_scoped_loader_tests(pytester, scope)
+        assert report["clear_calls_after_teardown"] == expected_counts
+
+    @pytest.mark.parametrize("file_name", ["file.txt", "file.json"])
+    @pytest.mark.parametrize(
+        ("scope", "expected_loads"),
+        [(None, 4), ("function", 4), ("class", 2), ("module", 2), ("package", 1), ("session", 1)],
+    )
+    def test_data_cached_for_fixture_lifetime(
+        self, pytester: Pytester, scope: str | None, expected_loads: int, file_name: str
+    ) -> None:
+        """Test that a data loader fixture loads a file once per fixture lifetime without using the session cache.
+
+        The txt file has no file reader and the json file uses the built-in reader. Both are cached the same way.
+        """
+        report = run_scoped_loader_tests(pytester, scope, file_name=file_name, num_modules=2)
+        assert report["file_loaders_created"] == expected_loads
+        assert report["session_cache_reads"] == 0
+
+    @pytest.mark.parametrize(
+        ("scope", "expected"),
+        [("function", "sub"), ("class", "sub"), ("module", "sub"), ("package", "root"), ("session", "root")],
+    )
+    def test_relative_path_search_location(self, pytester: Pytester, scope: str, expected: str) -> None:
+        """Test that a relative path is searched from the test file for the function, class, and module scopes.
+
+        The package and session scopes search from the file that created the fixture.
+        """
+        pytester.makefile(".txt", **{"data/file": "root", "sub/data/file": "sub"})
+        pytester.makeconftest(f"""
+        from pytest_data_loader import make_data_loader_fixture
+
+        {SCOPED_FIXTURE} = make_data_loader_fixture(scope={scope!r})
+        """)
+        pytester.makepyfile(
+            **{
+                "sub/test_file": f"""
+                def test_load({SCOPED_FIXTURE}):
+                    assert {SCOPED_FIXTURE}("file.txt") == {expected!r}
+                """
+            }
+        )
+        result = pytester.runpytest("-v")
+        assert result.ret == ExitCode.OK
+        result.assert_outcomes(passed=1)
+
+    def test_registered_reader_search_location(self, pytester: Pytester) -> None:
+        """Test that a session scoped fixture uses the file readers registered for the file that created the fixture."""
+        pytester.makefile(".yaml", **{"data/file": "content"})
+        pytester.makeconftest(f"""
+        from pytest_data_loader import make_data_loader_fixture, register_reader
+
+        def reader(f):
+            return "root", f.read()
+
+        register_reader(".yaml", reader)
+        {SCOPED_FIXTURE} = make_data_loader_fixture(scope="session")
+        """)
+        pytester.makepyfile(
+            **{
+                "sub/conftest": """
+                from pytest_data_loader import register_reader
+
+                def reader(f):
+                    return "sub", f.read()
+
+                register_reader(".yaml", reader)
+                """,
+                "sub/test_file": f"""
+                def test_load({SCOPED_FIXTURE}, data_loader):
+                    assert {SCOPED_FIXTURE}("file.yaml") == ("root", "content")
+                    assert data_loader("file.yaml") == ("sub", "content")
+                """,
+            }
+        )
+        result = pytester.runpytest("-v")
+        assert result.ret == ExitCode.OK
+        result.assert_outcomes(passed=1)
+
+    def test_jsonl_returns_fresh_iterator_across_tests(self, pytester: Pytester, data_dir: Path) -> None:
+        """Test that tests sharing a session scoped fixture each receive a fresh iterator for the same JSONL file."""
+        (data_dir / "file.jsonl").write_text('{"k": 1}\n{"k": 2}\n')
+        pytester.makeconftest(f"""
+        from pytest_data_loader import make_data_loader_fixture
+
+        {SCOPED_FIXTURE} = make_data_loader_fixture(scope="session")
+        """)
+        pytester.makepyfile(f"""
+        def test_first({SCOPED_FIXTURE}):
+            assert list({SCOPED_FIXTURE}("file.jsonl")) == [{{"k": 1}}, {{"k": 2}}]
+
+        def test_second({SCOPED_FIXTURE}):
+            assert list({SCOPED_FIXTURE}("file.jsonl")) == [{{"k": 1}}, {{"k": 2}}]
+        """)
+        result = pytester.runpytest("-v")
+        assert result.ret == ExitCode.OK
+        result.assert_outcomes(passed=2)
+
+    def test_on_missing_warn_once_per_fixture_lifetime(self, pytester: Pytester, data_dir: Path) -> None:
+        """Test that a missing path warns only once when tests share a session scoped fixture."""
+        pytester.makeini(f"""
+        [pytest]
+        {DataLoaderIniOption.DATA_LOADER_ON_MISSING} = {DataLoaderOnMissingAction.WARN.value}
+        """)
+        pytester.makeconftest(f"""
+        from pytest_data_loader import make_data_loader_fixture
+
+        {SCOPED_FIXTURE} = make_data_loader_fixture(scope="session")
+        """)
+        pytester.makepyfile(f"""
+        def test_first({SCOPED_FIXTURE}):
+            assert {SCOPED_FIXTURE}("does_not_exist.txt") is None
+
+        def test_second({SCOPED_FIXTURE}):
+            assert {SCOPED_FIXTURE}("does_not_exist.txt") is None
+        """)
+        result = pytester.runpytest("-v", "-W", "always")
+        assert result.ret == ExitCode.OK
+        result.assert_outcomes(passed=2)
         assert str(result.stdout).count("UserWarning: DataNotFound:") == 1

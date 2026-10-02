@@ -51,7 +51,7 @@ def resolve_relative_path(
     assert search_from.exists()
     assert search_from.is_absolute()
     if not search_from.is_relative_to(data_loader_root_dir):
-        raise ValueError(f"The test file location {search_from} is not in the subpath of {data_loader_root_dir}")
+        raise ValueError(f"The search location {search_from} is not in the subpath of {data_loader_root_dir}")
 
     data_dirs = []
     if search_from.is_file():

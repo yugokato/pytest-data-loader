@@ -219,6 +219,11 @@ def get_data_loader_names() -> list[str]:
     return data_loader_names
 
 
+def get_caller_path() -> Path:
+    """Return the resolved path of the file that called the function calling this helper"""
+    return Path(inspect.stack(context=0)[2].filename).resolve()
+
+
 def can_decode(chunk: bytes, encoding: str) -> bool:
     """Return True if chunk can be decoded with encoding, tolerating trailing partial multibyte sequences."""
     try:
