@@ -22,6 +22,7 @@ JsonType: TypeAlias = str | int | float | bool | list["JsonType"] | dict[str, "J
 LoadedDataType: TypeAlias = JsonType | bytes | tuple[str, JsonType] | object | Iterable["LoadedDataType"]
 PytestMarkType: TypeAlias = MarkDecorator | Collection[MarkDecorator | Mark]
 ReadOptions: TypeAlias = Union["FileReadOptions", dict[str, Any]]
+FixtureScope: TypeAlias = Literal["function", "class", "module", "package", "session"]
 
 # Loader callable option types
 FileReader: TypeAlias = Callable[[IO[Any]], Any]

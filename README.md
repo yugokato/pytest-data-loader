@@ -421,6 +421,42 @@ def test_env_specific_cases(data_loader: DataLoaderFixture, env: str, filename: 
 > You can combine the `data_loader` fixture with `@load`, `@parametrize`, and `@parametrize_dir` in the same test 
 > function. This is useful when some data paths are static while others are determined dynamically at runtime
 
+Loaded data is cached for the lifetime of the fixture. Calling the fixture again with the same arguments returns the 
+same data without re-reading the file, and the cache is released when the fixture is torn down. One-shot iterators, 
+such as the generator returned for a `.jsonl` file, are not cached, so each call returns a fresh iterator.
+
+### Using a different fixture scope
+
+The built-in `data_loader` fixture is function-scoped, so a fixture with a wider scope cannot use it. Use 
+`make_data_loader_fixture()` to create a data loader fixture with any scope (`function`, `class`, `module`, `package`, 
+or `session`). Assign the result to a module-level name in a `conftest.py` or a test module. The name becomes the 
+fixture name:
+
+```python
+# conftest.py
+
+import pytest
+
+from pytest_data_loader import DataLoaderFixture, make_data_loader_fixture
+
+session_data_loader = make_data_loader_fixture(scope="session")
+
+
+@pytest.fixture(scope="session")
+def api_config(session_data_loader: DataLoaderFixture, env: str) -> dict:
+    return session_data_loader(f"{env}/config.json")
+```
+
+> [!NOTE]
+> - The data is loaded once per scope and shared by every test in that scope. Copy it before mutating it
+> - A relative path is searched from the test file for the `function`, `class`, and `module` scopes. The `package` and 
+>   `session` scopes have no single test file, so the file that calls `make_data_loader_fixture()` is used instead. 
+>   This also decides which `conftest.py`-level file readers apply
+> - A file reader may keep the file open until the fixture is torn down. A call that is not served from the cache 
+>   opens the file again. This happens on every call that returns a one-shot iterator (such as a `.jsonl` file) and 
+>   on every new `reader` or `onload` function. With a wide scope, define these functions at module level, and use 
+>   the built-in `data_loader` fixture in tests that load one-shot iterators
+
 
 
 ## Lazy Loading
@@ -614,6 +650,10 @@ To reduce repeated I/O and parsing work during a test session, the plugin uses t
   - Reduces repeated parsing and transformation work across parametrized test cases that reuse the same source data
 
 The session-scoped cache can be tuned or disabled via the INI options.
+
+These layers apply to the `@load`, `@parametrize`, and `@parametrize_dir` data loaders. The 
+[`data_loader` fixture](#the-data_loader-fixture) does not use them. It caches the loaded data for the lifetime of the 
+fixture instead.
 
 
 

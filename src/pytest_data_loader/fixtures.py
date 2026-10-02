@@ -2,19 +2,14 @@ from __future__ import annotations
 
 import logging
 import warnings
-from collections.abc import Generator, Iterator
+from collections.abc import Callable, Generator, Iterator
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
 import pytest
 from _pytest.fixtures import FixtureRequest
-from pytest import Config
 
-from pytest_data_loader.constants import (
-    PYTEST_DATA_LOADER_MODULE_CACHE,
-    STASH_KEY_DATA_LOADER_OPTION,
-    STASH_KEY_FILE_CACHE,
-)
+from pytest_data_loader.constants import PYTEST_DATA_LOADER_MODULE_CACHE, STASH_KEY_DATA_LOADER_OPTION
 from pytest_data_loader.exceptions import DataNotFound
 from pytest_data_loader.loaders.impl import create_loaders
 from pytest_data_loader.loaders.loaders import load
@@ -25,62 +20,85 @@ from pytest_data_loader.types import (
     DataLoaderOnMissingAction,
     DataLoaderOption,
     FileReader,
+    FixtureScope,
     HashableDict,
     LoadedData,
     OnloadFunc,
     ReadOptions,
 )
-from pytest_data_loader.validators import validate_loader_func, validate_path, validate_read_options, validate_reader
+from pytest_data_loader.utils import get_caller_path
+from pytest_data_loader.validators import (
+    validate_fixture_scope,
+    validate_loader_func,
+    validate_path,
+    validate_read_options,
+    validate_reader,
+)
 
 if TYPE_CHECKING:
-    from pytest_data_loader.loaders.cache import SessionFileCache
     from pytest_data_loader.loaders.impl import Loader
 
 
-__all__ = ["DataLoaderFixture", "data_loader"]
+__all__ = ["DataLoaderFixture", "data_loader", "make_data_loader_fixture"]
 
 logger = logging.getLogger(__name__)
 
 
-@pytest.fixture
-def data_loader(request: FixtureRequest, pytestconfig: Config) -> DataLoaderFixture:
-    """Returns a callable that loads a single file and returns the file data.
+def make_data_loader_fixture(scope: FixtureScope) -> Callable[..., Any]:
+    """Create a data loader fixture with the specified scope.
 
-    This is an alternative to the @load data loader for cases where the file path is only known at test time.
+    Assign the returned fixture to a module-level name in a `conftest.py` or a test module (not in a class body).
+    The name becomes the fixture name. The fixture provides a callable that loads a single file at runtime, the same
+    way as the built-in `data_loader` fixture. Loaded data is cached until the fixture is torn down.
+
+    A relative path is searched from the test file for the function, class, and module scopes. The package and session
+    scopes have no single test file, so the file that calls this function is used instead.
+
+    :param scope: The fixture scope. Use a scope that is equal to or wider than the scope of the fixtures and tests
+                  that need the data
     """
-    data_loader_option = pytestconfig.stash[STASH_KEY_DATA_LOADER_OPTION]
-    file_cache = pytestconfig.stash[STASH_KEY_FILE_CACHE]
-    return DataLoaderFixture(request, data_loader_option, file_cache=file_cache)
+    validate_fixture_scope(scope)
+    defined_in = None if scope in ("function", "class", "module") else get_caller_path()
+
+    @pytest.fixture(scope=scope)
+    def _data_loader(request: FixtureRequest) -> Generator[DataLoaderFixture]:
+        """Returns a callable that loads a single file and returns the file data.
+
+        This is an alternative to the @load data loader for cases where the file path is only known at runtime.
+        The loaded data is cached until the fixture is torn down.
+        """
+        data_loader_option = request.config.stash[STASH_KEY_DATA_LOADER_OPTION]
+        loader = DataLoaderFixture(data_loader_option, search_from=defined_in or request.path)
+        yield loader
+        loader.clear_cache()
+
+    return _data_loader
+
+
+data_loader = make_data_loader_fixture(scope="function")
 
 
 class DataLoaderFixture:
-    """Callable returned by the data_loader fixture.
+    """Callable returned by a data loader fixture.
 
     Call it with a file path (absolute, or relative to the nearest data directory) to load a single
-    file at test runtime.  Accepts the same reader, onload, and open() read options as @load.
-    Repeated calls with the same arguments within a single test return the cached result without re-reading the file.
+    file at runtime.  Accepts the same reader, onload, and open() read options as @load.
+    Loaded data is cached for the lifetime of the fixture, so repeated calls with the same arguments return the same
+    data without re-reading the file.
     One-shot iterators (e.g. generators from a .jsonl reader) are intentionally not cached so each call
     returns a fresh iterator.
     """
 
-    def __init__(
-        self,
-        request: FixtureRequest,
-        data_loader_option: DataLoaderOption,
-        *,
-        file_cache: SessionFileCache | None = None,
-    ) -> None:
+    def __init__(self, data_loader_option: DataLoaderOption, *, search_from: Path) -> None:
         """Initialize the data loader fixture.
 
-        :param request: The active fixture request, used to locate the test file and module cache.
         :param data_loader_option: Parsed data loader INI options.
-        :param file_cache: Session-scoped file cache. None disables session caching.
+        :param search_from: The location to start searching for the data directory and registered file readers from.
         """
-        self._request = request
         self._data_loader_option = data_loader_option
-        self._file_cache = file_cache
-        self._search_from = request.path
+        self._search_from = search_from
         self._cache: dict[tuple[Any, ...], Any] = {}
+        self._file_loaders: list[Loader] = []
 
     def __call__(
         self,
@@ -123,10 +141,8 @@ class DataLoaderFixture:
                 onload_func=onload,
             )
 
-            (file_loader,) = create_loaders(
-                validated_path, load_attrs, self._data_loader_option, file_cache=self._file_cache
-            )
-            file_loader.register_cleanup(self._request.module)
+            (file_loader,) = create_loaders(validated_path, load_attrs, self._data_loader_option)
+            self._file_loaders.append(file_loader)
             loaded = file_loader.load()
             assert isinstance(loaded, LoadedData)
             data = loaded.data
@@ -136,6 +152,13 @@ class DataLoaderFixture:
             return data
         except DataNotFound as e:
             return self._handle_missing_data(cache_key, e)
+
+    def clear_cache(self) -> None:
+        """Clear the cached data and release the file handles held by the loaders this fixture created."""
+        for file_loader in self._file_loaders:
+            file_loader.clear_cache()
+        self._file_loaders.clear()
+        self._cache.clear()
 
     def _handle_missing_data(self, cache_key: tuple[Any, ...], exc: DataNotFound) -> Any:
         """Dispatch a missing-path DataNotFound at test runtime based on the on_missing option.
