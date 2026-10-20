@@ -35,7 +35,7 @@ from pytest_data_loader.types import (
     LoadedDataType,
     MissingData,
 )
-from pytest_data_loader.utils import add_error_note, get_data_loader_source
+from pytest_data_loader.utils import get_data_loader_source
 
 logger = logging.getLogger(__name__)
 
@@ -127,8 +127,8 @@ def pytest_generate_tests(metafunc: Metafunc) -> None:
             decorator_src = get_data_loader_source(test_func, idx, load_attrs.loader.__name__)
             if decorator_src is None:
                 decorator_src = f"@{load_attrs.loader.__name__}"
-            add_error_note(e, f"- nodeid: {node_id}")
-            add_error_note(e, f"- data loader: {decorator_src}")
+            e.add_note(f"- nodeid: {node_id}")
+            e.add_note(f"- data loader: {decorator_src}")
             raise
 
 

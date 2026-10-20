@@ -10,11 +10,9 @@ import re
 from collections.abc import Callable, Iterator
 from functools import lru_cache
 from pathlib import Path
-from typing import IO, Any, BinaryIO, Literal, TextIO, cast, overload
+from typing import IO, Any, BinaryIO, Literal, Self, TextIO, cast, overload
 
-from pytest_data_loader.compat import Self
 from pytest_data_loader.exceptions import DataNotFound
-from pytest_data_loader.utils import add_error_note
 
 _COMPRESSION_OPENERS: dict[str, Callable[..., IO[Any]]] = {
     ".gz": gzip.open,
@@ -284,7 +282,7 @@ class _CompressionAwareOpen:
             if self._read_options:
                 options = ", ".join(f"{k}={v!r}" for k, v in self._read_options.items())
                 note += f" with options: {options}"
-            add_error_note(e, note)
+            e.add_note(note)
             raise
 
     def read(self, *args: Any, **kwargs: Any) -> Any:

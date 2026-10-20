@@ -534,14 +534,14 @@ This includes built-in readers, third-party library readers, and your own custom
 
 Below are some common examples of file readers you might use:
 
-| File type | Examples                                          | Notes                                            |
-|-----------|---------------------------------------------------|--------------------------------------------------|
-| .csv      | `csv.reader`, `csv.DictReader`, `pandas.read_csv` | `pandas.read_csv` requires `pandas`              |
-| .yml      | `yaml.safe_load`, `yaml.safe_load_all`            | Requires `PyYAML`                                |
-| .xml      | `xml.etree.ElementTree.parse`                     |                                                  |
-| .toml     | `tomllib.load`                                    | `tomli.load` for Python <3.11 (Requires `tomli`) |
-| .ini      | `configparser.ConfigParser().read_file`           |                                                  |
-| .pdf      | `pypdf.PdfReader`                                 | Requires `pypdf`                                 |
+| File type | Examples                                          | Notes                               |
+|-----------|---------------------------------------------------|-------------------------------------|
+| .csv      | `csv.reader`, `csv.DictReader`, `pandas.read_csv` | `pandas.read_csv` requires `pandas` |
+| .yml      | `yaml.safe_load`, `yaml.safe_load_all`            | Requires `PyYAML`                   |
+| .xml      | `xml.etree.ElementTree.parse`                     |                                     |
+| .toml     | `tomllib.load`                                    |                                     |
+| .ini      | `configparser.ConfigParser().read_file`           |                                     |
+| .pdf      | `pypdf.PdfReader`                                 | Requires `pypdf`                    |
 
 This can be done either as a `conftest.py`-level registration or as a test-level configuration. If both are done, the
 test-level configuration takes precedence over `conftest.py`-level registration.

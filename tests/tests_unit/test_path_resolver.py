@@ -1,4 +1,3 @@
-import sys
 from pathlib import Path
 
 import pytest
@@ -22,11 +21,6 @@ pytestmark = pytest.mark.unittest
 
 SEARCH_FROM = Path(__file__)
 LOCAL_LOADER_DIR = SEARCH_FROM.resolve().parent / DEFAULT_LOADER_DIR_NAME
-MARK_PY310_GLOBSTAR_BUG = pytest.mark.xfail(
-    # Python 3.10 falsely matches files named 'xyz' with glob pattern 'xyz/**'
-    condition=sys.version_info < (3, 11),
-    reason="https://github.com/python/cpython/pull/115291",
-)
 
 
 class TestPathResolver:
@@ -172,7 +166,7 @@ class TestPathResolverGlob:
         assert resolved_paths == tuple(self.SUB_DIR / n for n in self._DIR_TXT_NAMES)
         assert all(p.is_file() for p in resolved_paths)
 
-    @pytest.mark.parametrize("is_file", [pytest.param(True, marks=MARK_PY310_GLOBSTAR_BUG), False])
+    @pytest.mark.parametrize("is_file", [True, False])
     def test_path_resolver_glob_should_resolve_globstar(self, request: FixtureRequest, is_file: bool) -> None:
         """Test that a recursive `**` pattern matches files or directories at all depths under the data directory."""
         pattern = f"{SOME_DIR}/**"
@@ -227,7 +221,7 @@ class TestPathResolverGlob:
         assert data_dir_path == ABS_PATH_LOADER_DIR
         assert resolved_paths == tuple(self.SUB_DIR / n for n in self._DIR_TXT_NAMES)
 
-    @pytest.mark.parametrize("is_file", [pytest.param(True, marks=MARK_PY310_GLOBSTAR_BUG), False])
+    @pytest.mark.parametrize("is_file", [True, False])
     def test_path_resolver_glob_should_exclude_hidden_items(self, request: FixtureRequest, is_file: bool) -> None:
         """Test that wildcard expansion excludes hidden files."""
         assert (ABS_PATH_LOADER_DIR / PATH_HIDDEN_FILE).exists()
