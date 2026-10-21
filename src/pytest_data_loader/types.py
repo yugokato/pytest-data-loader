@@ -5,17 +5,15 @@ import os
 from abc import ABC, abstractmethod
 from collections.abc import Callable, Collection, Iterable, Mapping
 from dataclasses import dataclass, field
-from enum import auto
+from enum import StrEnum, auto
 from pathlib import Path
-from typing import IO, Any, Literal, ParamSpec, Protocol, TypeAlias, TypedDict, TypeVar, Union, runtime_checkable
+from typing import IO, Any, Literal, ParamSpec, Protocol, Self, TypeAlias, TypedDict, TypeVar, Union, runtime_checkable
 
 import pytest
 from pytest import Config, Mark, MarkDecorator
 
-from pytest_data_loader.compat import StrEnum
 from pytest_data_loader.exceptions import DataNotFound
 
-T = TypeVar("T")
 P = ParamSpec("P")
 Func = TypeVar("Func", bound=Callable[..., Any])
 JsonType: TypeAlias = str | int | float | bool | list["JsonType"] | dict[str, "JsonType"] | None
@@ -287,7 +285,7 @@ class LazyLoadedDataABC(Data):
     resolver: Callable[..., LoadedData | Iterable[LoadedData]]
 
     @property
-    def data(self: T) -> T:
+    def data(self) -> Self:
         return self
 
     @abstractmethod

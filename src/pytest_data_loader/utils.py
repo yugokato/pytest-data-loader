@@ -5,7 +5,6 @@ import codecs
 import inspect
 import keyword
 import re
-import sys
 from collections.abc import Callable
 from functools import lru_cache, wraps
 from pathlib import Path
@@ -85,7 +84,7 @@ def normalize_loader_func(
                         f"Error while processing '{func_type.public_name}' callable for "
                         f"'{file_path.name}' ({file_path})"
                     )
-                    add_error_note(e, err)
+                    e.add_note(err)
                     raise
 
             return wrapper
@@ -183,27 +182,6 @@ def get_data_loader_source(test_func: Callable[..., Any], position: int, data_lo
     if "\n" in segment:
         segment = " ".join(segment.split())
     return f"@{segment}"
-
-
-def add_error_note(exc: Exception, note: str) -> None:
-    """Add a contextual note to an exception.
-
-    On Python 3.11+, uses ``Exception.add_note()``.
-    On older versions, stores notes in ``__notes__``.
-    """
-    if sys.version_info >= (3, 11):
-        exc.add_note(note)
-    else:
-        # Best-effort compatibility for older Python versions
-        notes = getattr(exc, "__notes__", None)
-        if not isinstance(notes, list):
-            notes = []
-        notes.append(note)
-
-        try:
-            setattr(exc, "__notes__", notes)
-        except Exception:
-            pass
 
 
 @lru_cache

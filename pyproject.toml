@@ -12,14 +12,13 @@ authors = [
   { name = "Yugo Kato" },
 ]
 keywords = ["pytest", "data-driven testing", "DDT"]
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 classifiers = [
   "Development Status :: 4 - Beta",
   "Framework :: Pytest",
   "Intended Audience :: Developers",
   "License :: OSI Approved :: MIT License",
   "Programming Language :: Python :: 3 :: Only",
-  "Programming Language :: Python :: 3.10",
   "Programming Language :: Python :: 3.11",
   "Programming Language :: Python :: 3.12",
   "Programming Language :: Python :: 3.13",
@@ -32,7 +31,6 @@ dynamic = ["version"]
 dependencies = [
     "pytest>=7.0.0,<10",
     "pluggy>=1.2.0",
-    'typing_extensions>=4.1.0; python_version < "3.11"'
 ]
 
 [dependency-groups]
@@ -49,7 +47,6 @@ test = [
     "pandas>=2.0.0",
     "pypdf>=6.1.0",
     "pyyaml>=6.0.0",
-    'tomli>=2.3.0; python_version < "3.11"',
 ]
 tox = [
     "tox>=4.22.0,<5",
@@ -102,9 +99,6 @@ ignore = [
 
 [tool.ruff.lint.per-file-ignores]
 "__init__.py" = ["F401"]
-
-[tool.ruff.lint.pyupgrade]
-keep-runtime-typing = true
 
 [tool.ruff.format]
 docstring-code-format = true
