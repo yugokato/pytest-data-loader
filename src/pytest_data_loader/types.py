@@ -171,7 +171,8 @@ class DataLoaderOption:
                 assert isinstance(v, str)
                 return self._parse_int(v, min=0)
             return v
-        except ValueError as e:
+        except (ValueError, pytest.UsageError) as e:
+            # Since pytest 9.2, invalid INI values raise UsageError instead of ValueError
             raise pytest.UsageError(f"INI option {option}: {e}") from e
 
     @staticmethod
